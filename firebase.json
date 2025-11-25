@@ -1,0 +1,17 @@
+{
+  "hosting": {
+    "site": "shaho-app-site",
+    "public": "dist/shaho-web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
