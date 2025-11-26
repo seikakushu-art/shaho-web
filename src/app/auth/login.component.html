@@ -1,7 +1,7 @@
 <section class="login-panel">
     <header>
       <h1>ログイン</h1>
-      <p class="hint">メールアドレスとパスワードでサインインします。{{ knownAccountHint }}</p>
+      <p class="hint">メールアドレスとパスワードでサインインします。</p>
     </header>
   
     <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="form-card">
@@ -25,7 +25,7 @@
         <span class="chip">送信先: {{ (user$ | async)?.email || '未ログイン' }}</span>
       </p>
       <div class="inline">
-        <button type="button" (click)="onPasswordChange()" [disabled]="!(user$ | async)">再設定メールを送る</button>
+        <button type="button" (click)="onPasswordChange()" [disabled]="!(user$ | async)">パスワード再設定メールを送る</button>
       </div>
     </section>
   

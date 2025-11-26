@@ -27,7 +27,6 @@ export class LoginComponent {
   infoMessage = '';
 
   readonly user$ = this.authService.user$;
-  readonly knownAccountHint = `サンプル: admin@example.com / approver@example.com / staff@example.com / guest@example.com`;
 
   async onSubmit() {
     if (this.loginForm.invalid) {
