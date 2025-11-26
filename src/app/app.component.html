@@ -6,17 +6,13 @@
     </div>
   </div>
   <div class="actions" *ngIf="user$ | async as user">
-    <span>{{ user.email }}</span>
+    <span>{{ getUserDisplayName(user) }}</span>
     <span class="separator">|</span>
     <span>{{ (role$ | async)?.name }}</span>
     <span class="separator">|</span>
     <button type="button" (click)="logout()">ログアウト</button>
   </div>
 </header>
-
-<div class="status" *ngIf="user$ | async as user">
-  <p>ログイン中: {{ user.email }} ({{ (role$ | async)?.name }})</p>
-</div>
 
 <main>
   <router-outlet></router-outlet>

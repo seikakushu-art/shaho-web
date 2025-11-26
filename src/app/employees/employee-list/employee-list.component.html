@@ -1,0 +1,133 @@
+<section class="employee-list">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">社員マスター</p>
+        <h1>社員一覧・検索</h1>
+        <p class="hint">
+          社員番号や氏名、所属部署で社員情報を絞り込み、詳細画面に遷移できます。右上のアクションから新規登録やCSVインポートへ進めます。
+        </p>
+      </div>
+      <div class="action-buttons">
+        <button type="button" class="ghost" aria-label="CSVインポート画面へ" (click)="goToImport()">
+          CSVインポート
+        </button>
+        <button type="button" class="primary" aria-label="新規社員登録画面へ" (click)="goToCreate()">
+          新規社員登録
+        </button>
+      </div>
+    </header>
+  
+    <section class="card search-card">
+      <header>
+        <div>
+          <p class="eyebrow">検索条件</p>
+          <h2>条件を指定して検索</h2>
+        </div>
+        <div class="search-actions">
+          <button type="button" class="ghost" (click)="clear()">クリア</button>
+          <button type="button" class="primary" (click)="search()">検索</button>
+        </div>
+      </header>
+  
+      <div class="search-grid">
+        <label class="field">
+          <span>社員番号（完全一致）</span>
+          <input
+            type="text"
+            name="employeeNo"
+            placeholder="例：E202501"
+            [(ngModel)]="searchCondition.employeeNo"
+          />
+        </label>
+        <label class="field">
+          <span>氏名（部分一致）</span>
+          <input
+            type="text"
+            name="name"
+            placeholder="例：佐藤"
+            [(ngModel)]="searchCondition.name"
+          />
+        </label>
+        <label class="field">
+          <span>所属部署</span>
+          <select name="department" [(ngModel)]="searchCondition.department">
+            <option value="">全て</option>
+            <option *ngFor="let dept of departments" [value]="dept">{{ dept }}</option>
+          </select>
+        </label>
+      </div>
+    </section>
+  
+    <section class="card table-card">
+      <header>
+        <div>
+          <p class="eyebrow">社員一覧</p>
+          <h2>検索結果</h2>
+        </div>
+        <p class="hint">行クリックまたは「詳細」から社員詳細画面へ移動します。</p>
+      </header>
+  
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>社員番号</th>
+              <th>氏名（漢字）</th>
+              <th>生年月日</th>
+              <th>所属部署</th>
+              <th>勤務地都道府県</th>
+              <th>標準報酬月額</th>
+              <th class="actions-col">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              *ngFor="let employee of paginatedEmployees; trackBy: trackByEmployee"
+              (click)="onRowClick(employee)"
+            >
+              <td>{{ employee.employeeNo }}</td>
+              <td>{{ employee.name }}</td>
+              <td>{{ employee.birthDate | date: 'yyyy/MM/dd' }}</td>
+              <td>{{ employee.department }}</td>
+              <td>{{ employee.workPrefecture }}</td>
+              <td class="numeric">{{ employee.standardMonthly | number: '1.0-0' }} 円</td>
+              <td class="actions-col">
+                <button type="button" class="ghost" (click)="onViewDetail($event, employee)">
+                  詳細
+                </button>
+              </td>
+            </tr>
+            <tr *ngIf="!paginatedEmployees.length">
+              <td colspan="7" class="empty">条件に合致する社員が見つかりませんでした。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+  
+      <footer class="table-footer">
+        <div class="page-size">
+          <label>
+            表示件数
+            <select [ngModel]="pageSize" (ngModelChange)="changePageSize($event)">
+              <option *ngFor="let size of pageSizeOptions" [value]="size">{{ size }}件</option>
+            </select>
+          </label>
+          <span class="hint">{{ getPageRangeLabel() }}</span>
+        </div>
+        <div class="pager">
+          <button type="button" class="ghost" (click)="prevPage()" [disabled]="currentPage === 1">
+            前ページ
+          </button>
+          <span>{{ currentPage }} / {{ totalPages }} ページ</span>
+          <button
+            type="button"
+            class="ghost"
+            (click)="nextPage()"
+            [disabled]="currentPage === totalPages || !totalCount"
+          >
+            次ページ
+          </button>
+        </div>
+      </footer>
+    </section>
+  </section>

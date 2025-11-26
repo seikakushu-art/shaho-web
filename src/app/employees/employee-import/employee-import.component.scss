@@ -1,0 +1,43 @@
+.placeholder {
+    max-width: 800px;
+    margin: 2rem auto;
+    background: #fff;
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  }
+  
+  .eyebrow {
+    margin: 0;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: #64748b;
+  }
+  
+  h1 {
+    margin: 0.25rem 0;
+  }
+  
+  .hint {
+    margin: 0;
+    color: #94a3b8;
+  }
+  
+  .body {
+    margin-top: 1rem;
+    color: #0f172a;
+  }
+  
+  .link {
+    display: inline-block;
+    margin-top: 0.75rem;
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 700;
+  }
+  
+  .link:hover {
+    text-decoration: underline;
+  }
