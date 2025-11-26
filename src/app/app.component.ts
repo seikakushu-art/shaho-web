@@ -1,35 +1,22 @@
-import { Component, OnInit } from '@angular/core';
-import { ShahoEmployeesService, ShahoEmployee } from './app/services/shaho-employees.service';
-import { Observable } from 'rxjs';
+import { Component, inject } from '@angular/core';
+import { RouterLink, RouterOutlet } from '@angular/router';
+import { AsyncPipe, NgIf } from '@angular/common';
+import { AuthService } from './auth/auth.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  template: `
-    <h1>shaho employees</h1>
-
-    <button (click)="addDummy()">ダミー社員追加</button>
-
-    <ul>
-      <li *ngFor="let e of employees$ | async">
-        {{ e.employeeNo }} : {{ e.name }}
-      </li>
-    </ul>
-  `,
+  imports: [RouterOutlet, RouterLink, AsyncPipe, NgIf],
+  templateUrl: './app.component.html',
+  styleUrl: './app.component.scss',
 })
-export class AppComponent implements OnInit {
-  employees$!: Observable<ShahoEmployee[]>;
+export class AppComponent {
+  private authService = inject(AuthService);
 
-  constructor(private readonly service: ShahoEmployeesService) {}
+  readonly user$ = this.authService.user$;
+  readonly role$ = this.authService.roleDefinition$;
 
-  ngOnInit() {
-    this.employees$ = this.service.getEmployees();
-  }
-
-  addDummy() {
-    this.service.addEmployee({
-      employeeNo: 'E001',
-      name: '山田太郎',
-    });
+  logout() {
+    return this.authService.logout();
   }
 }

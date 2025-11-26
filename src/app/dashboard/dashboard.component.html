@@ -1,0 +1,64 @@
+<section class="dashboard">
+    <header>
+      <div>
+        <p class="eyebrow">ログイン情報</p>
+        <h1>ロール別ダッシュボード</h1>
+        <p class="hint">
+          ログインユーザーのロールに応じた業務範囲を可視化します。新規ログインは左上メニューから行えます。
+        </p>
+      </div>
+      <a routerLink="/login" class="text-link">ログイン画面へ戻る</a>
+    </header>
+  
+    <section class="card" *ngIf="(role$ | async) as role">
+      <p class="eyebrow">現在のロール</p>
+      <h2>{{ role.name }}</h2>
+      <p class="hint">{{ role.summary }}</p>
+  
+      <div class="columns">
+        <div>
+          <h3>担当範囲</h3>
+          <ul>
+            <li *ngFor="let task of role.responsibilities">{{ task }}</li>
+          </ul>
+        </div>
+        <div *ngIf="role.restrictions?.length">
+          <h3>制限事項</h3>
+          <ul>
+            <li *ngFor="let restriction of role.restrictions">{{ restriction }}</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  
+    <section class="card">
+      <p class="eyebrow">ロール一覧（システム管理者向け）</p>
+      <div class="role-grid">
+        <article class="role" *ngFor="let role of allRoles">
+          <header>
+            <h3>{{ role.name }}</h3>
+            <p class="hint">{{ role.summary }}</p>
+          </header>
+          <ul>
+            <li *ngFor="let task of role.responsibilities">{{ task }}</li>
+          </ul>
+          <p class="hint" *ngIf="role.restrictions?.length">
+            制限: {{ role.restrictions?.join(' / ') }}
+          </p>
+        </article>
+      </div>
+    </section>
+  
+    <section class="card">
+      <p class="eyebrow">データ閲覧サンプル</p>
+      <p class="hint">
+        ロールがゲストでも閲覧可能なデモです。担当者・承認者・システム管理者は編集・承認フローを別途実装できます。
+      </p>
+      <ul class="employees">
+        <li *ngFor="let employee of employees$ | async">
+          <span class="label">社員番号</span> {{ employee.employeeNo }}
+          <span class="label">氏名</span> {{ employee.name }}
+        </li>
+      </ul>
+    </section>
+  </section>

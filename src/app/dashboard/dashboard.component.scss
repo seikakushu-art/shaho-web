@@ -1,0 +1,110 @@
+.dashboard {
+    max-width: 960px;
+    margin: 1.5rem auto 3rem;
+    padding: 0 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+  }
+  
+  h1 {
+    margin: 0;
+    font-size: 1.75rem;
+  }
+  
+  h2 {
+    margin: 0.25rem 0;
+  }
+  
+  h3 {
+    margin: 0.25rem 0;
+  }
+  
+  .eyebrow {
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    color: #6b7280;
+    margin: 0;
+  }
+  
+  .card {
+    background: #fff;
+    padding: 1rem 1.25rem;
+    border-radius: 12px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e5e7eb;
+  }
+  
+  .columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+  }
+  
+  .role-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+  
+  .role {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    background: linear-gradient(180deg, #f9fafb 0%, #ffffff 100%);
+  }
+  
+  .role header {
+    display: block;
+  }
+  
+  .role ul {
+    padding-left: 1.25rem;
+    margin: 0.5rem 0;
+  }
+  
+  .hint {
+    color: #6b7280;
+    margin: 0.25rem 0;
+  }
+  
+  .text-link {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  
+  .text-link:hover {
+    text-decoration: underline;
+  }
+  
+  .employees {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    padding: 0;
+    list-style: none;
+  }
+  
+  .employees li {
+    border: 1px solid #e5e7eb;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    background: #f8fafc;
+  }
+  
+  .label {
+    display: inline-block;
+    min-width: 72px;
+    font-weight: 600;
+    color: #111827;
+    margin-right: 0.4rem;
+  }
