@@ -222,4 +222,107 @@ export class EmployeeImportComponent {
   changeDetail(id: number): DifferenceRow | null {
     return this.differences.find((row) => row.id === id) ?? null;
   }
+
+  downloadNewEmployeeTemplate(): void {
+    const headers = [
+      '社員番号',
+      '氏名漢字',
+      '氏名カナ',
+      '性別',
+      '所属部署コード',
+      '所属部署名',
+      '生年月日',
+      '勤務地都道府県コード',
+      '勤務地都道府県名',
+      '現在標準報酬月額',
+      '被保険者番号',
+      '介護保険第2号フラグ',
+      '健康保険資格取得日',
+      '厚生年金資格取得日',
+      '一時免除フラグ（健康保険料・厚生年金一時免除）',
+    ];
+
+    // CSVヘッダー行を作成（UTF-8 BOM付きでExcel互換性を確保）
+    const csvContent = '\uFEFF' + headers.join(',') + '\n';
+
+    // Blobオブジェクトを作成（UTF-8、LF改行）
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+    // ダウンロードリンクを作成
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', '新規登録/一括更新用テンプレート.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  downloadSalaryCalculationTemplate(): void {
+    const headers = [
+      // 新規登録/一括更新用の項目
+      '社員番号',
+      '氏名漢字',
+      '氏名カナ',
+      '性別',
+      '所属部署コード',
+      '所属部署名',
+      '生年月日',
+      '勤務地都道府県コード',
+      '勤務地都道府県名',
+      '現在標準報酬月額',
+      '被保険者番号',
+      '介護保険第2号フラグ',
+      '健康保険資格取得日',
+      '厚生年金資格取得日',
+      '一時免除フラグ（健康保険料・厚生年金一時免除）',
+      // 標準報酬月額算定用の項目
+      '算定年度',
+      '算定対象期間開始年月',
+      '算定対象期間終了年月',
+      '4月報酬額',
+      '4月支払基礎日数',
+      '5月報酬額',
+      '5月支払基礎日数',
+      '6月報酬額',
+      '6月支払基礎日数',
+    ];
+
+    const csvContent = '\uFEFF' + headers.join(',') + '\n';
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', '標準報酬月額算定機能付きテンプレート.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  downloadBonusCalculationTemplate(): void {
+    const headers = [
+      '社員番号',
+      '賞与支給日',
+      '賞与支給年度',
+      '賞与総支給額',
+    ];
+
+    const csvContent = '\uFEFF' + headers.join(',') + '\n';
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', '標準賞与額算定用テンプレート.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 }

@@ -35,8 +35,9 @@
         </div>
       </div>
       <div class="action-grid">
-        <button type="button" class="primary">新規登録用テンプレートダウンロード</button>
-        <button type="button" class="secondary">既存社員一括更新用テンプレートダウンロード</button>
+        <button type="button" class="primary" (click)="downloadNewEmployeeTemplate()">新規登録/一括更新用テンプレート</button>
+        <button type="button" class="secondary" (click)="downloadSalaryCalculationTemplate()">標準報酬月額算定機能付きテンプレート</button>
+        <button type="button" class="secondary" (click)="downloadBonusCalculationTemplate()">標準賞与額算定用テンプレート</button>
       </div>
       <div class="notes">
         <ul>

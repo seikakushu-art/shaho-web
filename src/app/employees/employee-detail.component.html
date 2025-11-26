@@ -1,7 +1,6 @@
 <section class="employee-detail">
     <header class="page-header">
       <div>
-        <p class="eyebrow">社員マスタ</p>
         <h1>{{ employee.name }} <span class="kana">{{ employee.kana }}</span></h1>
         <p class="hint">
           社員番号 {{ employee.employeeNo }} ／ 所属部署: {{ employee.department }}
@@ -9,7 +8,7 @@
       </div>
       <div class="header-actions">
         <button type="button" class="secondary">編集</button>
-        <button *ngIf="canDelete" type="button" class="danger">削除／無効化</button>
+        <button *ngIf="canDelete" type="button" class="danger">削除</button>
         <button type="button" class="outline" (click)="showApprovalHistory = true">承認履歴</button>
       </div>
     </header>
@@ -71,29 +70,27 @@
       <article class="card audit">
         <div class="card-header">
           <div>
-            <p class="eyebrow">監査情報</p>
-            <h2>監査情報カード</h2>
+            <h2>監査情報</h2>
           </div>
-          <p class="hint">登録・更新・承認のトレーサビリティを確認できます。</p>
         </div>
         <div class="grid three-col">
-          <div>
+          <div style="grid-column: 1; grid-row: 1;">
             <label>登録日</label>
             <p class="value">{{ auditInfo.registeredAt }}</p>
           </div>
-          <div>
+          <div style="grid-column: 2; grid-row: 1;">
             <label>更新日</label>
             <p class="value">{{ auditInfo.updatedAt }}</p>
           </div>
-          <div>
+          <div style="grid-column: 1; grid-row: 2;">
             <label>登録者</label>
             <p class="value">{{ auditInfo.createdBy }}</p>
           </div>
-          <div>
+          <div style="grid-column: 2; grid-row: 2;">
             <label>更新者</label>
             <p class="value">{{ auditInfo.updatedBy }}</p>
           </div>
-          <div>
+          <div style="grid-column: 3; grid-row: 2;">
             <label>承認者</label>
             <p class="value">{{ auditInfo.approvedBy }}</p>
           </div>
@@ -105,40 +102,10 @@
       <article class="card">
         <div class="card-header">
           <div>
-            <p class="eyebrow">会社の保険者情報</p>
-            <h2>保険者設定</h2>
-          </div>
-          <p class="hint">会社設定画面で編集します（閲覧のみ）。</p>
-        </div>
-        <div class="grid two-col">
-          <div>
-            <label>健康保険加入区分</label>
-            <p class="value">{{ companyInsurance.healthType }}</p>
-          </div>
-          <div>
-            <label>健康保険 保険者番号</label>
-            <p class="value">{{ companyInsurance.healthNumber }}</p>
-          </div>
-          <div>
-            <label>厚生年金 事業所整理番号</label>
-            <p class="value">{{ companyInsurance.pensionOffice }}</p>
-          </div>
-          <div>
-            <label>事業所名称</label>
-            <p class="value">{{ companyInsurance.officeName }}</p>
+            <h2>社会保険関連基本情報</h2>
           </div>
         </div>
-      </article>
-  
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <p class="eyebrow">社会保険関連基本情報</p>
-            <h2>加入情報カード</h2>
-          </div>
-          <p class="hint">介護保険2号は生年月日から自動判定、例外時のみ手動変更。</p>
-        </div>
-        <div class="grid two-col">
+        <div class="grid two-col insurance-form">
           <div>
             <label>現在の標準報酬月額</label>
             <p class="value">{{ socialInsurance.standardMonthly | number }} 円</p>
@@ -147,9 +114,12 @@
             <label>被保険者番号</label>
             <input type="text" [(ngModel)]="socialInsurance.insuredNumber" />
           </div>
-          <div class="inline">
-            <div>
+          <div class="toggle-block">
+            <div class="toggle-label">
               <label>介護保険第2号被保険者</label>
+              <p class="hint small">生年月日から自動判定。</p>
+            </div>
+            <div class="toggle-controls">
               <label class="switch">
                 <input
                   type="checkbox"
@@ -157,11 +127,10 @@
                 />
                 <span></span>
               </label>
-              <p class="hint small">生年月日から自動判定。例外時のみ手動変更。</p>
+              <button type="button" class="outline" (click)="recalcCareFlag()">
+                自動判定を再計算
+              </button>
             </div>
-            <button type="button" class="outline" (click)="recalcCareFlag()">
-              自動判定を再計算
-            </button>
           </div>
           <div>
             <label>健康保険 資格取得日</label>
@@ -171,16 +140,17 @@
             <label>厚生年金 資格取得日</label>
             <input type="date" [(ngModel)]="socialInsurance.pensionAcquisition" />
           </div>
-          <div class="inline">
-            <div>
+          <div class="toggle-block">
+            <div class="toggle-label">
               <label>健康保険料・厚生年金一時免除</label>
+              <p class="hint small">産休・育休等で免除する場合にON。ON時に帳票計算が免除扱いになります。</p>
+            </div>
+            <div class="toggle-controls">
               <label class="switch">
                 <input type="checkbox" [(ngModel)]="socialInsurance.exemption" />
                 <span></span>
               </label>
-              <p class="hint small">産休・育休等で免除する場合にON。</p>
             </div>
-            <span class="tooltip">ON時に帳票計算が免除扱いになります。</span>
           </div>
         </div>
       </article>

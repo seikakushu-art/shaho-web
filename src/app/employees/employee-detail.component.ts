@@ -17,13 +17,6 @@ interface AuditInfo {
   approvedBy: string;
 }
 
-interface CompanyInsuranceInfo {
-  healthType: string;
-  healthNumber: string;
-  pensionOffice: string;
-  officeName: string;
-}
-
 interface SocialInsuranceInfo {
   standardMonthly: number;
   insuredNumber: string;
@@ -112,13 +105,6 @@ export class EmployeeDetailComponent {
     createdBy: 'admin01',
     updatedBy: 'approver02',
     approvedBy: 'manager03',
-  };
-
-  companyInsurance: CompanyInsuranceInfo = {
-    healthType: '協会けんぽ',
-    healthNumber: '12345678',
-    pensionOffice: '12-34567',
-    officeName: '社会保険労務オフィス東京',
   };
 
   socialInsurance: SocialInsuranceInfo = {
