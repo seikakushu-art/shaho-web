@@ -1,0 +1,126 @@
+<section class="approval-detail" *ngIf="approval as current">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">承認ワークフロー</p>
+        <h1>承認詳細</h1>
+        <p class="hint">申請内容と対象社員の差分を確認し、コメントを付けて承認／差戻しを実行します。</p>
+      </div>
+      <a class="text-link" routerLink="/approvals">一覧へ戻る</a>
+    </header>
+  
+    <section class="card application-summary">
+      <div class="summary-header">
+        <div>
+          <p class="eyebrow">申請情報</p>
+          <h2>{{ current.id }}</h2>
+          <p class="hint">申請コメント: {{ current.comment }}</p>
+        </div>
+        <span class="status" [class]="statusClass(current.status)">{{ current.status }}</span>
+      </div>
+  
+      <dl class="summary-grid">
+        <div>
+          <dt>区分</dt>
+          <dd>{{ current.category }}</dd>
+        </div>
+        <div>
+          <dt>対象件数</dt>
+          <dd>{{ current.targetCount }} 件</dd>
+        </div>
+        <div>
+          <dt>申請者</dt>
+          <dd>{{ current.applicant }}</dd>
+        </div>
+        <div>
+          <dt>申請日時</dt>
+          <dd>{{ current.appliedAt | date: 'yyyy/MM/dd HH:mm' }}</dd>
+        </div>
+      </dl>
+    </section>
+  
+    <section class="card">
+      <header class="section-header">
+        <div>
+          <p class="eyebrow">対象社員</p>
+          <h2>差分一覧</h2>
+        </div>
+        <p class="hint">社員行をクリックすると、差分モーダルで変更内容を強調表示します。</p>
+      </header>
+  
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>社員番号</th>
+              <th>氏名</th>
+              <th>ステータス</th>
+              <th>主要差分</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let employee of employees" (click)="openDiffModal(employee)">
+              <td>{{ employee.employeeNo }}</td>
+              <td>{{ employee.name }}</td>
+              <td>
+                <span class="status-chip" [class.warning]="employee.status === '警告'">{{ employee.status }}</span>
+              </td>
+              <td class="diff-preview">
+                <span *ngFor="let diff of employee.diffs | slice:0:2" class="pill">{{ diff.field }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  
+    <section class="card action-card">
+      <header class="section-header">
+        <div>
+          <p class="eyebrow">承認アクション</p>
+          <h2>コメントを残して意思決定</h2>
+        </div>
+        <p class="hint">コメントは差戻し理由や承認メモに利用されます。</p>
+      </header>
+  
+      <textarea
+        [(ngModel)]="approvalComment"
+        rows="4"
+        placeholder="確認内容や差戻し理由を入力してください"
+      ></textarea>
+  
+      <div class="action-buttons">
+        <button type="button" class="ghost" (click)="saveApproval('remand')">差戻し</button>
+        <button type="button" class="primary" (click)="saveApproval('approve')">承認</button>
+      </div>
+    </section>
+  </section>
+  
+  <div class="modal" *ngIf="showDiffModal && selectedEmployee as target">
+    <div class="modal-content">
+      <header>
+        <div>
+          <p class="eyebrow">差分モーダル</p>
+          <h3>{{ target.employeeNo }} {{ target.name }}</h3>
+        </div>
+        <button type="button" (click)="closeDiffModal()">閉じる</button>
+      </header>
+      <p class="hint">旧値と新値を並べ、差分を強調表示しています。</p>
+  
+      <ul class="diff-list">
+        <li *ngFor="let diff of target.diffs">
+          <div class="diff-name">{{ diff.field }}</div>
+          <div class="diff-values">
+            <span class="old">{{ diff.oldValue }}</span>
+            <span class="arrow">→</span>
+            <span class="new" [class.changed]="diff.oldValue !== diff.newValue">{{ diff.newValue }}</span>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+  
+  <div class="toast-stack">
+    <div *ngFor="let toast of toasts" class="toast" [class]="toast.type">
+      {{ toast.message }}
+    </div>
+  </div>

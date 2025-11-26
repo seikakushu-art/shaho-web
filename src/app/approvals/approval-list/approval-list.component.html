@@ -1,0 +1,51 @@
+<section class="approval-list">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">承認ワークフロー</p>
+        <h1>承認一覧</h1>
+        <p class="hint">担当する申請のステータスと承認ステップを確認し、行クリックで詳細へ遷移できます。</p>
+      </div>
+      <p class="hint">最新の申請から表示しています。</p>
+    </header>
+  
+    <section class="card table-card">
+      <header>
+        <div>
+          <p class="eyebrow">申請一覧</p>
+          <h2>承認待ち・履歴</h2>
+        </div>
+        <p class="hint">クリックで申請詳細へ。差戻しはコメントを確認してください。</p>
+      </header>
+  
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>申請ID</th>
+              <th>区分</th>
+              <th>対象社員件数</th>
+              <th>申請者</th>
+              <th>申請日時</th>
+              <th>自分の承認ステップ番号</th>
+              <th>ステータス</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let approval of approvals" (click)="onRowClick(approval)">
+              <td class="id-cell">{{ approval.id }}</td>
+              <td>
+                <span class="badge" [class]="categoryClass(approval.category)">{{ approval.category }}</span>
+              </td>
+              <td class="numeric">{{ approval.targetCount }} 件</td>
+              <td>{{ approval.applicant }}</td>
+              <td>{{ approval.appliedAt | date: 'yyyy/MM/dd HH:mm' }}</td>
+              <td class="numeric">{{ approval.step }}</td>
+              <td>
+                <span class="status" [class]="statusClass(approval.status)">{{ approval.status }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </section>
