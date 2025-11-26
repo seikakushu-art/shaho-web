@@ -1,11 +1,257 @@
-<section class="placeholder">
-    <header>
-      <p class="eyebrow">社員マスター</p>
-      <h1>CSVインポート</h1>
-      <p class="hint">CSV一括アップロード画面のデザインを追加するためのプレースホルダーです。</p>
+<section class="import-page">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">社員マスター</p>
+        <div class="title-row">
+          <h1>CSV一括アップロード</h1>
+          <a routerLink="/employees" class="ghost-link">社員一覧へ戻る</a>
+        </div>
+        <p class="hint">CSVテンプレートのダウンロードから差分確認・承認依頼までをウィザード形式で案内します。</p>
+      </div>
     </header>
-    <div class="body">
-      <p>取込フォーマットやバリデーション要件を整理のうえで実装してください。</p>
-      <a routerLink="/employees" class="link">社員一覧へ戻る</a>
+  
+    <div class="stepper">
+      <div
+        class="step"
+        *ngFor="let step of steps"
+        [class.active]="currentStep === step.number"
+        [class.visited]="step.number <= maxStep"
+        (click)="goToStep(step.number)"
+      >
+        <div class="step-index">{{ step.number }}</div>
+        <div>
+          <p class="step-title">{{ step.title }}</p>
+        </div>
+      </div>
     </div>
+  
+    <!-- Step 1: Template download -->
+    <section class="panel" *ngIf="currentStep === 1">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 1</p>
+          <h2>テンプレートをダウンロード</h2>
+          <p class="hint">必須項目や文字コード（UTF-8）、改行コード（LF）に注意して、最新フォーマットを利用してください。</p>
+        </div>
+      </div>
+      <div class="action-grid">
+        <button type="button" class="primary">新規登録用テンプレートダウンロード</button>
+        <button type="button" class="secondary">既存社員一括更新用テンプレートダウンロード</button>
+      </div>
+      <div class="notes">
+        <ul>
+          <li>必須項目：社員番号、氏名（姓・名）、入社日、所属部署</li>
+          <li>文字コードはUTF-8、改行コードはLFで保存してください。</li>
+          <li>日付はYYYY/MM/DD形式、金額はカンマ無しの半角数字で入力してください。</li>
+        </ul>
+      </div>
+      <div class="navigation">
+        <span></span>
+        <button type="button" class="primary" (click)="unlockStep(2); nextStep()">次へ進む</button>
+      </div>
+    </section>
+  
+    <!-- Step 2: CSV upload -->
+    <section class="panel" *ngIf="currentStep === 2">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 2</p>
+          <h2>CSVファイルを選択</h2>
+          <p class="hint">ファイルを選択するとサマリが表示されます。形式エラーは次のステップで確認できます。</p>
+        </div>
+        <div class="file-input">
+          <label class="upload">
+            <input type="file" accept=".csv" (change)="onFileSelect($event)" />
+            <span>{{ fileName || 'ファイルを選択' }}</span>
+          </label>
+        </div>
+      </div>
+      <div class="summary-grid" *ngIf="hasUploadedFile">
+        <div class="summary-card">
+          <p class="label">総レコード数</p>
+          <p class="value">{{ summary.totalRecords | number }} 件</p>
+        </div>
+        <div class="summary-card">
+          <p class="label">新規登録対象</p>
+          <p class="value highlight">{{ summary.newCount | number }} 件</p>
+        </div>
+        <div class="summary-card">
+          <p class="label">更新対象</p>
+          <p class="value highlight">{{ summary.updateCount | number }} 件</p>
+        </div>
+        <div class="summary-card error">
+          <p class="label">エラー件数</p>
+          <p class="value">{{ summary.errorCount | number }} 件</p>
+        </div>
+      </div>
+      <div class="navigation">
+        <button type="button" class="ghost" (click)="prevStep()">戻る</button>
+        <button type="button" class="primary" [disabled]="!hasUploadedFile" (click)="nextStep()">検証へ進む</button>
+      </div>
+    </section>
+  
+    <!-- Step 3: Error validation -->
+    <section class="panel" *ngIf="currentStep === 3">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 3</p>
+          <h2>取込結果の検証</h2>
+          <p class="hint">形式エラーや必須項目の欠落を表示しています。エラー行は自動的に「更新対象外」となります。</p>
+        </div>
+        <div class="badge-list">
+          <span class="badge error">エラー {{ errors.length }} 件</span>
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>行番号</th>
+              <th>社員番号</th>
+              <th>氏名</th>
+              <th>エラー内容</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let error of errors">
+              <td>{{ error.line }}</td>
+              <td>{{ error.employeeNo || 'ー' }}</td>
+              <td>{{ error.name || 'ー' }}</td>
+              <td class="error-text">{{ error.message }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">上記のエラーは差分確認に進みません。CSVを修正して再取込するか、エラー以外の行のみで続行してください。</p>
+      <div class="navigation">
+        <button type="button" class="ghost" (click)="prevStep()">戻る</button>
+        <button type="button" class="primary" (click)="nextStep()">差分確認へ進む</button>
+      </div>
+    </section>
+  
+    <!-- Step 4: Difference review -->
+    <section class="panel" *ngIf="currentStep === 4">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 4</p>
+          <h2>差分確認</h2>
+          <p class="hint">更新対象に含める社員を選択し、詳細差分を確認してください。</p>
+        </div>
+        <div class="filters">
+          <label>ステータス</label>
+          <select [(ngModel)]="statusFilter" (change)="setFilter(statusFilter)">
+            <option value="all">すべて</option>
+            <option value="ok">OK</option>
+            <option value="warning">警告</option>
+            <option value="error">エラー</option>
+          </select>
+          <button type="button" class="ghost" (click)="toggleAll(true)">すべて選択</button>
+          <button type="button" class="ghost" (click)="toggleAll(false)">すべて解除</button>
+        </div>
+      </div>
+  
+      <div class="diff-layout">
+        <div class="table-wrapper">
+          <table class="diff-table">
+            <thead>
+              <tr>
+                <th class="checkbox-col"></th>
+                <th>ステータス</th>
+                <th>社員番号</th>
+                <th>氏名</th>
+                <th>変更サマリ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                *ngFor="let row of filteredDifferences"
+                (click)="selectRow(row)"
+                [class.selected]="selectedChangeId === row.id"
+              >
+                <td class="checkbox-col">
+                  <input
+                    type="checkbox"
+                    [disabled]="row.status === 'error'"
+                    [checked]="row.selected"
+                    (click)="toggleSelection(row, $event)"
+                  />
+                </td>
+                <td>
+                  <span [class]="statusClass(row.status)">{{ statusLabel(row.status) }}</span>
+                </td>
+                <td>{{ row.employeeNo }}</td>
+                <td>{{ row.name }}</td>
+                <td>{{ row.summary }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+  
+        <div class="detail-panel" *ngIf="selectedChangeId && changeDetail(selectedChangeId) as detail">
+          <div class="detail-header">
+            <p class="eyebrow">差分詳細</p>
+            <h3>{{ detail.employeeNo }} {{ detail.name }}</h3>
+          </div>
+          <div class="detail-body">
+            <div class="change-row" *ngFor="let change of detail.changes">
+              <div class="field">{{ change.field }}</div>
+              <div class="old">{{ change.oldValue }}</div>
+              <div class="arrow">→</div>
+              <div class="new">{{ change.newValue }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+  
+      <div class="navigation">
+        <button type="button" class="ghost" (click)="prevStep()">戻る</button>
+        <div class="spacer"></div>
+        <button type="button" class="primary" (click)="nextStep()">承認依頼へ進む</button>
+        <button type="button" class="immediate" *ngIf="canApplyImmediately">今すぐ更新</button>
+      </div>
+    </section>
+  
+    <!-- Step 5: Approval -->
+    <section class="panel" *ngIf="currentStep === 5">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 5</p>
+          <h2>承認依頼</h2>
+          <p class="hint">承認経路とコメントを指定し、申請を送信します。</p>
+        </div>
+      </div>
+  
+      <div class="approval-grid">
+        <div class="approval-summary">
+          <p class="label">対象社員件数</p>
+          <p class="value">{{ selectedCount }} 件</p>
+          <p class="label">変更内容の簡易まとめ</p>
+          <ul>
+            <li>OK：{{ okCount }} 件</li>
+            <li>警告あり：{{ warningCount }} 件</li>
+            <li>エラー除外：{{ summary.errorCount }} 件</li>
+          </ul>
+          <p class="hint">{{ approvalSummary }}</p>
+        </div>
+        <div class="approval-form">
+          <label class="field">
+            <span>承認ルート</span>
+            <select [(ngModel)]="approvalRoute">
+              <option>標準ルート</option>
+              <option>管理部長承認</option>
+              <option>簡易承認</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>申請コメント</span>
+            <textarea rows="4" [(ngModel)]="requestComment" placeholder="例：給与改定に伴う更新です。"></textarea>
+          </label>
+        </div>
+      </div>
+  
+      <div class="navigation">
+        <button type="button" class="ghost" (click)="prevStep()">戻る</button>
+        <button type="button" class="primary">承認依頼を送信</button>
+      </div>
+    </section>
   </section>
