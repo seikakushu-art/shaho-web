@@ -1,11 +1,439 @@
-<section class="placeholder">
-    <header>
-      <p class="eyebrow">社員マスター</p>
-      <h1>新規社員登録</h1>
-      <p class="hint">本画面は今後のバックエンド連携を想定したプレースホルダーです。</p>
+<section class="employee-create">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">社員マスタ</p>
+        <h1>社員新規登録・編集</h1>
+        <p class="hint">社員詳細レイアウトを踏襲し、閲覧／編集を切り替えできます。</p>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="outline" (click)="toggleEditMode()">
+          {{ editMode ? '閲覧モードに切替' : '編集モードに切替' }}
+        </button>
+        <a routerLink="/employees" class="secondary ghost">一覧に戻る</a>
+      </div>
     </header>
-    <div class="body">
-      <p>実際の登録フォームとワークフローは別途実装してください。</p>
-      <a routerLink="/employees" class="link">社員一覧へ戻る</a>
-    </div>
+  
+    <form #employeeForm="ngForm" novalidate>
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <p class="eyebrow">社員基本情報</p>
+            <h2>基本情報カード</h2>
+          </div>
+          <p class="hint">必須項目は * 表記。未入力時は下部にエラーメッセージを表示します。</p>
+        </div>
+  
+        <div class="grid two-col">
+          <div>
+            <label>社員番号 *</label>
+            <input
+              name="employeeNo"
+              [(ngModel)]="basicInfo.employeeNo"
+              required
+              [readonly]="!editMode"
+              #employeeNoModel="ngModel"
+            />
+            <p class="error" *ngIf="employeeNoModel.invalid && (submitAttempted || employeeNoModel.touched)">
+              社員番号は必須です。
+            </p>
+          </div>
+          <div>
+            <label>氏名 *</label>
+            <input
+              name="name"
+              [(ngModel)]="basicInfo.name"
+              required
+              [readonly]="!editMode"
+              #nameModel="ngModel"
+            />
+            <p class="error" *ngIf="nameModel.invalid && (submitAttempted || nameModel.touched)">
+              氏名は必須です。
+            </p>
+          </div>
+          <div>
+            <label>氏名（カナ） *</label>
+            <input
+              name="kana"
+              [(ngModel)]="basicInfo.kana"
+              required
+              [readonly]="!editMode"
+              #kanaModel="ngModel"
+            />
+            <p class="error" *ngIf="kanaModel.invalid && (submitAttempted || kanaModel.touched)">
+              カナは必須です。
+            </p>
+          </div>
+          <div>
+            <label>性別</label>
+            <select name="gender" [(ngModel)]="basicInfo.gender" [disabled]="!editMode">
+              <option value="女性">女性</option>
+              <option value="男性">男性</option>
+              <option value="その他">その他</option>
+            </select>
+          </div>
+          <div>
+            <label>生年月日 *</label>
+            <input
+              type="date"
+              name="birthDate"
+              [(ngModel)]="basicInfo.birthDate"
+              required
+              [readonly]="!editMode"
+              (change)="recalcCareFlag()"
+              #birthDateModel="ngModel"
+            />
+            <p class="error" *ngIf="birthDateModel.invalid && (submitAttempted || birthDateModel.touched)">
+              生年月日は必須です。
+            </p>
+          </div>
+          <div>
+            <label>所属部署 *</label>
+            <input
+              name="department"
+              [(ngModel)]="basicInfo.department"
+              required
+              [readonly]="!editMode"
+              #deptModel="ngModel"
+            />
+            <p class="error" *ngIf="deptModel.invalid && (submitAttempted || deptModel.touched)">
+              所属部署は必須です。
+            </p>
+          </div>
+          <div>
+            <label>所属部署コード</label>
+            <input name="departmentCode" [(ngModel)]="basicInfo.departmentCode" [readonly]="!editMode" />
+          </div>
+          <div>
+            <label>勤務地都道府県コード</label>
+            <input name="workPrefectureCode" [(ngModel)]="basicInfo.workPrefectureCode" [readonly]="!editMode" />
+          </div>
+          <div>
+            <label>勤務地都道府県</label>
+            <input name="workPrefecture" [(ngModel)]="basicInfo.workPrefecture" [readonly]="!editMode" />
+          </div>
+          <div>
+            <label>入社日 *</label>
+            <input
+              type="date"
+              name="hireDate"
+              [(ngModel)]="basicInfo.hireDate"
+              required
+              [readonly]="!editMode"
+              #hireDateModel="ngModel"
+            />
+            <p class="error" *ngIf="hireDateModel.invalid && (submitAttempted || hireDateModel.touched)">
+              入社日は必須です。
+            </p>
+          </div>
+          <div>
+            <label>雇用形態</label>
+            <select name="employmentType" [(ngModel)]="basicInfo.employmentType" [disabled]="!editMode">
+              <option value="正社員">正社員</option>
+              <option value="契約社員">契約社員</option>
+              <option value="アルバイト">アルバイト</option>
+            </select>
+          </div>
+          <div>
+            <label>メールアドレス</label>
+            <input type="email" name="email" [(ngModel)]="basicInfo.email" [readonly]="!editMode" />
+          </div>
+          <div>
+            <label>電話番号</label>
+            <input name="phone" [(ngModel)]="basicInfo.phone" [readonly]="!editMode" />
+          </div>
+        </div>
+      </article>
+  
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <p class="eyebrow">社会保険関連基本情報</p>
+            <h2>加入情報カード</h2>
+          </div>
+          <p class="hint">介護2号や標準報酬月額などの自動計算項目は編集不可の見た目で示します。</p>
+        </div>
+  
+        <div class="grid two-col">
+          <div class="auto-field">
+            <label>現在の標準報酬月額</label>
+            <div class="auto-chip">自動計算</div>
+            <input
+              type="number"
+              name="standardMonthly"
+              [(ngModel)]="socialInsurance.standardMonthly"
+              readonly
+              class="readonly"
+            />
+          </div>
+          <div>
+            <label>被保険者番号 *</label>
+            <input
+              name="insuredNumber"
+              [(ngModel)]="socialInsurance.insuredNumber"
+              required
+              [readonly]="!editMode"
+              #insuredModel="ngModel"
+            />
+            <p class="error" *ngIf="insuredModel.invalid && (submitAttempted || insuredModel.touched)">
+              被保険者番号は必須です。
+            </p>
+          </div>
+          <div class="auto-field">
+            <label>介護保険第2号被保険者</label>
+            <div class="auto-chip">自動計算</div>
+            <label class="switch">
+              <input type="checkbox" [(ngModel)]="socialInsurance.careSecondInsured" name="careSecond" disabled />
+              <span></span>
+            </label>
+            <p class="hint small">生年月日から自動判定します。必要に応じて再計算してください。</p>
+          </div>
+          <div class="inline">
+            <div>
+              <label>健康保険加入区分</label>
+              <input name="healthType" [(ngModel)]="socialInsurance.healthType" readonly class="readonly" />
+              <p class="hint small">会社設定から自動反映</p>
+            </div>
+            <div>
+              <label>健康保険 保険者番号</label>
+              <input name="healthNumber" [(ngModel)]="socialInsurance.healthNumber" readonly class="readonly" />
+            </div>
+          </div>
+          <div>
+            <label>健康保険 資格取得日 *</label>
+            <input
+              type="date"
+              name="healthAcquisition"
+              [(ngModel)]="socialInsurance.healthAcquisition"
+              required
+              [readonly]="!editMode"
+              #healthModel="ngModel"
+            />
+            <p class="error" *ngIf="healthModel.invalid && (submitAttempted || healthModel.touched)">
+              健康保険の資格取得日は必須です。
+            </p>
+          </div>
+          <div>
+            <label>厚生年金 資格取得日 *</label>
+            <input
+              type="date"
+              name="pensionAcquisition"
+              [(ngModel)]="socialInsurance.pensionAcquisition"
+              required
+              [readonly]="!editMode"
+              #pensionModel="ngModel"
+            />
+            <p class="error" *ngIf="pensionModel.invalid && (submitAttempted || pensionModel.touched)">
+              厚生年金の資格取得日は必須です。
+            </p>
+          </div>
+          <div class="inline">
+            <div>
+              <label>健康保険料・厚生年金一時免除</label>
+              <label class="switch">
+                <input
+                  type="checkbox"
+                  name="exemption"
+                  [(ngModel)]="socialInsurance.exemption"
+                  [disabled]="!editMode"
+                />
+                <span></span>
+              </label>
+              <p class="hint small">産休・育休等で免除する場合にON。</p>
+            </div>
+            <button type="button" class="outline" (click)="recalcCareFlag()">介護2号を再計算</button>
+          </div>
+        </div>
+      </article>
+  
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <p class="eyebrow">標準報酬月額算定</p>
+            <h2>定時決定・随時改定</h2>
+          </div>
+          <button type="button" class="outline" (click)="showStandardPay = !showStandardPay">
+            {{ showStandardPay ? '折りたたむ' : '展開する' }}
+          </button>
+        </div>
+  
+        <div *ngIf="showStandardPay" class="grid two-col">
+          <div>
+            <label>算定対象期間 開始年月</label>
+            <input type="month" [(ngModel)]="standardPay.periodStart" name="periodStart" [readonly]="!editMode" />
+          </div>
+          <div>
+            <label>算定対象期間 終了年月</label>
+            <input type="month" [(ngModel)]="standardPay.periodEnd" name="periodEnd" [readonly]="!editMode" />
+          </div>
+          <div>
+            <label>4月報酬額</label>
+            <input
+              type="number"
+              name="aprilAmount"
+              [(ngModel)]="standardPay.april.amount"
+              [readonly]="!editMode"
+              (ngModelChange)="recalcStandardPay()"
+            />
+          </div>
+          <div>
+            <label>4月支払基礎日数</label>
+            <input type="number" name="aprilDays" [(ngModel)]="standardPay.april.days" [readonly]="!editMode" />
+          </div>
+          <div>
+            <label>5月報酬額</label>
+            <input
+              type="number"
+              name="mayAmount"
+              [(ngModel)]="standardPay.may.amount"
+              [readonly]="!editMode"
+              (ngModelChange)="recalcStandardPay()"
+            />
+          </div>
+          <div>
+            <label>5月支払基礎日数</label>
+            <input type="number" name="mayDays" [(ngModel)]="standardPay.may.days" [readonly]="!editMode" />
+          </div>
+          <div>
+            <label>6月報酬額</label>
+            <input
+              type="number"
+              name="juneAmount"
+              [(ngModel)]="standardPay.june.amount"
+              [readonly]="!editMode"
+              (ngModelChange)="recalcStandardPay()"
+            />
+          </div>
+          <div>
+            <label>6月支払基礎日数</label>
+            <input type="number" name="juneDays" [(ngModel)]="standardPay.june.days" [readonly]="!editMode" />
+          </div>
+          <div class="auto-field">
+            <label>3か月平均報酬額</label>
+            <div class="auto-chip">自動計算</div>
+            <input type="number" name="average" [(ngModel)]="standardPay.average" readonly class="readonly" />
+          </div>
+          <div class="auto-field">
+            <label>新標準報酬月額</label>
+            <div class="auto-chip">自動計算</div>
+            <input
+              type="number"
+              name="newStandard"
+              [(ngModel)]="standardPay.newStandard"
+              readonly
+              class="readonly"
+            />
+          </div>
+          <div class="auto-field">
+            <label>旧標準報酬月額</label>
+            <div class="auto-chip">自動計算</div>
+            <input
+              type="number"
+              name="oldStandard"
+              [(ngModel)]="standardPay.oldStandard"
+              readonly
+              class="readonly"
+            />
+          </div>
+          <div class="toolbar">
+            <button type="button" class="outline" (click)="recalcStandardPay()">平均を再計算</button>
+            <p class="hint small">給与取込不可の場合に手動算定を利用</p>
+          </div>
+        </div>
+      </article>
+  
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <p class="eyebrow">標準賞与額算定</p>
+            <h2>賞与データ</h2>
+          </div>
+          <button type="button" class="outline" (click)="showBonusCalc = !showBonusCalc">
+            {{ showBonusCalc ? '折りたたむ' : '展開する' }}
+          </button>
+        </div>
+  
+        <div *ngIf="showBonusCalc" class="grid two-col">
+          <div>
+            <label>賞与支給日 *</label>
+            <input
+              type="date"
+              name="bonusPaidOn"
+              [(ngModel)]="bonusCalc.paidOn"
+              required
+              [readonly]="!editMode"
+              #bonusDateModel="ngModel"
+            />
+            <p class="error" *ngIf="bonusDateModel.invalid && (submitAttempted || bonusDateModel.touched)">
+              賞与支給日は必須です。
+            </p>
+          </div>
+          <div>
+            <label>賞与支給年度 *</label>
+            <input
+              type="number"
+              name="bonusFiscalYear"
+              [(ngModel)]="bonusCalc.fiscalYear"
+              required
+              [readonly]="!editMode"
+              #bonusFiscalModel="ngModel"
+            />
+            <p class="error" *ngIf="bonusFiscalModel.invalid && (submitAttempted || bonusFiscalModel.touched)">
+              賞与支給年度は必須です。
+            </p>
+          </div>
+          <div>
+            <label>賞与総支給額 *</label>
+            <input
+              type="number"
+              name="bonusTotal"
+              [(ngModel)]="bonusCalc.total"
+              required
+              [readonly]="!editMode"
+              (ngModelChange)="recalcBonus()"
+              #bonusTotalModel="ngModel"
+            />
+            <p class="error" *ngIf="bonusTotalModel.invalid && (submitAttempted || bonusTotalModel.touched)">
+              賞与総支給額は必須です。
+            </p>
+          </div>
+          <div class="auto-field">
+            <label>標準賞与額（健・介）</label>
+            <div class="auto-chip">自動計算</div>
+            <input type="number" name="standardHealth" [(ngModel)]="bonusCalc.standardHealth" readonly class="readonly" />
+          </div>
+          <div class="auto-field">
+            <label>標準賞与額（厚年）</label>
+            <div class="auto-chip">自動計算</div>
+            <input
+              type="number"
+              name="standardPension"
+              [(ngModel)]="bonusCalc.standardPension"
+              readonly
+              class="readonly"
+            />
+          </div>
+          <div class="auto-field">
+            <label>標準賞与額年度累計（健）</label>
+            <div class="auto-chip">自動計算</div>
+            <input
+              type="number"
+              name="healthCumulative"
+              [(ngModel)]="bonusCalc.healthCumulative"
+              readonly
+              class="readonly"
+            />
+          </div>
+          <div class="toolbar">
+            <button type="button" class="outline" (click)="recalcBonus()">賞与額を再計算</button>
+            <p class="hint small">上限チェックや累計計算を自動で行います。</p>
+          </div>
+        </div>
+      </article>
+  
+      <div class="action-bar">
+        <button type="button" class="secondary" (click)="handleSaveDraft(employeeForm)">一時保存</button>
+        <button type="button" class="primary" (click)="handleProceedApproval(employeeForm)">承認依頼へ進む</button>
+        <a routerLink="/employees" class="outline ghost">キャンセル</a>
+      </div>
+    </form>
   </section>
