@@ -2,8 +2,9 @@ import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { Subject, of, switchMap, takeUntil } from 'rxjs';
+import { Subject, of, switchMap, takeUntil, combineLatest } from 'rxjs';
 import {
+  PayrollData,
   ShahoEmployee,
   ShahoEmployeesService,
 } from '../app/services/shaho-employees.service';
@@ -116,21 +117,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     exemption: false,
   };
 
-  salaryCalculations: SalaryCalculationYear[] = [
-    {
-      year: 2025,
-      periodStart: '2025-04',
-      periodEnd: '2025-06',
-      april: { amount: 420000, days: 20 },
-      may: { amount: 418000, days: 20 },
-      june: { amount: 425000, days: 21 },
-      average: 421000,
-      newStandard: 420000,
-      oldStandard: 410000,
-    },
-  ];
-
-  selectedSalaryYear = this.salaryCalculations[0];
+  salaryCalculations: SalaryCalculationYear[] = [];
+  selectedSalaryYear: SalaryCalculationYear | null = null;
 
   bonusRecords: BonusRecord[] = [
     {
@@ -214,17 +202,21 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           if (!id) {
             this.isLoading = false;
             this.notFound = true;
-            return of(null);
+            return of({ employee: null, payrolls: [] });
           }
           this.isLoading = true;
-          return this.employeesService.getEmployeeById(id);
+          return combineLatest({
+            employee: this.employeesService.getEmployeeById(id),
+            payrolls: this.employeesService.getPayrolls(id),
+          });
         }),
       )
-      .subscribe((employee) => {
+      .subscribe(({ employee, payrolls }) => {
         this.isLoading = false;
         if (employee) {
           this.notFound = false;
           this.applyEmployeeData(employee);
+          this.loadPayrolls(payrolls);
         } else {
           this.employee = null;
           this.notFound = true;
@@ -275,6 +267,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     const target = this.salaryCalculations.find((item) => item.year === year);
     if (target) {
       this.selectedSalaryYear = target;
+    } else {
+      this.selectedSalaryYear = null;
     }
   }
 
@@ -370,6 +364,69 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
 
     if (employee.birthDate) {
       this.recalcCareFlag();
+    }
+  }
+
+  private loadPayrolls(payrolls: PayrollData[]): void {
+    // 給与データを年度ごとにグループ化
+    const payrollMap = new Map<number, PayrollData[]>();
+    
+    payrolls.forEach((payroll) => {
+      const [year] = payroll.yearMonth.split('-').map(Number);
+      if (!payrollMap.has(year)) {
+        payrollMap.set(year, []);
+      }
+      payrollMap.get(year)!.push(payroll);
+    });
+
+    // 年度ごとにSalaryCalculationYear形式に変換
+    this.salaryCalculations = Array.from(payrollMap.entries())
+      .map(([year, yearPayrolls]) => {
+        const april = yearPayrolls.find((p) => p.yearMonth === `${year}-04`);
+        const may = yearPayrolls.find((p) => p.yearMonth === `${year}-05`);
+        const june = yearPayrolls.find((p) => p.yearMonth === `${year}-06`);
+
+        const aprilData: SalaryMonth = {
+          amount: april?.amount ?? 0,
+          days: april?.workedDays ?? 0,
+        };
+        const mayData: SalaryMonth = {
+          amount: may?.amount ?? 0,
+          days: may?.workedDays ?? 0,
+        };
+        const juneData: SalaryMonth = {
+          amount: june?.amount ?? 0,
+          days: june?.workedDays ?? 0,
+        };
+
+        const total = aprilData.amount + mayData.amount + juneData.amount;
+        const average = total > 0 ? Math.round(total / 3) : 0;
+        const newStandard = Math.round(average / 1000) * 1000;
+
+        // 前年度の標準報酬月額を取得（前年度のデータがある場合）
+        const prevYear = year - 1;
+        const prevYearData = this.salaryCalculations.find((sc) => sc.year === prevYear);
+        const oldStandard = prevYearData?.newStandard ?? this.employee?.standardMonthly ?? 0;
+
+        return {
+          year,
+          periodStart: `${year}-04`,
+          periodEnd: `${year}-06`,
+          april: aprilData,
+          may: mayData,
+          june: juneData,
+          average,
+          newStandard,
+          oldStandard,
+        };
+      })
+      .sort((a, b) => b.year - a.year); // 年度の降順でソート
+
+    // 最初の年度を選択
+    if (this.salaryCalculations.length > 0) {
+      this.selectedSalaryYear = this.salaryCalculations[0];
+    } else {
+      this.selectedSalaryYear = null;
     }
   }
 }

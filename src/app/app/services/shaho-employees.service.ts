@@ -7,6 +7,9 @@ import {
   doc,
   docData,
   updateDoc,
+  setDoc,
+  query,
+  orderBy,
 } from '@angular/fire/firestore';
 import { Auth } from '@angular/fire/auth';
 import { Observable } from 'rxjs';
@@ -34,6 +37,18 @@ export interface ShahoEmployee {
   approvedBy?: string;
 }
 
+export interface PayrollData {
+  id?: string; // FirestoreドキュメントID
+  yearMonth: string; // 2025-04 形式
+  workedDays: number; // 支払基礎日数
+  amount?: number; // 報酬額（オプション）
+  // その他の給与明細フィールドをここに追加可能
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  createdBy?: string;
+  updatedBy?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ShahoEmployeesService {
   private firestore = inject(Firestore);
@@ -49,14 +64,15 @@ export class ShahoEmployeesService {
   async addEmployee(data: ShahoEmployee) {
     const now = new Date().toISOString();
     const currentUser = this.auth.currentUser;
-    const userEmail = currentUser?.email || currentUser?.uid || 'system';
+    // ユーザーが設定したID（displayName）を優先的に使用
+    const userId = currentUser?.displayName || currentUser?.email || currentUser?.uid || 'system';
 
     const employeeData: ShahoEmployee = {
       ...data,
       createdAt: now,
       updatedAt: now,
-      createdBy: userEmail,
-      updatedBy: userEmail,
+      createdBy: userId,
+      updatedBy: userId,
     };
 
     return addDoc(this.colRef, employeeData);
@@ -66,12 +82,13 @@ export class ShahoEmployeesService {
     const docRef = doc(this.firestore, 'shaho_employees', id);
     const now = new Date().toISOString();
     const currentUser = this.auth.currentUser;
-    const userEmail = currentUser?.email || currentUser?.uid || 'system';
+    // ユーザーが設定したID（displayName）を優先的に使用
+    const userId = currentUser?.displayName || currentUser?.email || currentUser?.uid || 'system';
 
     const updateData: Partial<ShahoEmployee> = {
       ...data,
       updatedAt: now,
-      updatedBy: userEmail,
+      updatedBy: userId,
     };
 
     return updateDoc(docRef, updateData);
@@ -81,5 +98,78 @@ export class ShahoEmployeesService {
     return docData(docRef, { idField: 'id' }) as Observable<
       ShahoEmployee | undefined
     >;
+  }
+
+  // 給与データ（payrolls）の操作メソッド
+
+  /**
+   * 給与データを追加または更新
+   * @param employeeId 社員ID
+   * @param yearMonth 年月（2025-04形式）
+   * @param payrollData 給与データ
+   */
+  async addOrUpdatePayroll(
+    employeeId: string,
+    yearMonth: string,
+    payrollData: PayrollData,
+  ) {
+    const payrollRef = doc(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'payrolls',
+      yearMonth,
+    );
+    const now = new Date().toISOString();
+    const currentUser = this.auth.currentUser;
+    // ユーザーが設定したID（displayName）を優先的に使用
+    const userId = currentUser?.displayName || currentUser?.email || currentUser?.uid || 'system';
+
+    const data: PayrollData = {
+      ...payrollData,
+      yearMonth,
+      updatedAt: now,
+      updatedBy: userId,
+      createdAt: payrollData.createdAt || now,
+      createdBy: payrollData.createdBy || userId,
+    };
+
+    return setDoc(payrollRef, data, { merge: true });
+  }
+
+  /**
+   * 特定の月の給与データを取得
+   * @param employeeId 社員ID
+   * @param yearMonth 年月（2025-04形式）
+   */
+  getPayroll(
+    employeeId: string,
+    yearMonth: string,
+  ): Observable<PayrollData | undefined> {
+    const payrollRef = doc(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'payrolls',
+      yearMonth,
+    );
+    return docData(payrollRef, { idField: 'id' }) as Observable<
+      PayrollData | undefined
+    >;
+  }
+
+  /**
+   * 社員の給与データ一覧を取得
+   * @param employeeId 社員ID
+   */
+  getPayrolls(employeeId: string): Observable<PayrollData[]> {
+    const payrollsRef = collection(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'payrolls',
+    );
+    const q = query(payrollsRef, orderBy('yearMonth', 'desc'));
+    return collectionData(q, { idField: 'id' }) as Observable<PayrollData[]>;
   }
 }

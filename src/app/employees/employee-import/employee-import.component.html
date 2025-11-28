@@ -96,10 +96,13 @@
                 <p class="hint">形式エラーや必須項目の欠落を表示しています。エラー行は自動的に「更新対象外」となります。</p>
             </div>
             <div class="badge-list">
-                <span class="badge error">エラー {{ errors.length }} 件</span>
+                <span class="badge" [class.error]="summary.errorCount > 0" [class.success]="summary.errorCount === 0">
+                    <span *ngIf="summary.errorCount > 0">エラー {{ summary.errorCount }} 件</span>
+                    <span *ngIf="summary.errorCount === 0">エラーなし</span>
+                </span>
             </div>
         </div>
-        <div class="table-wrapper">
+        <div class="table-wrapper" *ngIf="summary.errorCount > 0">
             <table>
                 <thead>
                     <tr>
@@ -119,7 +122,11 @@
                 </tbody>
             </table>
         </div>
-        <p class="hint">上記のエラーは差分確認に進みません。CSVを修正して再取込するか、エラー以外の行のみで続行してください。</p>
+        <div class="success-message" *ngIf="summary.errorCount === 0">
+            <p>✅ 検証が完了しました。エラーはありませんでした。</p>
+            <p class="hint">すべてのレコードが正常に検証されました。次のステップで差分確認に進みます。</p>
+        </div>
+        <p class="hint" *ngIf="summary.errorCount > 0">上記のエラーは差分確認に進みません。CSVを修正して再取込するか、エラー以外の行のみで続行してください。</p>
         <div class="navigation">
             <button type="button" class="ghost" (click)="prevStep()">戻る</button>
             <button type="button" class="primary" (click)="nextStep()">差分確認へ進む</button>

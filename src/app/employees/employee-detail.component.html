@@ -157,13 +157,13 @@
             </p>
             <div class="toolbar">
                 <label>算定年度</label>
-                <select [ngModel]="selectedSalaryYear.year" (ngModelChange)="selectSalaryYear($event)">
+                <select *ngIf="selectedSalaryYear" [ngModel]="selectedSalaryYear.year" (ngModelChange)="selectSalaryYear($event)">
                     <option *ngFor="let item of salaryCalculations" [value]="item.year">{{ item.year }}年</option>
                 </select>
                 <button type="button" class="outline" (click)="addNewYear()">＋新規年度追加</button>
             </div>
 
-            <article class="card">
+            <article *ngIf="selectedSalaryYear; else noPayrollData" class="card">
                 <div class="grid three-col">
                     <div>
                         <label>算定年度</label>
@@ -225,6 +225,11 @@
                     </div>
                 </div>
             </article>
+            <ng-template #noPayrollData>
+                <article class="card">
+                    <p>給与データがありません。「＋新規年度追加」ボタンから年度を追加してください。</p>
+                </article>
+            </ng-template>
         </section>
 
         <section *ngIf="selectedTab === 'bonus'" class="tab-body">

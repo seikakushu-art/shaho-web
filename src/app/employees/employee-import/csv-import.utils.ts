@@ -532,40 +532,60 @@ import {
     let isUpdate = false;
 
     // 判定ロジック
-    if (foundByEmployeeNo && foundByInsuredNumber) {
-      // 両方とも存在する場合
-      if (foundByEmployeeNo.employeeNo === foundByInsuredNumber.employeeNo) {
-        // 同じ社員の場合 → 更新
-        existingEmployee = foundByEmployeeNo;
-        isUpdate = true;
-      } else {
-        // 異なる社員の場合 → エラー
+    // 優先度1: 社員番号と被保険者番号のどちらかが存在しない場合はエラー
+    if (!employeeNo || !insuredNumber) {
+      if (!employeeNo && !insuredNumber) {
         errors.push({
           rowIndex: parsedRow.rowIndex,
           fieldName: '社員番号',
-          message: `社員番号 ${employeeNo} と被保険者番号 ${insuredNumber} が異なる社員に紐づいています`,
+          message: `社員番号と被保険者番号の両方が必要です`,
+          severity: 'error',
+          templateType,
+        });
+      } else if (!employeeNo) {
+        errors.push({
+          rowIndex: parsedRow.rowIndex,
+          fieldName: '社員番号',
+          message: `社員番号は必須です`,
+          severity: 'error',
+          templateType,
+        });
+      } else {
+        errors.push({
+          rowIndex: parsedRow.rowIndex,
+          fieldName: '被保険者番号',
+          message: `被保険者番号は必須です`,
           severity: 'error',
           templateType,
         });
       }
-    } else if (foundByEmployeeNo && !foundByInsuredNumber) {
-      // 社員番号のみ存在する場合 → エラー
-      errors.push({
-        rowIndex: parsedRow.rowIndex,
-        fieldName: '被保険者番号',
-        message: `社員番号 ${employeeNo} はすでに登録されています`,
-        severity: 'error',
-        templateType,
-      });
-    } else if (!foundByEmployeeNo && foundByInsuredNumber) {
-      // 被保険者番号のみ存在する場合 → エラー
-      errors.push({
-        rowIndex: parsedRow.rowIndex,
-        fieldName: '被保険者番号',
-        message: `被保険者番号 ${insuredNumber} はすでに登録されています`,
-        severity: 'error',
-        templateType,
-      });
+      // エラーがある場合は処理を終了
+      return {
+        isNew: false,
+        isUpdate: false,
+        existingEmployee: null,
+        errors,
+        changes: [],
+      };
+    }
+
+    // 優先度2: 社員番号と被保険者番号の両方が存在する場合のみ判定
+    if (foundByEmployeeNo) {
+      // 社員番号が一致する場合
+      if (foundByEmployeeNo.insuredNumber === insuredNumber) {
+        // 社員番号と被保険者番号のセットが一致する場合 → 更新
+        existingEmployee = foundByEmployeeNo;
+        isUpdate = true;
+      } else {
+        // 社員番号が一致し、被保険者番号が一致しない場合 → エラー
+        errors.push({
+          rowIndex: parsedRow.rowIndex,
+          fieldName: '被保険者番号',
+          message: `社員番号は既に登録されていますが、被保険者番号が一致しません`,
+          severity: 'error',
+          templateType,
+        });
+      }
     } else {
       // どちらも存在しない場合 → 新規
       isNew = true;
@@ -592,20 +612,41 @@ import {
 
       Object.keys(fieldMapping).forEach((csvField) => {
         const csvValue = csvData[csvField];
-        if (csvValue === undefined) return;
+        // CSVに値が存在しない場合はスキップ
+        if (csvValue === undefined || csvValue === '') return;
 
         const dbField = fieldMapping[csvField];
-        const existingValue = existingEmployee?.[dbField] as string | undefined;
-        const oldValue = existingValue || '';
-        const newValue = csvValue || '';
+        const existingValue = existingEmployee?.[dbField];
 
-        // 値が異なる場合のみ差分として追加
-        if (oldValue !== newValue) {
-          changes.push({
-            fieldName: csvField,
-            oldValue: oldValue || null,
-            newValue: newValue || null,
-          });
+        // 数値フィールドの比較
+        if (csvField === '現在標準報酬月額') {
+          const csvNum = Number(csvValue.replace(/,/g, ''));
+          const existingNum = typeof existingValue === 'number' ? existingValue : 
+                             (existingValue ? Number(String(existingValue).replace(/,/g, '')) : undefined);
+          
+          if (isNaN(csvNum)) return; // CSVの値が数値でない場合はスキップ
+          
+          // 既存値がない、または値が異なる場合のみ差分として追加
+          if (existingNum === undefined || existingNum !== csvNum) {
+            changes.push({
+              fieldName: csvField,
+              oldValue: existingNum !== undefined ? String(existingNum) : null,
+              newValue: String(csvNum),
+            });
+          }
+        } else {
+          // 文字列フィールドの比較
+          const oldValue = existingValue ? String(existingValue) : '';
+          const newValue = csvValue || '';
+
+          // 値が異なる場合のみ差分として追加
+          if (oldValue !== newValue) {
+            changes.push({
+              fieldName: csvField,
+              oldValue: oldValue || null,
+              newValue: newValue || null,
+            });
+          }
         }
       });
     } else if (isNew) {

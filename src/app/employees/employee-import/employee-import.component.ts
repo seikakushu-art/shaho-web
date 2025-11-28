@@ -3,7 +3,7 @@ import { Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { ShahoEmployee, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
+import { PayrollData, ShahoEmployee, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import {
     ImportStatus,
     ParsedRow,
@@ -80,13 +80,21 @@ export class EmployeeImportComponent implements OnInit {
   selectedChangeId: number | null = null;
 
   async ngOnInit(): Promise<void> {
-    // 既存社員データを取得
+    // 既存社員データを取得（差分計算に必要なすべてのフィールドを含める）
     const employees = await firstValueFrom(this.employeesService.getEmployees());
     this.existingEmployees = employees.map((emp) => ({
       id: emp.id,
       employeeNo: emp.employeeNo,
       insuredNumber: emp.insuredNumber,
       name: emp.name,
+      kana: emp.kana,
+      gender: emp.gender,
+      birthDate: emp.birthDate,
+      department: emp.department,
+      workPrefecture: emp.workPrefecture,
+      standardMonthly: emp.standardMonthly,
+      healthAcquisition: emp.healthAcquisition,
+      pensionAcquisition: emp.pensionAcquisition,
     }));
   }
 
@@ -344,17 +352,73 @@ private readFileAsText(file: File): Promise<string> {
             pensionAcquisition: csvData['厚生年金資格取得日'] || undefined,
           };
 
+          let employeeId: string;
           if (row.isNew) {
             // 新規登録
-            await this.employeesService.addEmployee(employeeData as ShahoEmployee);
-            return { success: true, employeeNo: row.employeeNo, action: '新規登録' };
+            const result = await this.employeesService.addEmployee(employeeData as ShahoEmployee);
+            employeeId = result.id;
           } else if (row.existingEmployeeId) {
             // 更新
             await this.employeesService.updateEmployee(row.existingEmployeeId, employeeData);
-            return { success: true, employeeNo: row.employeeNo, action: '更新' };
+            employeeId = row.existingEmployeeId;
           } else {
             throw new Error(`既存社員のIDが見つかりません: ${row.employeeNo}`);
           }
+
+          // 給与データ（salaryテンプレート）の処理
+          if (this.templateType === 'salary' && employeeId) {
+            const fiscalYear = csvData['算定年度'] || '';
+            if (fiscalYear) {
+              const payrollPromises: Promise<void>[] = [];
+
+              // 4月の給与データ
+              const aprilAmount = csvData['4月報酬額'];
+              const aprilDays = csvData['4月支払基礎日数'];
+              if (aprilAmount || aprilDays) {
+                const aprilPayroll: PayrollData = {
+                  yearMonth: `${fiscalYear}-04`,
+                  workedDays: aprilDays ? Number(aprilDays) : 0,
+                  amount: aprilAmount ? Number(aprilAmount.replace(/,/g, '')) : undefined,
+                };
+                payrollPromises.push(
+                  this.employeesService.addOrUpdatePayroll(employeeId, `${fiscalYear}-04`, aprilPayroll),
+                );
+              }
+
+              // 5月の給与データ
+              const mayAmount = csvData['5月報酬額'];
+              const mayDays = csvData['5月支払基礎日数'];
+              if (mayAmount || mayDays) {
+                const mayPayroll: PayrollData = {
+                  yearMonth: `${fiscalYear}-05`,
+                  workedDays: mayDays ? Number(mayDays) : 0,
+                  amount: mayAmount ? Number(mayAmount.replace(/,/g, '')) : undefined,
+                };
+                payrollPromises.push(
+                  this.employeesService.addOrUpdatePayroll(employeeId, `${fiscalYear}-05`, mayPayroll),
+                );
+              }
+
+              // 6月の給与データ
+              const juneAmount = csvData['6月報酬額'];
+              const juneDays = csvData['6月支払基礎日数'];
+              if (juneAmount || juneDays) {
+                const junePayroll: PayrollData = {
+                  yearMonth: `${fiscalYear}-06`,
+                  workedDays: juneDays ? Number(juneDays) : 0,
+                  amount: juneAmount ? Number(juneAmount.replace(/,/g, '')) : undefined,
+                };
+                payrollPromises.push(
+                  this.employeesService.addOrUpdatePayroll(employeeId, `${fiscalYear}-06`, junePayroll),
+                );
+              }
+
+              // すべての給与データを保存
+              await Promise.all(payrollPromises);
+            }
+          }
+
+          return { success: true, employeeNo: row.employeeNo, action: row.isNew ? '新規登録' : '更新' };
         }),
       );
 
@@ -363,13 +427,21 @@ private readFileAsText(file: File): Promise<string> {
 
       if (failureCount === 0) {
         alert(`${successCount}件の社員データを正常に更新しました。`);
-        // 既存社員データを再取得
+        // 既存社員データを再取得（差分計算に必要なすべてのフィールドを含める）
         const employees = await firstValueFrom(this.employeesService.getEmployees());
         this.existingEmployees = employees.map((emp) => ({
           id: emp.id,
           employeeNo: emp.employeeNo,
           insuredNumber: emp.insuredNumber,
           name: emp.name,
+          kana: emp.kana,
+          gender: emp.gender,
+          birthDate: emp.birthDate,
+          department: emp.department,
+          workPrefecture: emp.workPrefecture,
+          standardMonthly: emp.standardMonthly,
+          healthAcquisition: emp.healthAcquisition,
+          pensionAcquisition: emp.pensionAcquisition,
         }));
         // 差分を再計算
         const validatedRows = validateAllRows(this.parsedRows, this.templateType);
