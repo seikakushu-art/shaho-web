@@ -1,13 +1,12 @@
 import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-
-interface EmployeeHeader {
-  name: string;
-  kana: string;
-  employeeNo: string;
-  department: string;
-}
+import { ActivatedRoute } from '@angular/router';
+import { Subject, of, switchMap, takeUntil } from 'rxjs';
+import {
+  ShahoEmployee,
+  ShahoEmployeesService,
+} from '../app/services/shaho-employees.service';
 
 interface AuditInfo {
   registeredAt: string;
@@ -71,7 +70,10 @@ interface HistoryRecord {
   templateUrl: './employee-detail.component.html',
   styleUrl: './employee-detail.component.scss',
 })
-export class EmployeeDetailComponent {
+export class EmployeeDetailComponent implements OnInit, OnDestroy {
+    private route = inject(ActivatedRoute);
+    private employeesService = inject(ShahoEmployeesService);
+    private destroy$ = new Subject<void>();
   tabs = [
     { key: 'basic', label: '基本情報' },
     { key: 'insurance', label: '社会保険情報' },
@@ -84,19 +86,17 @@ export class EmployeeDetailComponent {
   showApprovalHistory = false;
   canDelete = true;
 
-  employee: EmployeeHeader = {
-    name: '佐藤 花子',
-    kana: 'サトウ ハナコ',
-    employeeNo: 'E202501',
-    department: '営業企画部',
-  };
+  isLoading = true;
+  notFound = false;
+
+  employee: ShahoEmployee | null = null;
 
   basicInfo = {
-    gender: '女性',
-    birthDate: '1990-07-12',
-    departmentCode: 'D-021',
-    workPrefectureCode: '13',
-    workPrefecture: '東京都',
+    gender: '',
+    birthDate: '',
+    departmentCode: '',
+    workPrefectureCode: '',
+    workPrefecture: '',
   };
 
   auditInfo: AuditInfo = {
@@ -108,11 +108,11 @@ export class EmployeeDetailComponent {
   };
 
   socialInsurance: SocialInsuranceInfo = {
-    standardMonthly: 420000,
-    insuredNumber: 'KO-11223344',
-    careSecondInsured: true,
-    healthAcquisition: '2020-04-01',
-    pensionAcquisition: '2020-04-01',
+    standardMonthly: 0,
+    insuredNumber: '',
+    careSecondInsured: false,
+    healthAcquisition: '',
+    pensionAcquisition: '',
     exemption: false,
   };
 
@@ -205,6 +205,38 @@ export class EmployeeDetailComponent {
 
   groupedHistory: HistoryRecord[] = [];
 
+  ngOnInit(): void {
+    this.route.paramMap
+      .pipe(
+        takeUntil(this.destroy$),
+        switchMap((params) => {
+          const id = params.get('id');
+          if (!id) {
+            this.isLoading = false;
+            this.notFound = true;
+            return of(null);
+          }
+          this.isLoading = true;
+          return this.employeesService.getEmployeeById(id);
+        }),
+      )
+      .subscribe((employee) => {
+        this.isLoading = false;
+        if (employee) {
+          this.notFound = false;
+          this.applyEmployeeData(employee);
+        } else {
+          this.employee = null;
+          this.notFound = true;
+        }
+      });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
   changeTab(key: string) {
     this.selectedTab = key;
   }
@@ -294,5 +326,50 @@ export class EmployeeDetailComponent {
       age--;
     }
     return age;
+  }
+  private applyEmployeeData(employee: ShahoEmployee) {
+    this.employee = employee;
+    this.basicInfo = {
+      gender: employee.gender ?? '',
+      birthDate: employee.birthDate ?? '',
+      departmentCode: employee.departmentCode ?? '',
+      workPrefectureCode: employee.workPrefectureCode ?? '',
+      workPrefecture: employee.workPrefecture ?? '',
+    };
+
+    this.socialInsurance = {
+      ...this.socialInsurance,
+      standardMonthly: employee.standardMonthly ?? 0,
+      insuredNumber: employee.insuredNumber ?? '',
+      healthAcquisition: employee.healthAcquisition ?? '',
+      pensionAcquisition: employee.pensionAcquisition ?? '',
+    };
+
+    // 監査情報を反映
+    if (employee.createdAt || employee.updatedAt || employee.createdBy || employee.updatedBy || employee.approvedBy) {
+      const formatDate = (date: string | Date | undefined): string => {
+        if (!date) return '';
+        const d = typeof date === 'string' ? new Date(date) : date;
+        if (isNaN(d.getTime())) return '';
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hours}:${minutes}`;
+      };
+
+      this.auditInfo = {
+        registeredAt: formatDate(employee.createdAt) || this.auditInfo.registeredAt,
+        updatedAt: formatDate(employee.updatedAt) || this.auditInfo.updatedAt,
+        createdBy: employee.createdBy || this.auditInfo.createdBy,
+        updatedBy: employee.updatedBy || this.auditInfo.updatedBy,
+        approvedBy: employee.approvedBy || this.auditInfo.approvedBy,
+      };
+    }
+
+    if (employee.birthDate) {
+      this.recalcCareFlag();
+    }
   }
 }

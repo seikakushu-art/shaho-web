@@ -1,403 +1,409 @@
-<section class="employee-detail">
-    <header class="page-header">
-      <div>
-        <h1>{{ employee.name }} <span class="kana">{{ employee.kana }}</span></h1>
-        <p class="hint">
-          社員番号 {{ employee.employeeNo }} ／ 所属部署: {{ employee.department }}
-        </p>
-      </div>
-      <div class="header-actions">
-        <button type="button" class="secondary">編集</button>
-        <button *ngIf="canDelete" type="button" class="danger">削除</button>
-        <button type="button" class="outline" (click)="showApprovalHistory = true">承認履歴</button>
-      </div>
-    </header>
-  
-    <nav class="tabs">
-      <button
-        *ngFor="let tab of tabs"
-        type="button"
-        [class.active]="selectedTab === tab.key"
-        (click)="changeTab(tab.key)"
-      >
-        {{ tab.label }}
-      </button>
-    </nav>
-  
-    <section *ngIf="selectedTab === 'basic'" class="tab-body">
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <h2>基本情報</h2>
-          </div>
-        </div>
-        <div class="grid four-col">
-          <div>
-            <label>社員番号</label>
-            <p class="value">{{ employee.employeeNo }}</p>
-          </div>
-          <div>
-            <label>氏名</label>
-            <p class="value">{{ employee.name }}</p>
-          </div>
-          <div>
-            <label>性別</label>
-            <p class="value">{{ basicInfo.gender }}</p>
-          </div>
-          <div>
-            <label>生年月日</label>
-            <p class="value">{{ basicInfo.birthDate | date: 'yyyy/MM/dd' }}</p>
-          </div>
-          <div>
-            <label>所属部署</label>
-            <p class="value">{{ employee.department }}</p>
-          </div>
-          <div>
-            <label>所属部署コード</label>
-            <p class="value">{{ basicInfo.departmentCode }}</p>
-          </div>
-          <div>
-            <label>勤務地都道府県コード</label>
-            <p class="value">{{ basicInfo.workPrefectureCode }}</p>
-          </div>
-          <div>
-            <label>勤務地都道府県</label>
-            <p class="value">{{ basicInfo.workPrefecture }}</p>
-          </div>
-        </div>
-      </article>
-  
-      <article class="card audit">
-        <div class="card-header">
-          <div>
-            <h2>監査情報</h2>
-          </div>
-        </div>
-        <div class="grid three-col">
-          <div style="grid-column: 1; grid-row: 1;">
-            <label>登録日</label>
-            <p class="value">{{ auditInfo.registeredAt }}</p>
-          </div>
-          <div style="grid-column: 2; grid-row: 1;">
-            <label>更新日</label>
-            <p class="value">{{ auditInfo.updatedAt }}</p>
-          </div>
-          <div style="grid-column: 1; grid-row: 2;">
-            <label>登録者</label>
-            <p class="value">{{ auditInfo.createdBy }}</p>
-          </div>
-          <div style="grid-column: 2; grid-row: 2;">
-            <label>更新者</label>
-            <p class="value">{{ auditInfo.updatedBy }}</p>
-          </div>
-          <div style="grid-column: 3; grid-row: 2;">
-            <label>承認者</label>
-            <p class="value">{{ auditInfo.approvedBy }}</p>
-          </div>
-        </div>
-      </article>
-    </section>
-  
-    <section *ngIf="selectedTab === 'insurance'" class="tab-body">
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <h2>社会保険関連基本情報</h2>
-          </div>
-        </div>
-        <div class="grid two-col insurance-form">
-          <div>
-            <label>現在の標準報酬月額</label>
-            <p class="value">{{ socialInsurance.standardMonthly | number }} 円</p>
-          </div>
-          <div>
-            <label>被保険者番号</label>
-            <input type="text" [(ngModel)]="socialInsurance.insuredNumber" />
-          </div>
-          <div class="toggle-block">
-            <div class="toggle-label">
-              <label>介護保険第2号被保険者</label>
-              <p class="hint small">生年月日から自動判定。</p>
+<ng-container *ngIf="!isLoading; else loading">
+    <section *ngIf="employee; else notFound" class="employee-detail">
+        <header class="page-header">
+            <div>
+                <h1>{{ employee?.name || '—' }} <span class="kana">{{ employee?.kana || '' }}</span></h1>
+                <p class="hint">
+                    社員番号 {{ employee?.employeeNo || '—' }} ／ 所属部署: {{ employee?.department || '—' }}
+                </p>
             </div>
-            <div class="toggle-controls">
-              <label class="switch">
-                <input
-                  type="checkbox"
-                  [(ngModel)]="socialInsurance.careSecondInsured"
-                />
-                <span></span>
-              </label>
-              <button type="button" class="outline" (click)="recalcCareFlag()">
-                自動判定を再計算
-              </button>
+            <div class="header-actions">
+                <button type="button" class="secondary">編集</button>
+                <button *ngIf="canDelete" type="button" class="danger">削除</button>
+                <button type="button" class="outline" (click)="showApprovalHistory = true">承認履歴</button>
             </div>
-          </div>
-          <div>
-            <label>健康保険 資格取得日</label>
-            <input type="date" [(ngModel)]="socialInsurance.healthAcquisition" />
-          </div>
-          <div>
-            <label>厚生年金 資格取得日</label>
-            <input type="date" [(ngModel)]="socialInsurance.pensionAcquisition" />
-          </div>
-          <div class="toggle-block">
-            <div class="toggle-label">
-              <label>健康保険料・厚生年金一時免除</label>
-              <p class="hint small">産休・育休等で免除する場合にON。ON時に帳票計算が免除扱いになります。</p>
-            </div>
-            <div class="toggle-controls">
-              <label class="switch">
-                <input type="checkbox" [(ngModel)]="socialInsurance.exemption" />
-                <span></span>
-              </label>
-            </div>
-          </div>
-        </div>
-      </article>
-    </section>
-  
-    <section *ngIf="selectedTab === 'standard-pay'" class="tab-body">
-      <p class="hint note">
-        外部給与システムから標準報酬月額を取り込めない場合や、定時決定で一括再計算を行う場合に使用します。
-      </p>
-      <div class="toolbar">
-        <label>算定年度</label>
-        <select [ngModel]="selectedSalaryYear.year" (ngModelChange)="selectSalaryYear($event)">
-          <option *ngFor="let item of salaryCalculations" [value]="item.year">{{ item.year }}年</option>
-        </select>
-        <button type="button" class="outline" (click)="addNewYear()">＋新規年度追加</button>
-      </div>
-  
-      <article class="card">
-        <div class="grid three-col">
-          <div>
-            <label>算定年度</label>
-            <input type="number" [(ngModel)]="selectedSalaryYear.year" />
-          </div>
-          <div>
-            <label>算定対象期間 開始年月</label>
-            <input type="month" [(ngModel)]="selectedSalaryYear.periodStart" />
-          </div>
-          <div>
-            <label>算定対象期間 終了年月</label>
-            <input type="month" [(ngModel)]="selectedSalaryYear.periodEnd" />
-          </div>
-        </div>
-  
-        <div class="grid three-col">
-          <div>
-            <label>4月報酬額</label>
-            <input type="number" [(ngModel)]="selectedSalaryYear.april.amount" />
-          </div>
-          <div>
-            <label>4月支払基礎日数</label>
-            <input type="number" [(ngModel)]="selectedSalaryYear.april.days" />
-          </div>
-          <div>
-            <label>5月報酬額</label>
-            <input type="number" [(ngModel)]="selectedSalaryYear.may.amount" />
-          </div>
-          <div>
-            <label>5月支払基礎日数</label>
-            <input type="number" [(ngModel)]="selectedSalaryYear.may.days" />
-          </div>
-          <div>
-            <label>6月報酬額</label>
-            <input type="number" [(ngModel)]="selectedSalaryYear.june.amount" />
-          </div>
-          <div>
-            <label>6月支払基礎日数</label>
-            <input type="number" [(ngModel)]="selectedSalaryYear.june.days" />
-          </div>
-        </div>
-  
-        <div class="toolbar">
-          <button type="button" class="outline" (click)="recalcAverage(selectedSalaryYear)">平均を再計算</button>
-        </div>
-  
-        <div class="grid three-col">
-          <div>
-            <label>3か月平均報酬額</label>
-            <p class="value">{{ selectedSalaryYear.average | number }} 円</p>
-          </div>
-          <div>
-            <label>新標準報酬月額</label>
-            <input type="number" [(ngModel)]="selectedSalaryYear.newStandard" />
-          </div>
-          <div>
-            <label>旧標準報酬月額</label>
-            <p class="value">{{ selectedSalaryYear.oldStandard | number }} 円</p>
-          </div>
-        </div>
-      </article>
-    </section>
-  
-    <section *ngIf="selectedTab === 'bonus'" class="tab-body">
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <p class="eyebrow">賞与履歴</p>
-            <h2>賞与一覧</h2>
-          </div>
-          <p class="hint">行をクリックすると詳細フォームが開きます。</p>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>賞与支給日</th>
-              <th>賞与支給年度</th>
-              <th>賞与総支給額</th>
-              <th>標準賞与額（健・介）</th>
-              <th>標準賞与額（厚年）</th>
-              <th>標準賞与額年度累計（健）</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              *ngFor="let record of bonusRecords"
-              (click)="selectBonus(record.id)"
-              [class.selected]="selectedBonus.id === record.id"
-            >
-              <td>{{ record.paidOn }}</td>
-              <td>{{ record.fiscalYear }}</td>
-              <td>{{ record.total | number }}</td>
-              <td>{{ record.standardHealth | number }}</td>
-              <td>{{ record.standardPension | number }}</td>
-              <td>{{ record.healthCumulative | number }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </article>
-  
-      <article class="card" *ngIf="selectedBonus">
-        <div class="card-header">
-          <div>
-            <p class="eyebrow">賞与詳細</p>
-            <h2>選択中の賞与</h2>
-          </div>
-          <button type="button" class="outline" (click)="recalcBonus(selectedBonus)">再計算</button>
-        </div>
-        <div class="grid two-col">
-          <div>
-            <label>賞与支給日</label>
-            <input type="date" [(ngModel)]="selectedBonus.paidOn" />
-          </div>
-          <div>
-            <label>賞与支給年度</label>
-            <input type="number" [(ngModel)]="selectedBonus.fiscalYear" />
-          </div>
-          <div>
-            <label>賞与総支給額</label>
-            <input type="number" [(ngModel)]="selectedBonus.total" />
-          </div>
-          <div>
-            <label>標準賞与額（健・介）</label>
-            <input type="number" [(ngModel)]="selectedBonus.standardHealth" />
-          </div>
-          <div>
-            <label>標準賞与額（厚年）</label>
-            <input type="number" [(ngModel)]="selectedBonus.standardPension" />
-          </div>
-          <div>
-            <label>標準賞与額年度累計（健）</label>
-            <input type="number" [(ngModel)]="selectedBonus.healthCumulative" />
-          </div>
-        </div>
-      </article>
-    </section>
-  
-    <section *ngIf="selectedTab === 'history'" class="tab-body">
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <p class="eyebrow">絞り込み条件</p>
-            <h2>変更履歴フィルター</h2>
-          </div>
-        </div>
-        <div class="grid three-col filters">
-          <div>
-            <label>期間（From）</label>
-            <input type="date" [(ngModel)]="historyFilters.from" />
-          </div>
-          <div>
-            <label>期間（To）</label>
-            <input type="date" [(ngModel)]="historyFilters.to" />
-          </div>
-          <div>
-            <label>項目名</label>
-            <select [(ngModel)]="historyFilters.field">
-              <option value="">すべて</option>
-              <option *ngFor="let field of historyFields" [value]="field">{{ field }}</option>
-            </select>
-          </div>
-          <div>
-            <label>操作者</label>
-            <input type="text" [(ngModel)]="historyFilters.actor" placeholder="user id or name" />
-          </div>
-        </div>
-      </article>
-  
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <p class="eyebrow">変更履歴</p>
-            <h2>履歴テーブル</h2>
-          </div>
-          <p class="hint">行クリックで同一更新操作をモーダル表示</p>
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>変更日時</th>
-              <th>項目名</th>
-              <th>旧値</th>
-              <th>新値</th>
-              <th>操作者</th>
-              <th>承認者</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let record of filteredHistory" (click)="openHistoryGroup(record.groupId)">
-              <td>{{ record.changedAt }}</td>
-              <td>{{ record.field }}</td>
-              <td>{{ record.oldValue }}</td>
-              <td>{{ record.newValue }}</td>
-              <td>{{ record.actor }}</td>
-              <td>{{ record.approver }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </article>
-    </section>
-  
-    <div class="modal" *ngIf="groupedHistory.length">
-      <div class="modal-content">
-        <header>
-          <h3>同一操作の変更一覧</h3>
-          <button type="button" (click)="closeHistoryGroup()">閉じる</button>
         </header>
-        <ul>
-          <li *ngFor="let record of groupedHistory">
-            <span class="field">{{ record.field }}</span>
-            <span class="old">{{ record.oldValue }}</span>
-            <span class="new">→ {{ record.newValue }}</span>
-            <span class="meta">{{ record.changedAt }} / 操作者: {{ record.actor }} / 承認者: {{ record.approver }}</span>
-          </li>
-        </ul>
-      </div>
-    </div>
-  
-    <div class="modal" *ngIf="showApprovalHistory">
-      <div class="modal-content">
-        <header>
-          <h3>承認履歴</h3>
-          <button type="button" (click)="showApprovalHistory = false">閉じる</button>
-        </header>
-        <p class="hint">実運用ではワークフロー履歴を表示します。ここではダミーです。</p>
-        <ul>
-          <li>2025-02-03 標準報酬月額を承認（manager03）</li>
-          <li>2024-12-01 所属部署変更を承認（manager02）</li>
-        </ul>
-      </div>
-    </div>
-  </section>
+
+        <nav class="tabs">
+            <button *ngFor="let tab of tabs" type="button" [class.active]="selectedTab === tab.key"
+                (click)="changeTab(tab.key)">
+                {{ tab.label }}
+            </button>
+        </nav>
+
+        <section *ngIf="selectedTab === 'basic'" class="tab-body">
+            <article class="card">
+                <div class="card-header">
+                    <div>
+                        <h2>基本情報</h2>
+                    </div>
+                </div>
+                <div class="grid four-col">
+                    <div>
+                        <label>社員番号</label>
+                        <p class="value">{{ employee?.employeeNo || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>氏名</label>
+                        <p class="value">{{ employee?.name || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>性別</label>
+                        <p class="value">{{ basicInfo.gender || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>生年月日</label>
+                        <p class="value">{{ basicInfo.birthDate ? (basicInfo.birthDate | date: 'yyyy/MM/dd') : '—' }}
+                        </p>
+                    </div>
+                    <div>
+                        <label>所属部署</label>
+                        <p class="value">{{ employee?.department || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>所属部署コード</label>
+                        <p class="value">{{ basicInfo.departmentCode || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>勤務地都道府県コード</label>
+                        <p class="value">{{ basicInfo.workPrefectureCode || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>勤務地都道府県</label>
+                        <p class="value">{{ basicInfo.workPrefecture || '—' }}</p>
+                    </div>
+                </div>
+            </article>
+
+            <article class="card audit">
+                <div class="card-header">
+                    <div>
+                        <h2>監査情報</h2>
+                    </div>
+                </div>
+                <div class="grid three-col">
+                    <div style="grid-column: 1; grid-row: 1;">
+                        <label>登録日</label>
+                        <p class="value">{{ auditInfo.registeredAt }}</p>
+                    </div>
+                    <div style="grid-column: 2; grid-row: 1;">
+                        <label>更新日</label>
+                        <p class="value">{{ auditInfo.updatedAt }}</p>
+                    </div>
+                    <div style="grid-column: 1; grid-row: 2;">
+                        <label>登録者</label>
+                        <p class="value">{{ auditInfo.createdBy }}</p>
+                    </div>
+                    <div style="grid-column: 2; grid-row: 2;">
+                        <label>更新者</label>
+                        <p class="value">{{ auditInfo.updatedBy }}</p>
+                    </div>
+                    <div style="grid-column: 3; grid-row: 2;">
+                        <label>承認者</label>
+                        <p class="value">{{ auditInfo.approvedBy }}</p>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section *ngIf="selectedTab === 'insurance'" class="tab-body">
+            <article class="card">
+                <div class="card-header">
+                    <div>
+                        <h2>社会保険関連基本情報</h2>
+                    </div>
+                </div>
+                <div class="grid two-col insurance-form">
+                    <div>
+                        <label>現在の標準報酬月額</label>
+                        <p class="value">{{ socialInsurance.standardMonthly | number }} 円</p>
+                    </div>
+                    <div>
+                        <label>被保険者番号</label>
+                        <input type="text" [(ngModel)]="socialInsurance.insuredNumber" />
+                    </div>
+                    <div class="toggle-block">
+                        <div class="toggle-label">
+                            <label>介護保険第2号被保険者</label>
+                            <p class="hint small">生年月日から自動判定。</p>
+                        </div>
+                        <div class="toggle-controls">
+                            <label class="switch">
+                                <input type="checkbox" [(ngModel)]="socialInsurance.careSecondInsured" />
+                                <span></span>
+                            </label>
+                            <button type="button" class="outline" (click)="recalcCareFlag()">
+                                自動判定を再計算
+                            </button>
+                        </div>
+                    </div>
+                    <div>
+                        <label>健康保険 資格取得日</label>
+                        <input type="date" [(ngModel)]="socialInsurance.healthAcquisition" />
+                    </div>
+                    <div>
+                        <label>厚生年金 資格取得日</label>
+                        <input type="date" [(ngModel)]="socialInsurance.pensionAcquisition" />
+                    </div>
+                    <div class="toggle-block">
+                        <div class="toggle-label">
+                            <label>健康保険料・厚生年金一時免除</label>
+                            <p class="hint small">産休・育休等で免除する場合にON。ON時に帳票計算が免除扱いになります。</p>
+                        </div>
+                        <div class="toggle-controls">
+                            <label class="switch">
+                                <input type="checkbox" [(ngModel)]="socialInsurance.exemption" />
+                                <span></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section *ngIf="selectedTab === 'standard-pay'" class="tab-body">
+            <p class="hint note">
+                外部給与システムから標準報酬月額を取り込めない場合や、定時決定で一括再計算を行う場合に使用します。
+            </p>
+            <div class="toolbar">
+                <label>算定年度</label>
+                <select [ngModel]="selectedSalaryYear.year" (ngModelChange)="selectSalaryYear($event)">
+                    <option *ngFor="let item of salaryCalculations" [value]="item.year">{{ item.year }}年</option>
+                </select>
+                <button type="button" class="outline" (click)="addNewYear()">＋新規年度追加</button>
+            </div>
+
+            <article class="card">
+                <div class="grid three-col">
+                    <div>
+                        <label>算定年度</label>
+                        <input type="number" [(ngModel)]="selectedSalaryYear.year" />
+                    </div>
+                    <div>
+                        <label>算定対象期間 開始年月</label>
+                        <input type="month" [(ngModel)]="selectedSalaryYear.periodStart" />
+                    </div>
+                    <div>
+                        <label>算定対象期間 終了年月</label>
+                        <input type="month" [(ngModel)]="selectedSalaryYear.periodEnd" />
+                    </div>
+                </div>
+
+                <div class="grid three-col">
+                    <div>
+                        <label>4月報酬額</label>
+                        <input type="number" [(ngModel)]="selectedSalaryYear.april.amount" />
+                    </div>
+                    <div>
+                        <label>4月支払基礎日数</label>
+                        <input type="number" [(ngModel)]="selectedSalaryYear.april.days" />
+                    </div>
+                    <div>
+                        <label>5月報酬額</label>
+                        <input type="number" [(ngModel)]="selectedSalaryYear.may.amount" />
+                    </div>
+                    <div>
+                        <label>5月支払基礎日数</label>
+                        <input type="number" [(ngModel)]="selectedSalaryYear.may.days" />
+                    </div>
+                    <div>
+                        <label>6月報酬額</label>
+                        <input type="number" [(ngModel)]="selectedSalaryYear.june.amount" />
+                    </div>
+                    <div>
+                        <label>6月支払基礎日数</label>
+                        <input type="number" [(ngModel)]="selectedSalaryYear.june.days" />
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <button type="button" class="outline" (click)="recalcAverage(selectedSalaryYear)">平均を再計算</button>
+                </div>
+
+                <div class="grid three-col">
+                    <div>
+                        <label>3か月平均報酬額</label>
+                        <p class="value">{{ selectedSalaryYear.average | number }} 円</p>
+                    </div>
+                    <div>
+                        <label>新標準報酬月額</label>
+                        <input type="number" [(ngModel)]="selectedSalaryYear.newStandard" />
+                    </div>
+                    <div>
+                        <label>旧標準報酬月額</label>
+                        <p class="value">{{ selectedSalaryYear.oldStandard | number }} 円</p>
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section *ngIf="selectedTab === 'bonus'" class="tab-body">
+            <article class="card">
+                <div class="card-header">
+                    <div>
+                        <p class="eyebrow">賞与履歴</p>
+                        <h2>賞与一覧</h2>
+                    </div>
+                    <p class="hint">行をクリックすると詳細フォームが開きます。</p>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>賞与支給日</th>
+                            <th>賞与支給年度</th>
+                            <th>賞与総支給額</th>
+                            <th>標準賞与額（健・介）</th>
+                            <th>標準賞与額（厚年）</th>
+                            <th>標準賞与額年度累計（健）</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr *ngFor="let record of bonusRecords" (click)="selectBonus(record.id)"
+                            [class.selected]="selectedBonus.id === record.id">
+                            <td>{{ record.paidOn }}</td>
+                            <td>{{ record.fiscalYear }}</td>
+                            <td>{{ record.total | number }}</td>
+                            <td>{{ record.standardHealth | number }}</td>
+                            <td>{{ record.standardPension | number }}</td>
+                            <td>{{ record.healthCumulative | number }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </article>
+
+            <article class="card" *ngIf="selectedBonus">
+                <div class="card-header">
+                    <div>
+                        <p class="eyebrow">賞与詳細</p>
+                        <h2>選択中の賞与</h2>
+                    </div>
+                    <button type="button" class="outline" (click)="recalcBonus(selectedBonus)">再計算</button>
+                </div>
+                <div class="grid two-col">
+                    <div>
+                        <label>賞与支給日</label>
+                        <input type="date" [(ngModel)]="selectedBonus.paidOn" />
+                    </div>
+                    <div>
+                        <label>賞与支給年度</label>
+                        <input type="number" [(ngModel)]="selectedBonus.fiscalYear" />
+                    </div>
+                    <div>
+                        <label>賞与総支給額</label>
+                        <input type="number" [(ngModel)]="selectedBonus.total" />
+                    </div>
+                    <div>
+                        <label>標準賞与額（健・介）</label>
+                        <input type="number" [(ngModel)]="selectedBonus.standardHealth" />
+                    </div>
+                    <div>
+                        <label>標準賞与額（厚年）</label>
+                        <input type="number" [(ngModel)]="selectedBonus.standardPension" />
+                    </div>
+                    <div>
+                        <label>標準賞与額年度累計（健）</label>
+                        <input type="number" [(ngModel)]="selectedBonus.healthCumulative" />
+                    </div>
+                </div>
+            </article>
+        </section>
+
+        <section *ngIf="selectedTab === 'history'" class="tab-body">
+            <article class="card">
+                <div class="card-header">
+                    <div>
+                        <p class="eyebrow">絞り込み条件</p>
+                        <h2>変更履歴フィルター</h2>
+                    </div>
+                </div>
+                <div class="grid three-col filters">
+                    <div>
+                        <label>期間（From）</label>
+                        <input type="date" [(ngModel)]="historyFilters.from" />
+                    </div>
+                    <div>
+                        <label>期間（To）</label>
+                        <input type="date" [(ngModel)]="historyFilters.to" />
+                    </div>
+                    <div>
+                        <label>項目名</label>
+                        <select [(ngModel)]="historyFilters.field">
+                            <option value="">すべて</option>
+                            <option *ngFor="let field of historyFields" [value]="field">{{ field }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>操作者</label>
+                        <input type="text" [(ngModel)]="historyFilters.actor" placeholder="user id or name" />
+                    </div>
+                </div>
+            </article>
+
+            <article class="card">
+                <div class="card-header">
+                    <div>
+                        <p class="eyebrow">変更履歴</p>
+                        <h2>履歴テーブル</h2>
+                    </div>
+                    <p class="hint">行クリックで同一更新操作をモーダル表示</p>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>変更日時</th>
+                            <th>項目名</th>
+                            <th>旧値</th>
+                            <th>新値</th>
+                            <th>操作者</th>
+                            <th>承認者</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr *ngFor="let record of filteredHistory" (click)="openHistoryGroup(record.groupId)">
+                            <td>{{ record.changedAt }}</td>
+                            <td>{{ record.field }}</td>
+                            <td>{{ record.oldValue }}</td>
+                            <td>{{ record.newValue }}</td>
+                            <td>{{ record.actor }}</td>
+                            <td>{{ record.approver }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </article>
+        </section>
+
+        <div class="modal" *ngIf="groupedHistory.length">
+            <div class="modal-content">
+                <header>
+                    <h3>同一操作の変更一覧</h3>
+                    <button type="button" (click)="closeHistoryGroup()">閉じる</button>
+                </header>
+                <ul>
+                    <li *ngFor="let record of groupedHistory">
+                        <span class="field">{{ record.field }}</span>
+                        <span class="old">{{ record.oldValue }}</span>
+                        <span class="new">→ {{ record.newValue }}</span>
+                        <span class="meta">{{ record.changedAt }} / 操作者: {{ record.actor }} / 承認者: {{ record.approver
+                            }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="modal" *ngIf="showApprovalHistory">
+            <div class="modal-content">
+                <header>
+                    <h3>承認履歴</h3>
+                    <button type="button" (click)="showApprovalHistory = false">閉じる</button>
+                </header>
+                <p class="hint">実運用ではワークフロー履歴を表示します。ここではダミーです。</p>
+                <ul>
+                    <li>2025-02-03 標準報酬月額を承認（manager03）</li>
+                    <li>2024-12-01 所属部署変更を承認（manager02）</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+</ng-container>
+
+<ng-template #loading>
+    <section class="employee-detail">
+        <p class="hint">社員情報を読み込み中です…</p>
+    </section>
+</ng-template>
+
+<ng-template #notFound>
+    <section class="employee-detail">
+        <p class="hint">該当する社員情報が見つかりませんでした。</p>
+    </section>
+</ng-template>

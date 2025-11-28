@@ -329,7 +329,19 @@ private readFileAsText(file: File): Promise<string> {
           const employeeData: Partial<ShahoEmployee> = {
             employeeNo: csvData['社員番号'] || '',
             name: csvData['氏名(漢字)'] || csvData['氏名漢字'] || '',
+            kana: csvData['氏名(カナ)'] || undefined,
+            gender: csvData['性別'] || undefined,
+            birthDate: csvData['生年月日'] || undefined,
+            department: csvData['所属部署名'] || undefined,
+            workPrefecture: csvData['勤務地都道府県名'] || undefined,
+            standardMonthly: csvData['現在標準報酬月額'] 
+              ? (isNaN(Number(csvData['現在標準報酬月額'])) 
+                  ? undefined 
+                  : Number(csvData['現在標準報酬月額'])) 
+              : undefined,
             insuredNumber: csvData['被保険者番号'] || undefined,
+            healthAcquisition: csvData['健康保険資格取得日'] || undefined,
+            pensionAcquisition: csvData['厚生年金資格取得日'] || undefined,
           };
 
           if (row.isNew) {

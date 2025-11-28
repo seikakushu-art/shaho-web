@@ -81,6 +81,9 @@
             </tr>
           </thead>
           <tbody>
+            <tr *ngIf="isLoading">
+                <td colspan="7" class="empty">データを読み込み中です…</td>
+              </tr>
             <tr
               *ngFor="let employee of paginatedEmployees; trackBy: trackByEmployee"
               (click)="onRowClick(employee)"
@@ -97,7 +100,7 @@
                 </button>
               </td>
             </tr>
-            <tr *ngIf="!paginatedEmployees.length">
+            <tr *ngIf="!isLoading && !paginatedEmployees.length">
               <td colspan="7" class="empty">条件に合致する社員が見つかりませんでした。</td>
             </tr>
           </tbody>
