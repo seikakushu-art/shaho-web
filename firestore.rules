@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 開発環境用：すべての読み書きを許可
+    // 本番環境では適切な認証と権限チェックを実装してください
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+

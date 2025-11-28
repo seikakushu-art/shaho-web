@@ -197,7 +197,6 @@
             <button type="button" class="ghost" (click)="prevStep()">戻る</button>
             <div class="spacer"></div>
             <button type="button" class="primary" (click)="nextStep()">承認依頼へ進む</button>
-            <button type="button" class="immediate" *ngIf="canApplyImmediately">今すぐ更新</button>
         </div>
     </section>
 
@@ -242,6 +241,7 @@
         <div class="navigation">
             <button type="button" class="ghost" (click)="prevStep()">戻る</button>
             <button type="button" class="primary">承認依頼を送信</button>
+            <button type="button" class="secondary" (click)="updateData()" [disabled]="isLoading || selectedCount === 0">データ更新</button>
         </div>
     </section>
 </section>

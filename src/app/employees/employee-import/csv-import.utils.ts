@@ -1,4 +1,5 @@
 import {
+    ChangeField,
     CSVParseResult,
     ParsedRow,
     Summary,
@@ -426,14 +427,31 @@ import {
       .sort((a, b) => a.rowIndex - b.rowIndex || a.fieldName.localeCompare(b.fieldName));
   }
   
-  export function calculateSummary(validatedRows: ValidatedRow[], differences: null | unknown = null): Summary {
+  export function calculateSummary(validatedRows: ValidatedRow[], differences: unknown[] | null = null): Summary {
     const errorRows = validatedRows.filter((row) => row.errors.some((error) => error.severity === 'error'));
+  
+    let newCount = 0;
+    let updateCount = 0;
+
+    if (differences && Array.isArray(differences)) {
+      differences.forEach((diff: unknown) => {
+        if (diff && typeof diff === 'object' && 'changes' in diff) {
+          const changes = (diff as { changes: ChangeField[] }).changes;
+          const isNew = changes.length > 0 && changes.every((c) => c.oldValue === null);
+          if (isNew) {
+            newCount++;
+          } else if (changes.length > 0) {
+            updateCount++;
+          }
+        }
+      });
+    }
   
     return {
       totalRecords: validatedRows.length,
       errorCount: errorRows.length,
-      newCount: differences ? 0 : 0,
-      updateCount: differences ? 0 : 0,
+      newCount,
+      updateCount,
     };
   }
   
@@ -473,4 +491,143 @@ import {
     const [year, month] = value.replace(/-/g, '/').split('/').map((v) => Number(v));
     if (!year || !month) return null;
     return year * 100 + month;
+  }
+
+  // 既存社員データの型定義
+  export interface ExistingEmployee {
+    id?: string;
+    employeeNo: string;
+    insuredNumber?: string;
+    name?: string;
+    [key: string]: unknown; // その他のフィールド
+  }
+
+  // 差分計算結果の型定義
+  export interface DifferenceCalculationResult {
+    isNew: boolean;
+    isUpdate: boolean;
+    existingEmployee: ExistingEmployee | null;
+    errors: ValidationError[];
+    changes: ChangeField[];
+  }
+
+  // 新規/更新判定と差分計算
+  export function calculateDifferences(
+    parsedRow: ParsedRow,
+    existingEmployees: ExistingEmployee[],
+    templateType: TemplateType,
+  ): DifferenceCalculationResult {
+    const employeeNo = parsedRow.data['社員番号'] || '';
+    const insuredNumber = parsedRow.data['被保険者番号'] || '';
+
+    // 既存社員データを検索（社員番号と被保険者番号で）
+    const foundByEmployeeNo = existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+    const foundByInsuredNumber = insuredNumber
+      ? existingEmployees.find((emp) => emp.insuredNumber === insuredNumber)
+      : null;
+
+    const errors: ValidationError[] = [];
+    let existingEmployee: ExistingEmployee | null = null;
+    let isNew = false;
+    let isUpdate = false;
+
+    // 判定ロジック
+    if (foundByEmployeeNo && foundByInsuredNumber) {
+      // 両方とも存在する場合
+      if (foundByEmployeeNo.employeeNo === foundByInsuredNumber.employeeNo) {
+        // 同じ社員の場合 → 更新
+        existingEmployee = foundByEmployeeNo;
+        isUpdate = true;
+      } else {
+        // 異なる社員の場合 → エラー
+        errors.push({
+          rowIndex: parsedRow.rowIndex,
+          fieldName: '社員番号',
+          message: `社員番号 ${employeeNo} と被保険者番号 ${insuredNumber} が異なる社員に紐づいています`,
+          severity: 'error',
+          templateType,
+        });
+      }
+    } else if (foundByEmployeeNo && !foundByInsuredNumber) {
+      // 社員番号のみ存在する場合 → エラー
+      errors.push({
+        rowIndex: parsedRow.rowIndex,
+        fieldName: '被保険者番号',
+        message: `社員番号 ${employeeNo} はすでに登録されています`,
+        severity: 'error',
+        templateType,
+      });
+    } else if (!foundByEmployeeNo && foundByInsuredNumber) {
+      // 被保険者番号のみ存在する場合 → エラー
+      errors.push({
+        rowIndex: parsedRow.rowIndex,
+        fieldName: '被保険者番号',
+        message: `被保険者番号 ${insuredNumber} はすでに登録されています`,
+        severity: 'error',
+        templateType,
+      });
+    } else {
+      // どちらも存在しない場合 → 新規
+      isNew = true;
+    }
+
+    // 差分計算（更新の場合のみ）
+    const changes: ChangeField[] = [];
+    if (isUpdate && existingEmployee) {
+      // CSVの各フィールドと既存データを比較
+      const csvData = parsedRow.data;
+      const fieldMapping: Record<string, string> = {
+        '氏名(漢字)': 'name',
+        '氏名漢字': 'name',
+        '氏名(カナ)': 'kana',
+        '性別': 'gender',
+        '生年月日': 'birthDate',
+        '所属部署名': 'department',
+        '勤務地都道府県名': 'workPrefecture',
+        '現在標準報酬月額': 'standardMonthly',
+        '被保険者番号': 'insuredNumber',
+        '健康保険資格取得日': 'healthAcquisition',
+        '厚生年金資格取得日': 'pensionAcquisition',
+      };
+
+      Object.keys(fieldMapping).forEach((csvField) => {
+        const csvValue = csvData[csvField];
+        if (csvValue === undefined) return;
+
+        const dbField = fieldMapping[csvField];
+        const existingValue = existingEmployee?.[dbField] as string | undefined;
+        const oldValue = existingValue || '';
+        const newValue = csvValue || '';
+
+        // 値が異なる場合のみ差分として追加
+        if (oldValue !== newValue) {
+          changes.push({
+            fieldName: csvField,
+            oldValue: oldValue || null,
+            newValue: newValue || null,
+          });
+        }
+      });
+    } else if (isNew) {
+      // 新規の場合、すべてのフィールドを新規値として追加
+      const csvData = parsedRow.data;
+      Object.keys(csvData).forEach((field) => {
+        const value = csvData[field];
+        if (value) {
+          changes.push({
+            fieldName: field,
+            oldValue: null,
+            newValue: value,
+          });
+        }
+      });
+    }
+
+    return {
+      isNew,
+      isUpdate,
+      existingEmployee,
+      errors,
+      changes,
+    };
   }
