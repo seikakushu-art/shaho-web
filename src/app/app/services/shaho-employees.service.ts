@@ -55,9 +55,16 @@ export interface PayrollData {
   yearMonth: string; // 2025-04 形式
   workedDays: number; // 支払基礎日数
   amount?: number; // 報酬額（月給支払額、オプション）
+  healthInsuranceMonthly?: number;
+  careInsuranceMonthly?: number;
+  pensionMonthly?: number;
   // 賞与関連フィールド
   bonusPaidOn?: string; // 賞与支給日（YYYY-MM-DD形式）
   bonusTotal?: number; // 賞与総支給額
+  standardBonus?: number;
+  healthInsuranceBonus?: number;
+  careInsuranceBonus?: number;
+  pensionBonus?: number;
   // その他の給与明細フィールドをここに追加可能
   createdAt?: string | Date;
   updatedAt?: string | Date;

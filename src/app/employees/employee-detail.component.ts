@@ -125,7 +125,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   };
 
   insuranceHistoryFilter = {
-    start: this.formatMonthForInput(this.addMonths(new Date(), -2)),
+    start: this.formatMonthForInput(this.addMonths(new Date(), -12)),
     end: this.formatMonthForInput(new Date()),
     mode: 'all' as 'all' | 'without-bonus' | 'bonus-only',
   };
@@ -244,6 +244,9 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
         if (employee) {
           this.notFound = false;
           this.applyEmployeeData(employee);
+          if (employee.id) {
+            this.loadPayrollHistory(employee.id);
+          }
         } else {
           this.employee = null;
           this.notFound = true;
@@ -383,6 +386,72 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     result.setMonth(result.getMonth() + months);
     return result;
   }
+
+  private loadPayrollHistory(employeeId: string) {
+    this.employeesService
+      .getPayrolls(employeeId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((payrolls) => {
+        const history: Record<string, SocialInsuranceHistoryData> = {};
+
+        payrolls.forEach((payroll) => {
+          const monthKey = this.formatYearMonthKey(payroll.yearMonth);
+          if (!monthKey) return;
+
+          // 月給データをyearMonthの月に格納
+          const monthlyData: SocialInsuranceHistoryData = {
+            monthlySalary: payroll.amount,
+            workedDays: payroll.workedDays,
+            healthInsuranceMonthly: payroll.healthInsuranceMonthly,
+            careInsuranceMonthly: payroll.careInsuranceMonthly,
+            pensionMonthly: payroll.pensionMonthly,
+          };
+
+          // 既存のデータとマージ
+          if (history[monthKey]) {
+            history[monthKey] = { ...history[monthKey], ...monthlyData };
+          } else {
+            history[monthKey] = monthlyData;
+          }
+
+          // 賞与データがある場合、賞与支給日の月に格納
+          if (payroll.bonusPaidOn) {
+            const bonusDate = new Date(payroll.bonusPaidOn.replace(/\//g, '-'));
+            if (!isNaN(bonusDate.getTime())) {
+              const bonusYear = bonusDate.getFullYear();
+              const bonusMonth = String(bonusDate.getMonth() + 1).padStart(2, '0');
+              const bonusMonthKey = `${bonusYear}-${bonusMonth}`;
+
+              const bonusData: SocialInsuranceHistoryData = {
+                bonusPaidOn: this.formatDateForInput(payroll.bonusPaidOn),
+                bonusTotal: payroll.bonusTotal,
+                standardBonus: payroll.standardBonus,
+                healthInsuranceBonus: payroll.healthInsuranceBonus,
+                careInsuranceBonus: payroll.careInsuranceBonus,
+                pensionBonus: payroll.pensionBonus,
+              };
+
+              // 既存のデータとマージ
+              if (history[bonusMonthKey]) {
+                history[bonusMonthKey] = { ...history[bonusMonthKey], ...bonusData };
+              } else {
+                history[bonusMonthKey] = bonusData;
+              }
+            }
+          }
+        });
+
+        this.socialInsuranceHistory = history;
+      });
+  }
+
+  private formatYearMonthKey(yearMonth: string | undefined): string | null {
+    if (!yearMonth) return null;
+
+    const parsed = this.parseMonthInput(yearMonth);
+    return parsed ? this.formatMonthForInput(parsed) : null;
+  }
+
 
   private parseMonthInput(value: string): Date | null {
     if (!/^\d{4}-\d{2}$/.test(value)) {

@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { Auth } from '@angular/fire/auth';
-import { ShahoEmployeesService, ShahoEmployee } from '../../app/services/shaho-employees.service';
+import { ShahoEmployeesService, ShahoEmployee, PayrollData } from '../../app/services/shaho-employees.service';
 
 const REMUNERATION_TABLE = [
   { grade: '1', min: 0, max: 98000, amount: 98000 },
@@ -664,8 +664,60 @@ export class StandardRemunerationComponent implements OnInit {
     URL.revokeObjectURL(url);
   }
 
-  finalizeProcedure() {
+  async finalizeProcedure() {
     if (!this.procedure) return;
+    
+    // 賞与算定の場合、賞与データをPayrollDataとして保存
+    if (this.procedure.type === '賞与算定') {
+      const bonusResults = this.calculationResults.filter(
+        (r): r is BonusCalcResult => r.type === '賞与算定'
+      );
+      
+      const payrollPromises = bonusResults.map(async (result) => {
+        const employee = this.employeeMaster.find((e) => e.employeeNo === result.employeeNo);
+        if (!employee || !employee.id) return;
+        
+        // 賞与支給日から年月を抽出
+        const bonusDate = new Date(result.bonusDate.replace(/\//g, '-'));
+        if (isNaN(bonusDate.getTime())) return;
+        
+        const year = bonusDate.getFullYear();
+        const month = String(bonusDate.getMonth() + 1).padStart(2, '0');
+        const normalizedYearMonth = `${year}-${month}`;
+        
+        // 既存の給与データを取得（マージするため）
+        let existingPayroll: PayrollData | undefined;
+        try {
+          existingPayroll = await firstValueFrom(
+            this.employeesService.getPayroll(employee.id, normalizedYearMonth)
+          );
+        } catch {
+          // データが存在しない場合はundefinedのまま
+        }
+        
+        // 賞与データをPayrollDataとして保存
+        const payrollData: PayrollData = {
+          ...existingPayroll,
+          yearMonth: normalizedYearMonth,
+          workedDays: existingPayroll?.workedDays || 0,
+          amount: existingPayroll?.amount,
+          bonusPaidOn: result.bonusDate.replace(/\//g, '-'),
+          bonusTotal: result.paidAmount,
+          standardBonus: result.standardBonus,
+          healthInsuranceBonus: result.healthInsuranceAmount,
+          pensionBonus: result.pensionAmount,
+        };
+        
+        await this.employeesService.addOrUpdatePayroll(
+          employee.id,
+          normalizedYearMonth,
+          payrollData
+        );
+      });
+      
+      await Promise.all(payrollPromises);
+    }
+    
     this.updateStepState('step5', '確定');
     this.procedure = { ...this.procedure, status: '確定' };
   }
