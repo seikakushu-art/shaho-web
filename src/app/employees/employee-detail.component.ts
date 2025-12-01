@@ -321,6 +321,28 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     }
     return age;
   }
+
+  /**
+   * 日付をYYYY-MM-DD形式に変換（input type="date"用）
+   */
+  private formatDateForInput(date: string | Date | undefined): string {
+    if (!date) return '';
+    
+    // 既にYYYY-MM-DD形式の文字列の場合はそのまま返す
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return date;
+    }
+    
+    // Dateオブジェクトまたは日付文字列を変換
+    const d = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return '';
+    
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
   private applyEmployeeData(employee: ShahoEmployee) {
     this.employee = employee;
     this.basicInfo = {
@@ -335,8 +357,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       ...this.socialInsurance,
       standardMonthly: employee.standardMonthly ?? 0,
       insuredNumber: employee.insuredNumber ?? '',
-      healthAcquisition: employee.healthAcquisition ?? '',
-      pensionAcquisition: employee.pensionAcquisition ?? '',
+      healthAcquisition: this.formatDateForInput(employee.healthAcquisition),
+      pensionAcquisition: this.formatDateForInput(employee.pensionAcquisition),
     };
 
     // 監査情報を反映

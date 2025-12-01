@@ -1,0 +1,304 @@
+<section class="page">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">標準報酬月額(定時決定)/標準賞与額算定</p>
+        <h1>手続きフロー</h1>
+        <p class="hint">CSV取込から算定・承認・確定までをワンページでシミュレーションできます。</p>
+      </div>
+      <a routerLink="/dashboard" class="text-link">ダッシュボードへ戻る</a>
+    </header>
+  
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <p class="eyebrow">STEP0</p>
+          <h2>手続き種別の選択・新規手続き作成</h2>
+        </div>
+        <span class="status" [class.active]="stepStates.step0 !== '未着手'">{{ stepStates.step0 }}</span>
+      </div>
+      <div class="form-grid">
+        <label>
+          <span>手続き種別</span>
+          <div class="radio-group">
+            <label *ngFor="let type of procedureTypes">
+              <input type="radio" name="procedureType" [value]="type" [(ngModel)]="creationForm.type" />
+              {{ type }}
+            </label>
+          </div>
+        </label>
+        <label *ngIf="creationForm.type === '定時決定'">
+          <span>算定年度 <span class="required">*</span></span>
+          <select [(ngModel)]="creationForm.fiscalYear">
+            <option *ngFor="let year of fiscalYears" [value]="year">{{ year }}</option>
+          </select>
+        </label>
+        <label *ngIf="creationForm.type === '賞与算定'">
+          <span>賞与支給年月 <span class="required">*</span></span>
+          <input type="month" [(ngModel)]="creationForm.bonusMonth" />
+        </label>
+        <label *ngIf="creationForm.type === '賞与算定'">
+          <span>賞与名称 <span class="required">*</span></span>
+          <input type="text" [(ngModel)]="creationForm.bonusName" />
+        </label>
+        <label>
+          <span>対象事業所 <span class="required">*</span></span>
+          <input type="text" [(ngModel)]="creationForm.location" placeholder="本社" />
+        </label>
+      </div>
+      <button class="primary" (click)="createProcedure()" [disabled]="!isFormValid">＋ 新規手続きを作成</button>
+  
+      <div class="meta" *ngIf="procedure">
+        <p>手続きID: {{ procedure.id }} / ステータス: {{ procedure.status }} / 作成日時: {{ procedure.createdAt | date:'yyyy/MM/dd HH:mm' }}</p>
+        <p *ngIf="procedure.type === '定時決定'">算定年度: {{ procedure.fiscalYear }} / 事業所: {{ procedure.location }}</p>
+        <p *ngIf="procedure.type === '賞与算定'">賞与: {{ formatBonusMonth(procedure.bonusMonth) }} {{ procedure.bonusName }} / 事業所: {{ procedure.location }}</p>
+      </div>
+    </section>
+  
+    <section class="card" *ngIf="procedure">
+      <div class="card-header">
+        <div>
+          <p class="eyebrow">STEP1</p>
+          <h2>データ取り込み（給与／賞与 CSV）</h2>
+          <p class="hint">CSVのフォーマットチェックと社員マスタ突合を実行します。</p>
+        </div>
+        <span class="status" [class.active]="stepStates.step1 !== '未着手'">{{ stepStates.step1 }}</span>
+      </div>
+      <p class="hint">{{ procedure.type === '賞与算定' ? '今回賞与の CSV をアップロードしてください' : '4〜6月分の給与 CSV をアップロードしてください' }}</p>
+  
+      <div class="import-box">
+        <button class="text-link" type="button" (click)="downloadSampleCsv()">サンプルCSVダウンロード</button>
+        <div class="file-row">
+          <input #csvInput type="file" accept=".csv" (change)="onFileSelected($event)" />
+          <span class="filename" *ngIf="selectedFileName">{{ selectedFileName }}</span>
+          <button class="primary" type="button" (click)="uploadCsv(csvInput)">アップロード</button>
+        </div>
+      </div>
+  
+      <div class="import-summary" *ngIf="importSummary.importedAt">
+        <div>
+          <p class="eyebrow">取込結果</p>
+          <p>取込件数: {{ importSummary.total }} / エラー件数: {{ importSummary.errors }}</p>
+          <p>最終取込: {{ importSummary.importedAt | date:'yyyy/MM/dd HH:mm' }} / 担当者: {{ importSummary.user }}</p>
+        </div>
+        <div *ngIf="importSummary.errors === 0" class="badge success">フォーマットOK</div>
+        <div *ngIf="importSummary.errors > 0" class="badge danger">エラーあり</div>
+      </div>
+  
+      <div class="error-list" *ngIf="importErrors.length">
+        <p class="eyebrow">エラー一覧</p>
+        <ul>
+          <li *ngFor="let error of importErrors">{{ error }}</li>
+        </ul>
+      </div>
+    </section>
+  
+    <section class="card" *ngIf="procedure">
+      <div class="card-header">
+        <div>
+          <p class="eyebrow">STEP2</p>
+          <h2>算定結果の計算実行</h2>
+          <p class="hint">アップロード済みデータから標準報酬月額・標準賞与額を試算します。</p>
+        </div>
+        <span class="status" [class.active]="stepStates.step2 !== '未着手'">{{ stepStates.step2 }}</span>
+      </div>
+  
+      <p class="hint">{{ procedure.type === '賞与算定' ? '取り込んだ賞与データをもとに、標準賞与額の算定を行います' : '取り込んだ 4〜6月の給与データをもとに、標準報酬月額（定時決定）の算定を行います' }}</p>
+      <button class="primary" type="button" (click)="runCalculation()">算定を実行</button>
+  
+      <div class="summary" *ngIf="calculationSummary.executedAt">
+        <p>算定対象社員数: {{ calculationSummary.targets }} / 対象外: {{ calculationSummary.excluded }} / エラー: {{ calculationSummary.errors }}</p>
+        <p>最終実行日時: {{ calculationSummary.executedAt | date:'yyyy/MM/dd HH:mm' }}</p>
+      </div>
+    </section>
+  
+    <section class="card" *ngIf="procedure && calculationResults.length">
+      <div class="card-header">
+        <div>
+          <p class="eyebrow">STEP3</p>
+          <h2>算定結果の確認・修正</h2>
+        </div>
+        <span class="status" [class.active]="stepStates.step3 !== '未着手'">{{ stepStates.step3 }}</span>
+      </div>
+  
+      <div class="summary-grid">
+        <div class="pill">
+          <p class="label">変更あり</p>
+          <p class="value">{{ reviewSummary.changed }}名</p>
+        </div>
+        <div class="pill">
+          <p class="label">変更なし</p>
+          <p class="value">{{ reviewSummary.noChange }}名</p>
+        </div>
+        <div class="pill">
+          <p class="label">対象外</p>
+          <p class="value">{{ reviewSummary.excluded }}名</p>
+        </div>
+        <button class="primary ghost" type="button" (click)="openResultsList()">算定結果一覧を開く</button>
+      </div>
+  
+      <div *ngIf="showResultsList">
+        <div class="filter-row">
+          <button type="button" [class.active]="reviewFilter === 'all'" (click)="changeFilter('all')">すべて</button>
+          <button type="button" [class.active]="reviewFilter === 'changed'" (click)="changeFilter('changed')">変更ありのみ</button>
+          <button type="button" [class.active]="reviewFilter === 'excluded'" (click)="changeFilter('excluded')">対象外のみ</button>
+        </div>
+  
+        <table class="result-table" *ngIf="procedure.type === '定時決定'">
+          <thead>
+            <tr>
+              <th>社員番号</th>
+              <th>氏名</th>
+              <th>部署</th>
+              <th>従前標準報酬月額</th>
+              <th>新標準報酬月額</th>
+              <th>判定</th>
+              <th>3か月平均</th>
+              <th>詳細</th>
+              <th>確認</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let result of filteredResults()" [class.excluded]="result.judgement === '対象外'">
+              <td>{{ result.employeeNo }}</td>
+              <td>{{ result.name }}</td>
+              <td>{{ result.department }}</td>
+              <td>{{ result.type === '定時決定' ? (result.previousStandard | number:'1.0-0') : '' }}</td>
+              <td>{{ result.type === '定時決定' ? (result.newStandard | number:'1.0-0') : '' }}</td>
+              <td><span class="badge" [class.warning]="result.judgement === '増額' || result.judgement === '減額'">{{ result.judgement }}</span></td>
+              <td>{{ result.type === '定時決定' ? (result.judgement === '対象外' ? '対象外' : (result.averageReward | number:'1.0-0')) : '' }}</td>
+              <td><button type="button" (click)="editRecord(result)">編集</button></td>
+              <td>
+                <label class="checkbox small">
+                  <input type="checkbox" [checked]="result.confirmed" (change)="markConfirmed(result, $any($event.target).checked)" />
+                  <span>確認済み</span>
+                </label>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+  
+        <table class="result-table" *ngIf="procedure.type === '賞与算定'">
+          <thead>
+            <tr>
+              <th>社員番号</th>
+              <th>氏名</th>
+              <th>部署</th>
+              <th>賞与支給日</th>
+              <th>賞与名称</th>
+              <th>賞与支給額</th>
+              <th>標準賞与額</th>
+              <th>確認</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let result of filteredResults()" [class.excluded]="result.judgement === '対象外'">
+              <td>{{ result.employeeNo }}</td>
+              <td>{{ result.name }}</td>
+              <td>{{ result.department }}</td>
+              <td>{{ result.type === '賞与算定' ? result.bonusDate : '' }}</td>
+              <td>{{ result.type === '賞与算定' ? result.bonusName : '' }}</td>
+              <td>{{ result.type === '賞与算定' ? (result.paidAmount | number:'1.0-0') : '' }}</td>
+              <td>{{ result.type === '賞与算定' ? (result.standardBonus | number:'1.0-0') : '' }}</td>
+              <td>
+                <label class="checkbox small">
+                  <input type="checkbox" [checked]="result.confirmed" (change)="markConfirmed(result, $any($event.target).checked)" />
+                  <span>確認済み</span>
+                </label>
+              </td>
+              <td><button type="button" (click)="editRecord(result)">編集</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  
+    <section class="card" *ngIf="procedure && calculationResults.length">
+      <div class="card-header">
+        <div>
+          <p class="eyebrow">STEP4</p>
+          <h2>承認依頼（ワークフロー連携）</h2>
+        </div>
+        <span class="status" [class.active]="stepStates.step4 !== '未着手'">{{ stepStates.step4 }}</span>
+      </div>
+  
+      <div *ngIf="!approvalRequest">
+        <p class="hint">承認フローに載せるための申請タイトルとコメントを設定します。</p>
+        <textarea rows="2" [(ngModel)]="approvalComment" placeholder="申請コメント（任意）"></textarea>
+        <button class="primary" type="button" (click)="requestApproval(approvalComment)">承認依頼を作成</button>
+      </div>
+  
+      <div class="approval-box" *ngIf="approvalRequest">
+        <p class="eyebrow">承認依頼</p>
+        <p>タイトル: {{ approvalRequest.title }}</p>
+        <p>コメント: {{ approvalRequest.comment || 'なし' }}</p>
+        <p>添付: {{ approvalRequest.attachments.join(' / ') }}</p>
+        <p>ステータス: <span class="badge" [class.success]="approvalRequest.status === '承認済'" [class.warning]="approvalRequest.status === '差戻し'">{{ approvalRequest.status }}</span></p>
+        <div class="actions-row">
+          <button type="button" (click)="approveRequest()" [disabled]="approvalRequest.status === '承認済'">承認</button>
+          <button type="button" (click)="remandRequest()">差戻し</button>
+          <button type="button" (click)="holdRequest()">保留</button>
+        </div>
+      </div>
+    </section>
+  
+    <section class="card" *ngIf="procedure && approvalRequest?.status === '承認済'">
+      <div class="card-header">
+        <div>
+          <p class="eyebrow">STEP5</p>
+          <h2>確定・マスタ反映／帳票出力</h2>
+        </div>
+        <span class="status" [class.active]="stepStates.step5 !== '未着手'">{{ stepStates.step5 }}</span>
+      </div>
+  
+      <p class="hint">承認済みのデータをCSVとして出力し、確定ボタンでマスタ反映をシミュレートします。</p>
+      <div class="actions-row">
+        <button type="button" (click)="exportCsv()">CSV出力</button>
+        <button class="primary" type="button" (click)="finalizeProcedure()">手続きを確定</button>
+      </div>
+      <p class="hint">電子申請は別システムで実施してください。</p>
+    </section>
+  
+    <div class="modal-backdrop" *ngIf="editingRecord">
+      <div class="modal">
+        <header>
+          <h3>個別編集: {{ editingRecord?.employeeNo }} {{ editingRecord?.name }}</h3>
+          <button type="button" (click)="editingRecord = undefined">×</button>
+        </header>
+        <div *ngIf="editingRecord?.type === '定時決定'">
+          <p>自動算定値: {{ $any(editingRecord).newStandard | number:'1.0-0' }}（等級 {{ $any(editingRecord).newGrade }}）</p>
+          <label class="checkbox small">
+            <input type="checkbox" [(ngModel)]="$any(editingRecord).manualOverride" />
+            <span>新標準報酬月額を手動指定</span>
+          </label>
+          <label>
+            <span>新標準報酬月額</span>
+            <input type="number" [(ngModel)]="$any(editingRecord).newStandard" [disabled]="!$any(editingRecord).manualOverride" />
+          </label>
+          <label>
+            <span>修正理由</span>
+            <input type="text" [(ngModel)]="$any(editingRecord).adjustReason" placeholder="社労士指示など" />
+          </label>
+        </div>
+        <div *ngIf="editingRecord?.type === '賞与算定'">
+          <p>標準賞与額（自動）: {{ $any(editingRecord).standardBonus | number:'1.0-0' }}</p>
+          <label class="checkbox small">
+            <input type="checkbox" [(ngModel)]="$any(editingRecord).manualOverride" />
+            <span>標準賞与額を手動修正</span>
+          </label>
+          <label>
+            <span>標準賞与額</span>
+            <input type="number" [(ngModel)]="$any(editingRecord).standardBonus" [disabled]="!$any(editingRecord).manualOverride" />
+          </label>
+          <label>
+            <span>修正理由</span>
+            <input type="text" [(ngModel)]="$any(editingRecord).adjustReason" placeholder="社労士指示など" />
+          </label>
+        </div>
+        <footer class="actions-row">
+          <button type="button" (click)="editingRecord = undefined">キャンセル</button>
+          <button class="primary" type="button" (click)="saveEdit()">保存</button>
+        </footer>
+      </div>
+    </div>
+  </section>

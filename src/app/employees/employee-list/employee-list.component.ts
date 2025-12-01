@@ -36,7 +36,7 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
     private employeesService = inject(ShahoEmployeesService);
     private destroy$ = new Subject<void>();
 
-  departments = ['営業企画部', '人事総務部', '情報システム部', '大阪支社', '札幌支店'];
+  departments: string[] = [];
 
   employees: EmployeeListItem[] = [];
 
@@ -60,6 +60,7 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe((employees) => {
         this.employees = employees.map((item) => this.toListItem(item));
+        this.extractDepartments();
         this.applyFilters();
         this.isLoading = false;
       });
@@ -161,6 +162,16 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
     });
 
     this.currentPage = 1;
+  }
+
+  private extractDepartments() {
+    const departmentSet = new Set<string>();
+    this.employees.forEach((employee) => {
+      if (employee.department && employee.department.trim()) {
+        departmentSet.add(employee.department);
+      }
+    });
+    this.departments = Array.from(departmentSet).sort();
   }
 
   private toListItem(employee: ShahoEmployee): EmployeeListItem {

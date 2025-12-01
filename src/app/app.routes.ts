@@ -8,6 +8,7 @@ import { EmployeeCreateComponent } from './employees/employee-create/employee-cr
 import { EmployeeImportComponent } from './employees/employee-import/employee-import.component';
 import { ApprovalListComponent } from './approvals/approval-list/approval-list.component';
 import { ApprovalDetailComponent } from './approvals/approval-detail.component';
+import { StandardRemunerationComponent } from './procedures/standard-remuneration/standard-remuneration.component';
 
 export const routes: Routes = [
   {
@@ -57,6 +58,12 @@ export const routes: Routes = [
     component: ApprovalDetailComponent,
     canActivate: [authGuard],
     title: '承認詳細',
+  },
+  {
+    path: 'procedures/standard-remuneration',
+    component: StandardRemunerationComponent,
+    canActivate: [authGuard],
+    title: '標準報酬月額／標準賞与額算定',
   },
   {
     path: '',

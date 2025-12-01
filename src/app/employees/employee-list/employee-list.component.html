@@ -1,15 +1,11 @@
 <section class="employee-list">
     <header class="page-header">
       <div>
-        <p class="eyebrow">社員マスター</p>
         <h1>社員一覧・検索</h1>
-        <p class="hint">
-          社員番号や氏名、所属部署で社員情報を絞り込み、詳細画面に遷移できます。右上のアクションから新規登録やCSVインポートへ進めます。
-        </p>
       </div>
       <div class="action-buttons">
         <button type="button" class="ghost" aria-label="CSVインポート画面へ" (click)="goToImport()">
-          CSVインポート
+          社員情報CSVインポート
         </button>
         <button type="button" class="primary" aria-label="新規社員登録画面へ" (click)="goToCreate()">
           新規社員登録
@@ -20,8 +16,7 @@
     <section class="card search-card">
       <header>
         <div>
-          <p class="eyebrow">検索条件</p>
-          <h2>条件を指定して検索</h2>
+          <h2>社員情報検索</h2>
         </div>
         <div class="search-actions">
           <button type="button" class="ghost" (click)="clear()">クリア</button>
@@ -35,7 +30,7 @@
           <input
             type="text"
             name="employeeNo"
-            placeholder="例：E202501"
+            placeholder="例：202501"
             [(ngModel)]="searchCondition.employeeNo"
           />
         </label>
@@ -61,10 +56,7 @@
     <section class="card table-card">
       <header>
         <div>
-          <p class="eyebrow">社員一覧</p>
-          <h2>検索結果</h2>
         </div>
-        <p class="hint">行クリックまたは「詳細」から社員詳細画面へ移動します。</p>
       </header>
   
       <div class="table-wrapper">
