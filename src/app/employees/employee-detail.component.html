@@ -38,29 +38,37 @@
                         <p class="value">{{ employee?.name || '—' }}</p>
                     </div>
                     <div>
+                        <label>生年月日</label>
+                        <p class="value">{{ basicInfo.birthDate ? (basicInfo.birthDate | date: 'yyyy/MM/dd') : '—' }}
+                        </p>
+                    </div>
+                    <div>
                         <label>性別</label>
                         <p class="value">{{ basicInfo.gender || '—' }}</p>
                     </div>
                     <div>
-                        <label>生年月日</label>
-                        <p class="value">{{ basicInfo.birthDate ? (basicInfo.birthDate | date: 'yyyy/MM/dd') : '—' }}
-                        </p>
+                        <label>郵便番号</label>
+                        <p class="value">{{ basicInfo.postalCode || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>住所</label>
+                        <p class="value">{{ formattedAddress || '—' }}</p>
                     </div>
                     <div>
                         <label>所属部署</label>
                         <p class="value">{{ employee?.department || '—' }}</p>
                     </div>
                     <div>
-                        <label>所属部署コード</label>
-                        <p class="value">{{ basicInfo.departmentCode || '—' }}</p>
-                    </div>
-                    <div>
-                        <label>勤務地都道府県コード</label>
-                        <p class="value">{{ basicInfo.workPrefectureCode || '—' }}</p>
-                    </div>
-                    <div>
                         <label>勤務地都道府県</label>
                         <p class="value">{{ basicInfo.workPrefecture || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>個人番号</label>
+                        <p class="value">{{ basicInfo.personalNumber || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>基礎年金番号</label>
+                        <p class="value">{{ basicInfo.basicPensionNumber || '—' }}</p>
                     </div>
                 </div>
             </article>
@@ -105,131 +113,116 @@
                 </div>
                 <div class="grid two-col insurance-form">
                     <div>
-                        <label>現在の標準報酬月額</label>
-                        <p class="value">{{ socialInsurance.standardMonthly | number }} 円</p>
+                        <label>標準報酬月額</label>
+                        <p class="value">{{ displayAmount(socialInsurance.standardMonthly) }}</p>
                     </div>
                     <div>
-                        <label>被保険者番号</label>
-                        <input type="text" [(ngModel)]="socialInsurance.insuredNumber" />
+                        <label>標準賞与額年度累計</label>
+                        <p class="value">{{ displayAmount(socialInsurance.standardBonusAnnualTotal) }}</p>
                     </div>
-                    <div class="toggle-block">
-                        <div class="toggle-label">
-                            <label>介護保険第2号被保険者</label>
-                            <p class="hint small">生年月日から自動判定。</p>
-                        </div>
-                        <div class="toggle-controls">
-                            <label class="switch">
-                                <input type="checkbox" [(ngModel)]="socialInsurance.careSecondInsured" />
-                                <span></span>
-                            </label>
-                            <button type="button" class="outline" (click)="recalcCareFlag()">
-                                自動判定を再計算
-                            </button>
-                        </div>
+                    <div>
+                        <label>被保険者番号ー健康保険</label>
+                        <p class="value">{{ socialInsurance.healthInsuredNumber || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>被保険者番号ー厚生年金</label>
+                        <p class="value">{{ socialInsurance.pensionInsuredNumber || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>介護保険第2号被保険者フラグ</label>
+                        <p class="value">{{ socialInsurance.careSecondInsured ? 'ON' : 'OFF' }}</p>
                     </div>
                     <div>
                         <label>健康保険 資格取得日</label>
-                        <input type="date" [(ngModel)]="socialInsurance.healthAcquisition" />
+                        <p class="value">{{ socialInsurance.healthAcquisition ? (socialInsurance.healthAcquisition | date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
                         <label>厚生年金 資格取得日</label>
-                        <input type="date" [(ngModel)]="socialInsurance.pensionAcquisition" />
+                        <p class="value">{{ socialInsurance.pensionAcquisition ? (socialInsurance.pensionAcquisition | date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
-                    <div class="toggle-block">
-                        <div class="toggle-label">
-                            <label>健康保険料・厚生年金一時免除</label>
-                            <p class="hint small">産休・育休等で免除する場合にON。ON時に帳票計算が免除扱いになります。</p>
-                        </div>
-                        <div class="toggle-controls">
-                            <label class="switch">
-                                <input type="checkbox" [(ngModel)]="socialInsurance.exemption" />
-                                <span></span>
-                            </label>
-                        </div>
+                    <div>
+                        <label>育休開始日</label>
+                        <p class="value">{{ socialInsurance.childcareLeaveStart ? (socialInsurance.childcareLeaveStart | date: 'yyyy/MM/dd') : '—' }}</p>
+                    </div>
+                    <div>
+                        <label>育休終了日</label>
+                        <p class="value">{{ socialInsurance.childcareLeaveEnd ? (socialInsurance.childcareLeaveEnd | date: 'yyyy/MM/dd') : '—' }}</p>
+                    </div>
+                    <div>
+                        <label>産休開始日</label>
+                        <p class="value">{{ socialInsurance.maternityLeaveStart ? (socialInsurance.maternityLeaveStart | date: 'yyyy/MM/dd') : '—' }}</p>
+                    </div>
+                    <div>
+                        <label>産休終了日</label>
+                        <p class="value">{{ socialInsurance.maternityLeaveEnd ? (socialInsurance.maternityLeaveEnd | date: 'yyyy/MM/dd') : '—' }}</p>
+                    </div>
+                    <div>
+                        <label>健康保険・厚生年金一時免除フラグ</label>
+                        <p class="value">{{ socialInsurance.exemption ? 'ON' : 'OFF' }}</p>
                     </div>
                 </div>
             </article>
         </section>
 
-        <section *ngIf="selectedTab === 'standard-pay'" class="tab-body">
-            <p class="hint note">
-                外部給与システムから標準報酬月額を取り込めない場合や、定時決定で一括再計算を行う場合に使用します。
-            </p>
-            <div class="toolbar">
-                <label>算定年度</label>
-                <select *ngIf="selectedSalaryYear" [ngModel]="selectedSalaryYear.year" (ngModelChange)="selectSalaryYear($event)">
-                    <option *ngFor="let item of salaryCalculations" [value]="item.year">{{ item.year }}年</option>
-                </select>
-                <button type="button" class="outline" (click)="addNewYear()">＋新規年度追加</button>
-            </div>
-
-            <article *ngIf="selectedSalaryYear; else noPayrollData" class="card">
-                <div class="grid three-col">
+        <section *ngIf="selectedTab === 'insurance-history'" class="tab-body">
+            <article class="card">
+                <div class="card-header">
                     <div>
-                        <label>算定年度</label>
-                        <input type="number" [(ngModel)]="selectedSalaryYear.year" />
+                        <p class="eyebrow">期間と表示設定</p>
+                        <h2>社会保険データ履歴</h2>
                     </div>
-                    <div>
-                        <label>算定対象期間 開始年月</label>
-                        <input type="month" [(ngModel)]="selectedSalaryYear.periodStart" />
-                    </div>
-                    <div>
-                        <label>算定対象期間 終了年月</label>
-                        <input type="month" [(ngModel)]="selectedSalaryYear.periodEnd" />
-                    </div>
+                    <p class="hint">過去36か月まで選択できます。</p>
                 </div>
-
-                <div class="grid three-col">
+                <div class="grid three-col filters">
                     <div>
-                        <label>4月報酬額</label>
-                        <input type="number" [(ngModel)]="selectedSalaryYear.april.amount" />
+                        <label>開始期間</label>
+                        <input type="month" [ngModel]="insuranceHistoryFilter.start"
+                            (ngModelChange)="updateInsuranceHistoryRange('start', $event)" />
                     </div>
                     <div>
-                        <label>4月支払基礎日数</label>
-                        <input type="number" [(ngModel)]="selectedSalaryYear.april.days" />
+                        <label>終了期間</label>
+                        <input type="month" [ngModel]="insuranceHistoryFilter.end"
+                            (ngModelChange)="updateInsuranceHistoryRange('end', $event)" />
                     </div>
                     <div>
-                        <label>5月報酬額</label>
-                        <input type="number" [(ngModel)]="selectedSalaryYear.may.amount" />
-                    </div>
-                    <div>
-                        <label>5月支払基礎日数</label>
-                        <input type="number" [(ngModel)]="selectedSalaryYear.may.days" />
-                    </div>
-                    <div>
-                        <label>6月報酬額</label>
-                        <input type="number" [(ngModel)]="selectedSalaryYear.june.amount" />
-                    </div>
-                    <div>
-                        <label>6月支払基礎日数</label>
-                        <input type="number" [(ngModel)]="selectedSalaryYear.june.days" />
-                    </div>
-                </div>
-
-                <div class="toolbar">
-                    <button type="button" class="outline" (click)="recalcAverage(selectedSalaryYear)">平均を再計算</button>
-                </div>
-
-                <div class="grid three-col">
-                    <div>
-                        <label>3か月平均報酬額</label>
-                        <p class="value">{{ selectedSalaryYear.average | number }} 円</p>
-                    </div>
-                    <div>
-                        <label>新標準報酬月額</label>
-                        <input type="number" [(ngModel)]="selectedSalaryYear.newStandard" />
-                    </div>
-                    <div>
-                        <label>旧標準報酬月額</label>
-                        <p class="value">{{ selectedSalaryYear.oldStandard | number }} 円</p>
+                        <label>表示モード</label>
+                        <select [ngModel]="insuranceHistoryFilter.mode" (ngModelChange)="changeDisplayMode($event)">
+                            <option value="all">月給・賞与をすべて表示</option>
+                            <option value="without-bonus">賞与抜きで表示</option>
+                            <option value="bonus-only">賞与のみ表示</option>
+                        </select>
                     </div>
                 </div>
             </article>
-            <ng-template #noPayrollData>
-                <article class="card">
-                    <p>給与データがありません。「＋新規年度追加」ボタンから年度を追加してください。</p>
-                </article>
-            </ng-template>
+
+            <article class="card">
+                <div class="card-header">
+                    <div>
+                        <p class="eyebrow">保険料・報酬推移</p>
+                        <h2>社会保険データ履歴テーブル</h2>
+                    </div>
+                    <p class="hint">選択された期間の月単位で履歴を確認できます。</p>
+                </div>
+                <div class="table-wrapper" *ngIf="displayedMonths.length; else noHistoryRange">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>区分</th>
+                                <th *ngFor="let month of displayedMonths">{{ month | date: 'yyyy年MM月' }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr *ngFor="let row of visibleHistoryRows">
+                                <th scope="row">{{ row.label }}</th>
+                                <td *ngFor="let month of displayedMonths">{{ getHistoryValue(month, row.key) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <ng-template #noHistoryRange>
+                    <p class="hint">表示可能な期間を選択してください（最大36か月）。</p>
+                </ng-template>
+            </article>
         </section>
 
         <section *ngIf="selectedTab === 'bonus'" class="tab-body">

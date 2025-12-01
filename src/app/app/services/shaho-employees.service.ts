@@ -21,14 +21,27 @@ export interface ShahoEmployee {
   kana?: string;
   gender?: string;
   birthDate?: string;
+  postalCode?: string;
+  address?: string;
   department?: string;
   departmentCode?: string;
   workPrefecture?: string;
   workPrefectureCode?: string;
+  personalNumber?: string;
+  basicPensionNumber?: string;
   standardMonthly?: number;
+  standardBonusAnnualTotal?: number;
+  healthInsuredNumber?: string;
+  pensionInsuredNumber?: string;
   insuredNumber?: string; // 被保険者番号
+  careSecondInsured?: boolean;
   healthAcquisition?: string;
   pensionAcquisition?: string;
+  childcareLeaveStart?: string;
+  childcareLeaveEnd?: string;
+  maternityLeaveStart?: string;
+  maternityLeaveEnd?: string;
+  exemption?: boolean;
   // 監査情報
   createdAt?: string | Date;
   updatedAt?: string | Date;

@@ -2,12 +2,8 @@ import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { Subject, of, switchMap, takeUntil, combineLatest } from 'rxjs';
-import {
-  PayrollData,
-  ShahoEmployee,
-  ShahoEmployeesService,
-} from '../app/services/shaho-employees.service';
+import { Subject, of, switchMap, takeUntil } from 'rxjs';
+import { ShahoEmployee, ShahoEmployeesService } from '../app/services/shaho-employees.service';
 
 interface AuditInfo {
   registeredAt: string;
@@ -18,29 +14,18 @@ interface AuditInfo {
 }
 
 interface SocialInsuranceInfo {
-  standardMonthly: number;
-  insuredNumber: string;
+  standardMonthly: number | null;
+  standardBonusAnnualTotal: number | null;
+  healthInsuredNumber: string;
+  pensionInsuredNumber: string;
   careSecondInsured: boolean;
   healthAcquisition: string;
   pensionAcquisition: string;
+  childcareLeaveStart: string;
+  childcareLeaveEnd: string;
+  maternityLeaveStart: string;
+  maternityLeaveEnd: string;
   exemption: boolean;
-}
-
-interface SalaryMonth {
-  amount: number;
-  days: number;
-}
-
-interface SalaryCalculationYear {
-  year: number;
-  periodStart: string;
-  periodEnd: string;
-  april: SalaryMonth;
-  may: SalaryMonth;
-  june: SalaryMonth;
-  average: number;
-  newStandard: number;
-  oldStandard: number;
 }
 
 interface BonusRecord {
@@ -64,6 +49,20 @@ interface HistoryRecord {
   groupId: string;
 }
 
+interface SocialInsuranceHistoryData {
+  monthlySalary?: number;
+  workedDays?: number;
+  healthInsuranceMonthly?: number;
+  careInsuranceMonthly?: number;
+  pensionMonthly?: number;
+  bonusPaidOn?: string;
+  bonusTotal?: number;
+  standardBonus?: number;
+  healthInsuranceBonus?: number;
+  careInsuranceBonus?: number;
+  pensionBonus?: number;
+}
+
 @Component({
   selector: 'app-employee-detail',
   standalone: true,
@@ -78,7 +77,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   tabs = [
     { key: 'basic', label: '基本情報' },
     { key: 'insurance', label: '社会保険情報' },
-    { key: 'standard-pay', label: '標準報酬月額算定' },
+    { key: 'insurance-history', label: '社会保険データ履歴' },
     { key: 'bonus', label: '標準賞与額算定' },
     { key: 'history', label: '変更履歴' },
   ];
@@ -95,9 +94,13 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   basicInfo = {
     gender: '',
     birthDate: '',
+    postalCode: '',
+    address: '',
     departmentCode: '',
     workPrefectureCode: '',
     workPrefecture: '',
+    personalNumber: '',
+    basicPensionNumber: '',
   };
 
   auditInfo: AuditInfo = {
@@ -109,16 +112,45 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   };
 
   socialInsurance: SocialInsuranceInfo = {
-    standardMonthly: 0,
-    insuredNumber: '',
+    standardMonthly: null,
+    standardBonusAnnualTotal: null,
+    healthInsuredNumber: '',
+    pensionInsuredNumber: '',
     careSecondInsured: false,
     healthAcquisition: '',
     pensionAcquisition: '',
+    childcareLeaveStart: '',
+    childcareLeaveEnd: '',
+    maternityLeaveStart: '',
+    maternityLeaveEnd: '',
     exemption: false,
   };
 
-  salaryCalculations: SalaryCalculationYear[] = [];
-  selectedSalaryYear: SalaryCalculationYear | null = null;
+  insuranceHistoryFilter = {
+    start: this.formatMonthForInput(this.addMonths(new Date(), -2)),
+    end: this.formatMonthForInput(new Date()),
+    mode: 'all' as 'all' | 'without-bonus' | 'bonus-only',
+  };
+
+  displayedMonths: Date[] = [];
+  socialInsuranceHistory: Record<string, SocialInsuranceHistoryData> = {};
+  historyRowDefinitions: {
+    key: keyof SocialInsuranceHistoryData;
+    label: string;
+    category: 'monthly' | 'bonus';
+  }[] = [
+    { key: 'monthlySalary', label: '月給支払額', category: 'monthly' },
+    { key: 'workedDays', label: '支払基礎日数', category: 'monthly' },
+    { key: 'healthInsuranceMonthly', label: '健康保険（月給）', category: 'monthly' },
+    { key: 'careInsuranceMonthly', label: '介護保険（月給）', category: 'monthly' },
+    { key: 'pensionMonthly', label: '厚生年金（月給）', category: 'monthly' },
+    { key: 'bonusPaidOn', label: '賞与支給日', category: 'bonus' },
+    { key: 'bonusTotal', label: '賞与総支給額', category: 'bonus' },
+    { key: 'standardBonus', label: '標準賞与額', category: 'bonus' },
+    { key: 'healthInsuranceBonus', label: '健康保険（賞与）', category: 'bonus' },
+    { key: 'careInsuranceBonus', label: '介護保険（賞与）', category: 'bonus' },
+    { key: 'pensionBonus', label: '厚生年金（賞与）', category: 'bonus' },
+  ];
 
   bonusRecords: BonusRecord[] = [
     {
@@ -194,6 +226,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   groupedHistory: HistoryRecord[] = [];
 
   ngOnInit(): void {
+    this.refreshDisplayedMonths();
     this.route.paramMap
       .pipe(
         takeUntil(this.destroy$),
@@ -202,21 +235,17 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           if (!id) {
             this.isLoading = false;
             this.notFound = true;
-            return of({ employee: null, payrolls: [] });
+            return of(null);
           }
           this.isLoading = true;
-          return combineLatest({
-            employee: this.employeesService.getEmployeeById(id),
-            payrolls: this.employeesService.getPayrolls(id),
-          });
+          return this.employeesService.getEmployeeById(id);
         }),
       )
-      .subscribe(({ employee, payrolls }) => {
+      .subscribe((employee) => {
         this.isLoading = false;
         if (employee) {
           this.notFound = false;
           this.applyEmployeeData(employee);
-          this.loadPayrolls(payrolls);
         } else {
           this.employee = null;
           this.notFound = true;
@@ -233,43 +262,82 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     this.selectedTab = key;
   }
 
+  get formattedAddress(): string {
+    const postal = this.basicInfo.postalCode?.trim();
+    const address = this.basicInfo.address?.trim();
+
+    if (postal && address) return `〒${postal} ${address}`;
+    if (postal) return `〒${postal}`;
+    if (address) return address;
+    return '';
+  }
+
+  displayAmount(value: number | null | undefined): string {
+    if (value === null || value === undefined) return '—';
+    return `${value.toLocaleString()} 円`;
+  }
+
+
   recalcCareFlag() {
     const birthDate = new Date(this.basicInfo.birthDate);
     const age = this.calculateAge(birthDate);
     this.socialInsurance.careSecondInsured = age >= 40 && age < 65;
   }
 
-  recalcAverage(year: SalaryCalculationYear) {
-    const total = year.april.amount + year.may.amount + year.june.amount;
-    year.average = Math.round(total / 3);
-    year.newStandard = Math.round(year.average / 1000) * 1000;
+  updateInsuranceHistoryRange(field: 'start' | 'end', value: string) {
+    this.insuranceHistoryFilter = { ...this.insuranceHistoryFilter, [field]: value };
+    this.refreshDisplayedMonths();
   }
 
-  addNewYear() {
-    const latestYear = this.salaryCalculations[0]?.year ?? new Date().getFullYear();
-    const nextYear = latestYear + 1;
-    const newYear: SalaryCalculationYear = {
-      year: nextYear,
-      periodStart: `${nextYear}-04`,
-      periodEnd: `${nextYear}-06`,
-      april: { amount: 0, days: 0 },
-      may: { amount: 0, days: 0 },
-      june: { amount: 0, days: 0 },
-      average: 0,
-      newStandard: 0,
-      oldStandard: this.selectedSalaryYear?.newStandard ?? 0,
-    };
-    this.salaryCalculations = [newYear, ...this.salaryCalculations];
-    this.selectedSalaryYear = newYear;
+  changeDisplayMode(mode: 'all' | 'without-bonus' | 'bonus-only') {
+    this.insuranceHistoryFilter = { ...this.insuranceHistoryFilter, mode };
   }
 
-  selectSalaryYear(year: number) {
-    const target = this.salaryCalculations.find((item) => item.year === year);
-    if (target) {
-      this.selectedSalaryYear = target;
-    } else {
-      this.selectedSalaryYear = null;
+  get visibleHistoryRows() {
+    if (this.insuranceHistoryFilter.mode === 'bonus-only') {
+      return this.historyRowDefinitions.filter((row) => row.category === 'bonus');
     }
+    if (this.insuranceHistoryFilter.mode === 'without-bonus') {
+      return this.historyRowDefinitions.filter((row) => row.category === 'monthly');
+    }
+    return this.historyRowDefinitions;
+  }
+
+  getHistoryValue(month: Date, key: keyof SocialInsuranceHistoryData) {
+    const record = this.socialInsuranceHistory[this.getMonthKey(month)];
+    const value = record?.[key];
+    if (value === undefined || value === null || value === '') {
+      return '—';
+    }
+    if (typeof value === 'number') {
+      return value.toLocaleString();
+    }
+    return value;
+  }
+
+  private refreshDisplayedMonths() {
+    const start = this.parseMonthInput(this.insuranceHistoryFilter.start);
+    const end = this.parseMonthInput(this.insuranceHistoryFilter.end);
+
+    if (!start || !end) {
+      this.displayedMonths = [];
+      return;
+    }
+
+    let [effectiveStart, effectiveEnd] = start <= end ? [start, end] : [end, start];
+
+    const threeYearsAgo = this.addMonths(effectiveEnd, -35);
+    if (effectiveStart < threeYearsAgo) {
+      effectiveStart = threeYearsAgo;
+    }
+
+    const months: Date[] = [];
+    let cursor = new Date(effectiveStart);
+    while (cursor <= effectiveEnd) {
+      months.push(new Date(cursor));
+      cursor = this.addMonths(cursor, 1);
+    }
+    this.displayedMonths = months;
   }
 
   selectBonus(id: string) {
@@ -312,6 +380,30 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     this.groupedHistory = [];
   }
 
+  private addMonths(date: Date, months: number): Date {
+    const result = new Date(date);
+    result.setMonth(result.getMonth() + months);
+    return result;
+  }
+
+  private parseMonthInput(value: string): Date | null {
+    if (!/^\d{4}-\d{2}$/.test(value)) {
+      return null;
+    }
+    const [year, month] = value.split('-').map(Number);
+    return new Date(year, month - 1, 1);
+  }
+
+  private formatMonthForInput(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  }
+
+  private getMonthKey(date: Date): string {
+    return this.formatMonthForInput(date);
+  }
+
   private calculateAge(birthDate: Date): number {
     const today = new Date();
     let age = today.getFullYear() - birthDate.getFullYear();
@@ -348,17 +440,29 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     this.basicInfo = {
       gender: employee.gender ?? '',
       birthDate: employee.birthDate ?? '',
+      postalCode: employee.postalCode ?? '',
+      address: employee.address ?? '',
       departmentCode: employee.departmentCode ?? '',
       workPrefectureCode: employee.workPrefectureCode ?? '',
       workPrefecture: employee.workPrefecture ?? '',
+      personalNumber: employee.personalNumber ?? '',
+      basicPensionNumber: employee.basicPensionNumber ?? '',
     };
 
     this.socialInsurance = {
       ...this.socialInsurance,
-      standardMonthly: employee.standardMonthly ?? 0,
-      insuredNumber: employee.insuredNumber ?? '',
+      standardMonthly: employee.standardMonthly ?? null,
+      standardBonusAnnualTotal: employee.standardBonusAnnualTotal ?? null,
+      healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
+      pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
       healthAcquisition: this.formatDateForInput(employee.healthAcquisition),
       pensionAcquisition: this.formatDateForInput(employee.pensionAcquisition),
+      childcareLeaveStart: this.formatDateForInput(employee.childcareLeaveStart),
+      childcareLeaveEnd: this.formatDateForInput(employee.childcareLeaveEnd),
+      maternityLeaveStart: this.formatDateForInput(employee.maternityLeaveStart),
+      maternityLeaveEnd: this.formatDateForInput(employee.maternityLeaveEnd),
+      careSecondInsured: employee.careSecondInsured ?? this.socialInsurance.careSecondInsured,
+      exemption: employee.exemption ?? this.socialInsurance.exemption,
     };
 
     // 監査情報を反映
@@ -388,67 +492,4 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       this.recalcCareFlag();
     }
   }
-
-  private loadPayrolls(payrolls: PayrollData[]): void {
-    // 給与データを年度ごとにグループ化
-    const payrollMap = new Map<number, PayrollData[]>();
-    
-    payrolls.forEach((payroll) => {
-      const [year] = payroll.yearMonth.split('-').map(Number);
-      if (!payrollMap.has(year)) {
-        payrollMap.set(year, []);
-      }
-      payrollMap.get(year)!.push(payroll);
-    });
-
-    // 年度ごとにSalaryCalculationYear形式に変換
-    this.salaryCalculations = Array.from(payrollMap.entries())
-      .map(([year, yearPayrolls]) => {
-        const april = yearPayrolls.find((p) => p.yearMonth === `${year}-04`);
-        const may = yearPayrolls.find((p) => p.yearMonth === `${year}-05`);
-        const june = yearPayrolls.find((p) => p.yearMonth === `${year}-06`);
-
-        const aprilData: SalaryMonth = {
-          amount: april?.amount ?? 0,
-          days: april?.workedDays ?? 0,
-        };
-        const mayData: SalaryMonth = {
-          amount: may?.amount ?? 0,
-          days: may?.workedDays ?? 0,
-        };
-        const juneData: SalaryMonth = {
-          amount: june?.amount ?? 0,
-          days: june?.workedDays ?? 0,
-        };
-
-        const total = aprilData.amount + mayData.amount + juneData.amount;
-        const average = total > 0 ? Math.round(total / 3) : 0;
-        const newStandard = Math.round(average / 1000) * 1000;
-
-        // 前年度の標準報酬月額を取得（前年度のデータがある場合）
-        const prevYear = year - 1;
-        const prevYearData = this.salaryCalculations.find((sc) => sc.year === prevYear);
-        const oldStandard = prevYearData?.newStandard ?? this.employee?.standardMonthly ?? 0;
-
-        return {
-          year,
-          periodStart: `${year}-04`,
-          periodEnd: `${year}-06`,
-          april: aprilData,
-          may: mayData,
-          june: juneData,
-          average,
-          newStandard,
-          oldStandard,
-        };
-      })
-      .sort((a, b) => b.year - a.year); // 年度の降順でソート
-
-    // 最初の年度を選択
-    if (this.salaryCalculations.length > 0) {
-      this.selectedSalaryYear = this.salaryCalculations[0];
-    } else {
-      this.selectedSalaryYear = null;
-    }
   }
-}
