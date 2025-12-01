@@ -9,19 +9,21 @@ import {
   } from './csv-import.types';
   
   const DATE_FIELDS = ['入社日', '生年月日', '賞与支給日'];
-  const YEAR_MONTH_FIELDS = ['算定対象期間開始年月', '算定対象期間終了年月', '算定年度', '賞与支給年度'];
+  const YEAR_MONTH_FIELDS = ['算定対象期間開始年月', '算定対象期間終了年月', '算定年度', '賞与支給年度', '月給支払月'];
   const NUMBER_FIELDS = [
-    '現在標準報酬月額',
     '標準報酬月額',
     '4月報酬額',
     '5月報酬額',
     '6月報酬額',
     '賞与総支給額',
+    '月給支払額',
+    '支払基礎日数',
     '4月支払基礎日数',
     '5月支払基礎日数',
     '6月支払基礎日数',
   ];
-  const INSURANCE_NUMBER_FIELDS = ['被保険者番号'];
+  const POSTAL_CODE_FIELDS = ['郵便番号'];
+  const ADDRESS_FIELDS = ['住所'];
   const FLAG_FIELDS = ['介護保険第2号フラグ', '一時免除フラグ（健康保険料・厚生年金一時免除）'];
   
   const REQUIRED_FIELDS: Record<TemplateType, string[]> = {
@@ -33,13 +35,10 @@ import {
       '生年月日',
       '所属部署名',
       '勤務地都道府県名',
-      '現在標準報酬月額',
-      '被保険者番号',
       '健康保険資格取得日',
       '厚生年金資格取得日',
     ],
-    salary: ['社員番号', '氏名漢字', '算定年度', '算定対象期間開始年月', '算定対象期間終了年月'],
-    bonus: ['社員番号', '賞与支給日', '賞与総支給額'],
+    payroll: ['社員番号', '氏名(漢字)'],
     unknown: [],
   };
   
@@ -143,19 +142,16 @@ import {
     const normalizedHeaders = headers.map((h) => h.toLowerCase());
     const headerSet = new Set(normalizedHeaders);
 
-    if (headerSet.has('賞与支給日') || headerSet.has('賞与総支給額')) {
-      return 'bonus';
-    }
-
-    if (headerSet.has('算定年度') || headerSet.has('4月報酬額') || headers.length === 24) {
-      return 'salary';
+    // 月給/賞与支払額同期用テンプレートの判定（月給支払月と月給支払額を含む場合）
+    if (headerSet.has('月給支払月') && headerSet.has('月給支払額')) {
+      return 'payroll';
     }
 
     // 新規登録/一括更新用テンプレートの判定
-    // 11項目（社員番号、氏名(漢字)、氏名(カナ)、性別、生年月日、所属部署名、勤務地都道府県名、現在標準報酬月額、被保険者番号、健康保険資格取得日、厚生年金資格取得日）
-    // または、旧形式の15項目以上
+    // 11項目（旧形式）、24項目（新形式）、または15項目以上で氏名(漢字)を含む場合
     if (
       headers.length === 11 ||
+      headers.length === 24 ||
       (headers.length >= 15 && (headerSet.has('氏名(漢字)') || headerSet.has('氏名漢字')))
     ) {
       return 'new';
@@ -176,11 +172,59 @@ import {
     });
   }
   
-  export function validateRequiredFields(row: ParsedRow, templateType: TemplateType): ValidationError[] {
-    const requiredFields = REQUIRED_FIELDS[templateType];
-    return requiredFields
-      .filter((field) => !row.data[field] || row.data[field].trim().length === 0)
-      .map((fieldName) => buildError(row.rowIndex, fieldName, `${fieldName}は必須です`, templateType));
+  export function validateRequiredFields(
+    row: ParsedRow,
+    templateType: TemplateType,
+    existingEmployees?: ExistingEmployee[],
+  ): ValidationError[] {
+    let requiredFields = REQUIRED_FIELDS[templateType];
+    
+    // 新規登録/一括更新用テンプレートの場合、既存社員の有無で必須項目を変更
+    if (templateType === 'new' && existingEmployees) {
+      const employeeNo = row.data['社員番号'] || '';
+      const existingEmployee = existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+      
+      if (existingEmployee) {
+        // 既存社員が見つかった場合 → 一括更新モード
+        // 必須項目は「社員番号」と「氏名(漢字)」のみ
+        requiredFields = ['社員番号', '氏名(漢字)'];
+      }
+      // 既存社員が見つからない場合 → 新規登録モード（現在の必須項目のまま）
+    }
+    
+    const errors: ValidationError[] = [];
+    
+    requiredFields.forEach((field) => {
+      // フィールド名のバリエーションをチェック（スペースあり/なし、新旧形式など）
+      const fieldVariations = [
+        field,
+        field.replace(/\s+/g, ''), // スペースを削除
+        field.replace(/([^（])（/g, '$1(').replace(/）/g, ')'), // 全角カッコを半角に
+      ];
+      
+      // フィールド名のマッピング（新旧形式の対応）
+      const fieldMapping: Record<string, string[]> = {
+        '健康保険資格取得日': ['健康保険資格取得日', '健康保険 資格取得日'],
+        '厚生年金資格取得日': ['厚生年金資格取得日', '厚生年金 資格取得日'],
+        '氏名(漢字)': ['氏名(漢字)', '氏名漢字'],
+      };
+      
+      // マッピングがある場合はそれを使用、ない場合はバリエーションを使用
+      const fieldsToCheck = fieldMapping[field] || fieldVariations;
+      
+      // いずれかのフィールド名で値が存在するかチェック
+      const hasValue = fieldsToCheck.some((f) => {
+        const value = row.data[f];
+        return value && value.trim().length > 0;
+      });
+      
+      if (!hasValue) {
+        // エラーメッセージ用に元のフィールド名を使用
+        errors.push(buildError(row.rowIndex, field, `${field}は必須です`, templateType));
+      }
+    });
+    
+    return errors;
   }
   
   export function validateDataFormat(row: ParsedRow, templateType: TemplateType): ValidationError[] {
@@ -222,14 +266,30 @@ import {
       }
     });
 
-    // 被保険者番号の検証（数字のみ、またはハイフンを含む形式）
-    INSURANCE_NUMBER_FIELDS.forEach((field) => {
+    // 郵便番号の検証（7桁の数字、ハイフンは任意）
+    POSTAL_CODE_FIELDS.forEach((field) => {
       const value = row.data[field];
       if (!value) return;
       // データは既に正規化済み
-      // 数字のみ、またはハイフンを含む形式（例：12345678 または 12345678-9）
-      if (!/^\d+(-\d+)?$/.test(value)) {
-        errors.push(buildError(row.rowIndex, field, `${field}は数字のみで入力してください（ハイフンを含む場合は末尾のみ）`, templateType));
+      // 7桁の数字（ハイフンは任意）：123-4567 または 1234567
+      // ハイフンがある場合は3桁-4桁の形式のみ許可
+      const normalized = value.replace(/-/g, '');
+      if (!/^\d{7}$/.test(normalized)) {
+        errors.push(buildError(row.rowIndex, field, `${field}は7桁の数字で入力してください（例：123-4567 または 1234567）`, templateType));
+      } else if (value.includes('-') && !/^\d{3}-\d{4}$/.test(value)) {
+        // ハイフンがある場合は3桁-4桁の形式のみ許可
+        errors.push(buildError(row.rowIndex, field, `${field}は123-4567形式で入力してください`, templateType));
+      }
+    });
+
+    // 住所の検証（最大80文字）
+    ADDRESS_FIELDS.forEach((field) => {
+      const value = row.data[field];
+      if (!value) return;
+      // データは既に正規化済み
+      // 最大80文字まで許可
+      if (value.length > 80) {
+        errors.push(buildError(row.rowIndex, field, `${field}は最大80文字まで入力できます（現在${value.length}文字）`, templateType));
       }
     });
 
@@ -334,18 +394,47 @@ import {
         errors.push(buildError(row.rowIndex, '入社日', '入社日が生年月日より前です', templateType, 'warning'));
       }
     }
-  
-    if (templateType === 'salary') {
-      // データは既に正規化済み
-      const salaryValue = row.data['現在標準報酬月額'];
-      const aprilValue = row.data['4月報酬額'];
-      const salary = salaryValue ? Number(salaryValue.replace(/,/g, '')) : NaN;
-      const april = aprilValue ? Number(aprilValue.replace(/,/g, '')) : NaN;
-      if (!Number.isNaN(salary) && !Number.isNaN(april) && april > salary * 2) {
-        errors.push(buildError(row.rowIndex, '4月報酬額', '報酬額が標準報酬月額と大きく乖離しています', templateType, 'warning'));
+
+    // 月給/賞与支払額同期用テンプレートの場合、月給支払月・月給支払額・支払基礎日数は同時に存在する必要がある
+    if (templateType === 'payroll') {
+      const monthlyPayMonth = row.data['月給支払月'];
+      const monthlyPayAmount = row.data['月給支払額'];
+      const workedDays = row.data['支払基礎日数'];
+      
+      // どれか一つでも入力されているかチェック
+      const hasAnyMonthlyField = !!(monthlyPayMonth?.trim() || monthlyPayAmount?.trim() || workedDays?.trim());
+      
+      if (hasAnyMonthlyField) {
+        // 一つでも入力されている場合、全て入力されている必要がある
+        if (!monthlyPayMonth?.trim()) {
+          errors.push(buildError(row.rowIndex, '月給支払月', '月給支払月、月給支払額、支払基礎日数は同時に入力する必要があります', templateType));
+        }
+        if (!monthlyPayAmount?.trim()) {
+          errors.push(buildError(row.rowIndex, '月給支払額', '月給支払月、月給支払額、支払基礎日数は同時に入力する必要があります', templateType));
+        }
+        if (!workedDays?.trim()) {
+          errors.push(buildError(row.rowIndex, '支払基礎日数', '月給支払月、月給支払額、支払基礎日数は同時に入力する必要があります', templateType));
+        }
+      }
+
+      // 賞与支給日と賞与総支給額は同時に存在する必要がある
+      const bonusPaidOn = row.data['賞与支給日'];
+      const bonusTotal = row.data['賞与総支給額'];
+      
+      // どちらか一つでも入力されているかチェック
+      const hasAnyBonusField = !!(bonusPaidOn?.trim() || bonusTotal?.trim());
+      
+      if (hasAnyBonusField) {
+        // 一つでも入力されている場合、両方入力されている必要がある
+        if (!bonusPaidOn?.trim()) {
+          errors.push(buildError(row.rowIndex, '賞与支給日', '賞与支給日と賞与総支給額は同時に入力する必要があります', templateType));
+        }
+        if (!bonusTotal?.trim()) {
+          errors.push(buildError(row.rowIndex, '賞与総支給額', '賞与支給日と賞与総支給額は同時に入力する必要があります', templateType));
+        }
       }
     }
-  
+
     return errors;
   }
   
@@ -369,37 +458,31 @@ import {
       }
     });
 
-    // 被保険者番号の重複チェック
-    const insuranceNos = new Map<string, number>();
-    rows.forEach((row) => {
-      const insuranceNo = row.data['被保険者番号'];
-      if (!insuranceNo) return;
-      if (insuranceNos.has(insuranceNo)) {
-        errors.push(
-          buildError(row.rowIndex, '被保険者番号', `被保険者番号 ${insuranceNo} が重複しています`, templateType),
-        );
-      } else {
-        insuranceNos.set(insuranceNo, row.rowIndex);
-      }
-    });
-
     return errors;
   }
   
-  export function validateRow(row: ParsedRow, templateType: TemplateType): ValidationError[] {
+  export function validateRow(
+    row: ParsedRow,
+    templateType: TemplateType,
+    existingEmployees?: ExistingEmployee[],
+  ): ValidationError[] {
     return [
-      ...validateRequiredFields(row, templateType),
+      ...validateRequiredFields(row, templateType, existingEmployees),
       ...validateDataFormat(row, templateType),
       ...validateDataRange(row, templateType),
       ...validateBusinessRules(row, templateType),
     ];
   }
   
-  export function validateAllRows(rows: ParsedRow[], templateType: TemplateType): ValidatedRow[] {
+  export function validateAllRows(
+    rows: ParsedRow[],
+    templateType: TemplateType,
+    existingEmployees?: ExistingEmployee[],
+  ): ValidatedRow[] {
     const validatedRows: ValidatedRow[] = rows.map((row) => ({
       parsedRow: row,
       normalized: {},
-      errors: validateRow(row, templateType),
+      errors: validateRow(row, templateType, existingEmployees),
     }));
   
     const fileLevelErrors = validateFileLevelRules(rows, templateType);
@@ -497,8 +580,29 @@ import {
   export interface ExistingEmployee {
     id?: string;
     employeeNo: string;
-    insuredNumber?: string;
     name?: string;
+    kana?: string;
+    gender?: string;
+    birthDate?: string;
+    postalCode?: string;
+    address?: string;
+    department?: string;
+    workPrefecture?: string;
+    personalNumber?: string;
+    basicPensionNumber?: string;
+    standardMonthly?: number;
+    standardBonusAnnualTotal?: number;
+    healthInsuredNumber?: string;
+    pensionInsuredNumber?: string;
+    insuredNumber?: string;
+    careSecondInsured?: boolean;
+    healthAcquisition?: string;
+    pensionAcquisition?: string;
+    childcareLeaveStart?: string;
+    childcareLeaveEnd?: string;
+    maternityLeaveStart?: string;
+    maternityLeaveEnd?: string;
+    exemption?: boolean;
     [key: string]: unknown; // その他のフィールド
   }
 
@@ -518,31 +622,15 @@ import {
     templateType: TemplateType,
   ): DifferenceCalculationResult {
     const employeeNo = parsedRow.data['社員番号'] || '';
-    const insuredNumber = parsedRow.data['被保険者番号'] || '';
-
-    // 既存社員データを検索（社員番号と被保険者番号で）
-    const foundByEmployeeNo = existingEmployees.find((emp) => emp.employeeNo === employeeNo);
-    const foundByInsuredNumber = insuredNumber
-      ? existingEmployees.find((emp) => emp.insuredNumber === insuredNumber)
-      : null;
 
     const errors: ValidationError[] = [];
     let existingEmployee: ExistingEmployee | null = null;
     let isNew = false;
     let isUpdate = false;
 
-    // 判定ロジック
-    // 優先度1: 社員番号と被保険者番号のどちらかが存在しない場合はエラー
-    if (!employeeNo || !insuredNumber) {
-      if (!employeeNo && !insuredNumber) {
-        errors.push({
-          rowIndex: parsedRow.rowIndex,
-          fieldName: '社員番号',
-          message: `社員番号と被保険者番号の両方が必要です`,
-          severity: 'error',
-          templateType,
-        });
-      } else if (!employeeNo) {
+    // payrollテンプレートの場合は社員番号の検証のみ行い、差分計算はスキップ
+    if (templateType === 'payroll') {
+      if (!employeeNo) {
         errors.push({
           rowIndex: parsedRow.rowIndex,
           fieldName: '社員番号',
@@ -551,14 +639,59 @@ import {
           templateType,
         });
       } else {
-        errors.push({
-          rowIndex: parsedRow.rowIndex,
-          fieldName: '被保険者番号',
-          message: `被保険者番号は必須です`,
-          severity: 'error',
-          templateType,
-        });
+        // 社員番号で既存社員を検索
+        const foundByEmployeeNo = existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+        if (!foundByEmployeeNo) {
+          errors.push({
+            rowIndex: parsedRow.rowIndex,
+            fieldName: '社員番号',
+            message: `社員番号 ${employeeNo} は登録されていません`,
+            severity: 'error',
+            templateType,
+          });
+        } else {
+          // 社員番号と氏名の整合性チェック
+          const csvName = parsedRow.data['氏名(漢字)'] || parsedRow.data['氏名漢字'] || '';
+          const existingName = foundByEmployeeNo.name || '';
+          
+          if (csvName && existingName && csvName.trim() !== existingName.trim()) {
+            errors.push({
+              rowIndex: parsedRow.rowIndex,
+              fieldName: '氏名(漢字)',
+              message: `社員番号 ${employeeNo} の既存氏名（${existingName}）と一致しません`,
+              severity: 'error',
+              templateType,
+            });
+          } else {
+            existingEmployee = foundByEmployeeNo;
+            isUpdate = true;
+          }
+        }
       }
+
+      // 給与データの差分は計算しない（給与データは直接更新される）
+      return {
+        isNew: false,
+        isUpdate,
+        existingEmployee,
+        errors,
+        changes: [],
+      };
+    }
+
+    // 既存社員データを検索（社員番号で）
+    const foundByEmployeeNo = existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+
+    // 判定ロジック
+    // 社員番号が存在しない場合はエラー
+    if (!employeeNo) {
+      errors.push({
+        rowIndex: parsedRow.rowIndex,
+        fieldName: '社員番号',
+        message: `社員番号は必須です`,
+        severity: 'error',
+        templateType,
+      });
       // エラーがある場合は処理を終了
       return {
         isNew: false,
@@ -569,25 +702,35 @@ import {
       };
     }
 
-    // 優先度2: 社員番号と被保険者番号の両方が存在する場合のみ判定
+    // 社員番号で既存社員を検索
     if (foundByEmployeeNo) {
-      // 社員番号が一致する場合
-      if (foundByEmployeeNo.insuredNumber === insuredNumber) {
-        // 社員番号と被保険者番号のセットが一致する場合 → 更新
-        existingEmployee = foundByEmployeeNo;
-        isUpdate = true;
-      } else {
-        // 社員番号が一致し、被保険者番号が一致しない場合 → エラー
+      // 社員番号が一致する場合 → 更新
+      // 社員番号と氏名の整合性チェック
+      const csvName = parsedRow.data['氏名(漢字)'] || parsedRow.data['氏名漢字'] || '';
+      const existingName = foundByEmployeeNo.name || '';
+      
+      if (csvName && existingName && csvName.trim() !== existingName.trim()) {
         errors.push({
           rowIndex: parsedRow.rowIndex,
-          fieldName: '被保険者番号',
-          message: `社員番号は既に登録されていますが、被保険者番号が一致しません`,
+          fieldName: '氏名(漢字)',
+          message: `社員番号 ${employeeNo} の既存氏名（${existingName}）と一致しません`,
           severity: 'error',
           templateType,
         });
+        // エラーがある場合は処理を終了
+        return {
+          isNew: false,
+          isUpdate: false,
+          existingEmployee: null,
+          errors,
+          changes: [],
+        };
+      } else {
+        existingEmployee = foundByEmployeeNo;
+        isUpdate = true;
       }
     } else {
-      // どちらも存在しない場合 → 新規
+      // 存在しない場合 → 新規
       isNew = true;
     }
 
@@ -602,12 +745,23 @@ import {
         '氏名(カナ)': 'kana',
         '性別': 'gender',
         '生年月日': 'birthDate',
+        '郵便番号': 'postalCode',
+        '住所': 'address',
         '所属部署名': 'department',
         '勤務地都道府県名': 'workPrefecture',
-        '現在標準報酬月額': 'standardMonthly',
-        '被保険者番号': 'insuredNumber',
+        '個人番号': 'personalNumber',
+        '基礎年金番号': 'basicPensionNumber',
+        '標準報酬月額': 'standardMonthly',
+        '被保険者番号（健康保険)': 'healthInsuredNumber',
+        '被保険者番号（厚生年金）': 'pensionInsuredNumber',
         '健康保険資格取得日': 'healthAcquisition',
+        '健康保険 資格取得日': 'healthAcquisition',
         '厚生年金資格取得日': 'pensionAcquisition',
+        '厚生年金 資格取得日': 'pensionAcquisition',
+        '育休開始日': 'childcareLeaveStart',
+        '育休終了日': 'childcareLeaveEnd',
+        '産休開始日': 'maternityLeaveStart',
+        '産休終了日': 'maternityLeaveEnd',
       };
 
       Object.keys(fieldMapping).forEach((csvField) => {
@@ -618,8 +772,28 @@ import {
         const dbField = fieldMapping[csvField];
         const existingValue = existingEmployee?.[dbField];
 
+        // 日付フィールドのリスト
+        const dateFields = [
+          '生年月日',
+          '健康保険資格取得日',
+          '健康保険 資格取得日',
+          '厚生年金資格取得日',
+          '厚生年金 資格取得日',
+          '育休開始日',
+          '育休終了日',
+          '産休開始日',
+          '産休終了日',
+        ];
+        
+        // 日付フィールドの正規化関数（YYYY/MM/DD形式に統一）
+        const normalizeDate = (dateStr: string | undefined): string => {
+          if (!dateStr) return '';
+          // YYYY-MM-DD形式をYYYY/MM/DD形式に変換
+          return dateStr.replace(/-/g, '/');
+        };
+        
         // 数値フィールドの比較
-        if (csvField === '現在標準報酬月額') {
+        if (csvField === '標準報酬月額') {
           const csvNum = Number(csvValue.replace(/,/g, ''));
           const existingNum = typeof existingValue === 'number' ? existingValue : 
                              (existingValue ? Number(String(existingValue).replace(/,/g, '')) : undefined);
@@ -632,6 +806,18 @@ import {
               fieldName: csvField,
               oldValue: existingNum !== undefined ? String(existingNum) : null,
               newValue: String(csvNum),
+            });
+          }
+        } else if (dateFields.includes(csvField)) {
+          // 日付フィールドの比較（正規化して比較）
+          const normalizedCsvValue = normalizeDate(csvValue);
+          const normalizedExistingValue = normalizeDate(existingValue ? String(existingValue) : undefined);
+          
+          if (normalizedCsvValue !== normalizedExistingValue) {
+            changes.push({
+              fieldName: csvField,
+              oldValue: normalizedExistingValue || null,
+              newValue: normalizedCsvValue || null,
             });
           }
         } else {

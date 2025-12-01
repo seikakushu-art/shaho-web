@@ -1,4 +1,4 @@
-export type TemplateType = 'new' | 'salary' | 'bonus' | 'unknown';
+export type TemplateType = 'new' | 'payroll' | 'unknown';
 
 export type ImportStatus = 'ok' | 'warning' | 'error';
 

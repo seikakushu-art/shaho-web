@@ -100,14 +100,6 @@
             </p>
           </div>
           <div>
-            <label>所属部署コード</label>
-            <input name="departmentCode" [(ngModel)]="basicInfo.departmentCode" [readonly]="!editMode" />
-          </div>
-          <div>
-            <label>勤務地都道府県コード</label>
-            <input name="workPrefectureCode" [(ngModel)]="basicInfo.workPrefectureCode" [readonly]="!editMode" />
-          </div>
-          <div>
             <label>勤務地都道府県</label>
             <input name="workPrefecture" [(ngModel)]="basicInfo.workPrefecture" [readonly]="!editMode" />
           </div>
@@ -155,7 +147,7 @@
   
         <div class="grid two-col">
           <div class="auto-field">
-            <label>現在の標準報酬月額</label>
+            <label>標準報酬月額</label>
             <div class="auto-chip">自動計算</div>
             <input
               type="number"
@@ -164,19 +156,6 @@
               readonly
               class="readonly"
             />
-          </div>
-          <div>
-            <label>被保険者番号 *</label>
-            <input
-              name="insuredNumber"
-              [(ngModel)]="socialInsurance.insuredNumber"
-              required
-              [readonly]="!editMode"
-              #insuredModel="ngModel"
-            />
-            <p class="error" *ngIf="insuredModel.invalid && (submitAttempted || insuredModel.touched)">
-              被保険者番号は必須です。
-            </p>
           </div>
           <div class="auto-field">
             <label>介護保険第2号被保険者</label>
