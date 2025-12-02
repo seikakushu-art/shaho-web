@@ -1,0 +1,682 @@
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
+
+admin.initializeApp();
+
+// 型定義（フロントエンドと共通）
+type ExternalPayrollRecord = {
+  yearMonth: string; // 2025-04 形式
+  amount?: number; // 月給支払額
+  workedDays?: number; // 支払基礎日数
+  bonusPaidOn?: string; // 賞与支給日（YYYY-MM-DD形式）
+  bonusTotal?: number; // 賞与総支給額
+  standardBonus?: number; // 標準賞与額
+};
+
+type ExternalEmployeeRecord = {
+  employeeNo: string;
+  name: string;
+  kana?: string;
+  gender?: string;
+  birthDate?: string;
+  postalCode?: string;
+  address?: string;
+  department?: string;
+  workPrefecture?: string;
+  personalNumber?: string;
+  basicPensionNumber?: string;
+  standardMonthly?: number | string;
+  healthInsuredNumber?: string;
+  pensionInsuredNumber?: string;
+  healthAcquisition?: string;
+  pensionAcquisition?: string;
+  childcareLeaveStart?: string;
+  childcareLeaveEnd?: string;
+  maternityLeaveStart?: string;
+  maternityLeaveEnd?: string;
+  careSecondInsured?: boolean | string;
+  exemption?: boolean | string;
+  payrolls?: ExternalPayrollRecord[]; // 給与データ配列
+};
+
+type ExternalSyncError = {
+  index: number;
+  employeeNo?: string;
+  message: string;
+};
+
+type ExternalSyncResult = {
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  errors: ExternalSyncError[];
+};
+
+interface ShahoEmployee {
+  id?: string;
+  name: string;
+  employeeNo: string;
+  kana?: string;
+  gender?: string;
+  birthDate?: string;
+  postalCode?: string;
+  address?: string;
+  department?: string;
+  departmentCode?: string;
+  workPrefecture?: string;
+  workPrefectureCode?: string;
+  personalNumber?: string;
+  basicPensionNumber?: string;
+  standardMonthly?: number;
+  standardBonusAnnualTotal?: number;
+  healthInsuredNumber?: string;
+  pensionInsuredNumber?: string;
+  insuredNumber?: string;
+  careSecondInsured?: boolean;
+  healthAcquisition?: string;
+  pensionAcquisition?: string;
+  childcareLeaveStart?: string;
+  childcareLeaveEnd?: string;
+  maternityLeaveStart?: string;
+  maternityLeaveEnd?: string;
+  exemption?: boolean;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  createdBy?: string;
+  updatedBy?: string;
+  approvedBy?: string;
+}
+
+interface PayrollData {
+  id?: string;
+  yearMonth: string;
+  workedDays?: number;
+  amount?: number;
+  healthInsuranceMonthly?: number;
+  careInsuranceMonthly?: number;
+  pensionMonthly?: number;
+  bonusPaidOn?: string;
+  bonusTotal?: number;
+  standardBonus?: number;
+  healthInsuranceBonus?: number;
+  careInsuranceBonus?: number;
+  pensionBonus?: number;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  createdBy?: string;
+  updatedBy?: string;
+  approvedBy?: string;
+}
+
+// APIキーの検証（環境変数から取得）
+const API_KEY = functions.config().api?.key || "";
+
+/**
+ * APIキーを検証する関数
+ */
+function validateApiKey(request: functions.https.Request): boolean {
+  const apiKey = request.headers["x-api-key"] || request.headers["authorization"];
+  
+  if (!API_KEY) {
+    // APIキーが設定されていない場合は警告を出して許可
+    console.warn("警告: APIキーが設定されていません");
+    return true;
+  }
+
+  if (!apiKey) {
+    return false;
+  }
+
+  // Bearerトークンの形式をサポート
+  const token = typeof apiKey === "string" && apiKey.startsWith("Bearer ")
+    ? apiKey.substring(7)
+    : apiKey;
+
+  return token === API_KEY;
+}
+
+/**
+ * 外部レコードを検証する関数
+ */
+function validateExternalRecord(
+  record: ExternalEmployeeRecord
+): string | undefined {
+  if (!record.employeeNo || `${record.employeeNo}`.trim() === "") {
+    return "社員番号が入力されていません";
+  }
+
+  if (!record.name || record.name.trim() === "") {
+    return "氏名が入力されていません";
+  }
+
+  if (
+    record.standardMonthly !== undefined &&
+    record.standardMonthly !== null &&
+    isNaN(Number(record.standardMonthly))
+  ) {
+    return "標準報酬月額が数値ではありません";
+  }
+
+  return undefined;
+}
+
+/**
+ * オブジェクトからundefinedと空文字列のフィールドを除外するヘルパー関数
+ */
+function removeUndefinedFields<T extends Record<string, any>>(
+  obj: T
+): Partial<T> {
+  const result: Partial<T> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    // undefinedとnull、空文字列を除外
+    if (value !== undefined && value !== null && value !== "") {
+      result[key as keyof T] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * 外部システムから社員データを受け取るAPIエンドポイント
+ * POST /api/employees/webhook
+ */
+export const receiveEmployees = functions.https.onRequest(
+  async (request, response) => {
+    // 関数開始ログ
+    console.log("=== receiveEmployees関数が呼び出されました ===");
+    console.log("リクエストメソッド:", request.method);
+    console.log("リクエストURL:", request.url);
+    console.log("リクエストヘッダー:", JSON.stringify(request.headers, null, 2));
+    
+    // CORS設定
+    response.set("Access-Control-Allow-Origin", "*");
+    response.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    response.set("Access-Control-Allow-Headers", "Content-Type, X-API-Key, Authorization");
+
+    // OPTIONSリクエストの処理
+    if (request.method === "OPTIONS") {
+      console.log("OPTIONSリクエストを処理します");
+      response.status(204).send("");
+      return;
+    }
+
+    // POSTメソッドのみ許可
+    if (request.method !== "POST") {
+      console.error("POSTメソッドではありません。メソッド:", request.method);
+      response.status(405).json({
+        error: "Method not allowed. Only POST is supported.",
+      });
+      return;
+    }
+    
+    console.log("POSTリクエストを処理します");
+
+    // APIキーの検証
+    console.log("APIキーの検証を開始");
+    const apiKeyValid = validateApiKey(request);
+    console.log("APIキーの検証結果:", apiKeyValid);
+    if (!apiKeyValid) {
+      console.error("APIキーの検証に失敗しました");
+      response.status(401).json({
+        error: "Unauthorized. Invalid or missing API key.",
+      });
+      return;
+    }
+    console.log("APIキーの検証成功");
+
+    try {
+      // リクエストボディの検証
+      console.log("リクエストメソッド:", request.method);
+      console.log("Content-Type:", request.headers["content-type"]);
+      console.log("リクエストボディの型:", typeof request.body);
+      console.log("リクエストボディ（生）:", request.body);
+      
+      let bodyData: any = request.body;
+      
+      // リクエストボディが文字列の場合、JSONとしてパースを試みる
+      if (typeof bodyData === "string") {
+        console.log("リクエストボディが文字列です。JSONとしてパースします。");
+        try {
+          bodyData = JSON.parse(bodyData);
+          console.log("パース成功:", JSON.stringify(bodyData, null, 2));
+        } catch (parseError) {
+          console.error("JSONパースエラー:", parseError);
+          response.status(400).json({
+            error: "Invalid JSON format in request body.",
+            details: parseError instanceof Error ? parseError.message : "Unknown error",
+          });
+          return;
+        }
+      }
+      
+      if (!bodyData) {
+        console.error("リクエストボディが空です");
+        response.status(400).json({
+          error: "Invalid request body. Request body is empty.",
+        });
+        return;
+      }
+      
+      if (!Array.isArray(bodyData)) {
+        console.error("リクエストボディが配列ではありません。型:", typeof bodyData);
+        response.status(400).json({
+          error: "Invalid request body. Expected an array of employee records.",
+          receivedType: typeof bodyData,
+          receivedValue: bodyData,
+        });
+        return;
+      }
+
+      const records = bodyData as ExternalEmployeeRecord[];
+      
+      // デバッグログ: 受信したデータを確認
+      console.log("受信したレコード数:", records.length);
+      console.log("受信したデータ:", JSON.stringify(records, null, 2));
+      const db = admin.firestore();
+      const colRef = db.collection("shaho_employees");
+      const now = new Date().toISOString();
+      const userId = "外部API連携";
+
+      // 既存の社員データを取得
+      const snapshot = await colRef.get();
+      const existingMap = new Map<string, { id: string; data: ShahoEmployee }>();
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as ShahoEmployee;
+        if (data.employeeNo) {
+          existingMap.set(data.employeeNo, { id: docSnap.id, data });
+        }
+      });
+
+      const batch = db.batch();
+      const errors: ExternalSyncError[] = [];
+      let created = 0;
+      let updated = 0;
+      const payrollDataToProcess: Array<{
+        employeeNo: string;
+        employeeId: string;
+        payrollRecord: ExternalPayrollRecord;
+      }> = [];
+
+      // 各レコードを処理
+      records.forEach((record, index) => {
+        const validationError = validateExternalRecord(record);
+        if (validationError) {
+          errors.push({
+            index,
+            employeeNo: record.employeeNo,
+            message: validationError,
+          });
+          return;
+        }
+
+        // 性別の正規化
+        const normalizeGender = (gender?: string): string | undefined => {
+          if (!gender) return undefined;
+          const normalized = gender.trim();
+          if (normalized === "男" || normalized === "男性" || normalized.toLowerCase() === "male") {
+            return "男";
+          }
+          if (normalized === "女" || normalized === "女性" || normalized.toLowerCase() === "female") {
+            return "女";
+          }
+          return normalized;
+        };
+
+        // フラグ値の正規化
+        const normalizeBoolean = (value?: boolean | string): boolean | undefined => {
+          if (value === undefined || value === null) return undefined;
+          if (typeof value === "boolean") return value;
+          const str = String(value).trim().toLowerCase();
+          return str === "1" || str === "on" || str === "true" || str === "yes";
+        };
+
+        // 文字列フィールドの正規化（空文字列をundefinedに変換）
+        const normalizeString = (value?: string): string | undefined => {
+          if (value === undefined || value === null) return undefined;
+          const trimmed = value.trim();
+          return trimmed === "" ? undefined : trimmed;
+        };
+
+        const normalized: ShahoEmployee = {
+          employeeNo: `${record.employeeNo}`.trim(),
+          name: record.name.trim(),
+          kana: normalizeString(record.kana),
+          gender: normalizeGender(record.gender),
+          birthDate: normalizeString(record.birthDate),
+          postalCode: normalizeString(record.postalCode),
+          address: normalizeString(record.address),
+          department: normalizeString(record.department),
+          workPrefecture: normalizeString(record.workPrefecture),
+          personalNumber: normalizeString(record.personalNumber),
+          basicPensionNumber: normalizeString(record.basicPensionNumber),
+          standardMonthly:
+            record.standardMonthly === undefined || record.standardMonthly === null
+              ? undefined
+              : Number(record.standardMonthly),
+          healthInsuredNumber: normalizeString(record.healthInsuredNumber),
+          pensionInsuredNumber: normalizeString(record.pensionInsuredNumber),
+          healthAcquisition: normalizeString(record.healthAcquisition),
+          pensionAcquisition: normalizeString(record.pensionAcquisition),
+          childcareLeaveStart: normalizeString(record.childcareLeaveStart),
+          childcareLeaveEnd: normalizeString(record.childcareLeaveEnd),
+          maternityLeaveStart: normalizeString(record.maternityLeaveStart),
+          maternityLeaveEnd: normalizeString(record.maternityLeaveEnd),
+          careSecondInsured: normalizeBoolean(record.careSecondInsured),
+          exemption: normalizeBoolean(record.exemption),
+        };
+
+        const cleanedData = removeUndefinedFields(normalized);
+        
+        // デバッグログ: 正規化後のデータを確認
+        console.log(`社員番号 ${normalized.employeeNo} の正規化後データ:`, JSON.stringify(cleanedData, null, 2));
+        
+        const existing = existingMap.get(normalized.employeeNo);
+
+        if (existing) {
+          const targetRef = colRef.doc(existing.id);
+          
+          // デバッグログ: 更新前の既存データを確認
+          console.log(`社員番号 ${normalized.employeeNo} の既存データ:`, JSON.stringify(existing.data, null, 2));
+          
+          // 更新データを準備（merge: trueを使用するため、送信されたフィールドのみを更新）
+          const updateData = {
+            ...cleanedData,
+            updatedAt: now,
+            updatedBy: userId,
+            approvedBy: "外部API連携",
+          };
+          
+          // デバッグログ: 更新データを確認
+          console.log(`社員番号 ${normalized.employeeNo} の更新データ:`, JSON.stringify(updateData, null, 2));
+          
+          batch.set(
+            targetRef,
+            updateData,
+            { merge: true }
+          );
+          updated += 1;
+
+          // 給与データを処理
+          if (
+            record.payrolls &&
+            Array.isArray(record.payrolls) &&
+            record.payrolls.length > 0
+          ) {
+            record.payrolls.forEach((payrollRecord) => {
+              // 月給データがあるかどうか（amountまたはworkedDaysが存在する）
+              const hasMonthlyData = payrollRecord.amount !== undefined || payrollRecord.workedDays !== undefined;
+              
+              // 賞与データがあるかどうか（bonusPaidOn、bonusTotal、standardBonusのいずれかが存在する）
+              const hasBonusData = !!(payrollRecord.bonusPaidOn || payrollRecord.bonusTotal || payrollRecord.standardBonus);
+              
+              // 月給データの年月を取得
+              let monthlyYearMonth: string | undefined = payrollRecord.yearMonth;
+              
+              // 賞与データの年月を取得（bonusPaidOnから抽出）
+              let bonusYearMonth: string | undefined;
+              if (payrollRecord.bonusPaidOn) {
+                try {
+                  const bonusDate = new Date(payrollRecord.bonusPaidOn.replace(/\//g, "-"));
+                  if (!isNaN(bonusDate.getTime())) {
+                    const year = bonusDate.getFullYear();
+                    const month = String(bonusDate.getMonth() + 1).padStart(2, "0");
+                    bonusYearMonth = `${year}-${month}`;
+                  }
+                } catch {
+                  // 日付の解析に失敗した場合はスキップ
+                }
+              }
+              
+              // 月給データがある場合、yearMonthが必須
+              if (hasMonthlyData && !monthlyYearMonth) {
+                errors.push({
+                  index,
+                  employeeNo: record.employeeNo,
+                  message: "月給データがありますが、yearMonthが指定されていません",
+                });
+              }
+              
+              // 賞与データがある場合、bonusPaidOnが必須
+              if (hasBonusData && !bonusYearMonth) {
+                errors.push({
+                  index,
+                  employeeNo: record.employeeNo,
+                  message: "賞与データがありますが、bonusPaidOnが指定されていないか、無効な日付です",
+                });
+              }
+              
+              // 月給データも賞与データもない場合はスキップ
+              if (!hasMonthlyData && !hasBonusData) {
+                return;
+              }
+              
+              // 月給データを保存
+              if (hasMonthlyData && monthlyYearMonth) {
+                payrollDataToProcess.push({
+                  employeeNo: normalized.employeeNo,
+                  employeeId: existing.id,
+                  payrollRecord: {
+                    yearMonth: monthlyYearMonth,
+                    amount: payrollRecord.amount,
+                    workedDays: payrollRecord.workedDays,
+                    // 賞与データは含めない
+                  },
+                });
+              }
+              
+              // 賞与データを保存
+              if (hasBonusData && bonusYearMonth) {
+                payrollDataToProcess.push({
+                  employeeNo: normalized.employeeNo,
+                  employeeId: existing.id,
+                  payrollRecord: {
+                    yearMonth: bonusYearMonth,
+                    bonusPaidOn: payrollRecord.bonusPaidOn,
+                    bonusTotal: payrollRecord.bonusTotal,
+                    standardBonus: payrollRecord.standardBonus,
+                    // 月給データは含めない
+                  },
+                });
+              }
+            });
+          }
+        } else {
+          const targetRef = colRef.doc();
+          batch.set(targetRef, {
+            ...cleanedData,
+            createdAt: now,
+            updatedAt: now,
+            createdBy: userId,
+            updatedBy: userId,
+            approvedBy: "外部API連携",
+          });
+          created += 1;
+
+          // 新規作成の場合は、給与データを後で処理するために保存
+          if (
+            record.payrolls &&
+            Array.isArray(record.payrolls) &&
+            record.payrolls.length > 0
+          ) {
+            record.payrolls.forEach((payrollRecord) => {
+              // 月給データがあるかどうか（amountまたはworkedDaysが存在する）
+              const hasMonthlyData = payrollRecord.amount !== undefined || payrollRecord.workedDays !== undefined;
+              
+              // 賞与データがあるかどうか（bonusPaidOn、bonusTotal、standardBonusのいずれかが存在する）
+              const hasBonusData = !!(payrollRecord.bonusPaidOn || payrollRecord.bonusTotal || payrollRecord.standardBonus);
+              
+              // 月給データの年月を取得
+              let monthlyYearMonth: string | undefined = payrollRecord.yearMonth;
+              
+              // 賞与データの年月を取得（bonusPaidOnから抽出）
+              let bonusYearMonth: string | undefined;
+              if (payrollRecord.bonusPaidOn) {
+                try {
+                  const bonusDate = new Date(payrollRecord.bonusPaidOn.replace(/\//g, "-"));
+                  if (!isNaN(bonusDate.getTime())) {
+                    const year = bonusDate.getFullYear();
+                    const month = String(bonusDate.getMonth() + 1).padStart(2, "0");
+                    bonusYearMonth = `${year}-${month}`;
+                  }
+                } catch {
+                  // 日付の解析に失敗した場合はスキップ
+                }
+              }
+              
+              // 月給データがある場合、yearMonthが必須
+              if (hasMonthlyData && !monthlyYearMonth) {
+                errors.push({
+                  index,
+                  employeeNo: record.employeeNo,
+                  message: "月給データがありますが、yearMonthが指定されていません",
+                });
+              }
+              
+              // 賞与データがある場合、bonusPaidOnが必須
+              if (hasBonusData && !bonusYearMonth) {
+                errors.push({
+                  index,
+                  employeeNo: record.employeeNo,
+                  message: "賞与データがありますが、bonusPaidOnが指定されていないか、無効な日付です",
+                });
+              }
+              
+              // 月給データも賞与データもない場合はスキップ
+              if (!hasMonthlyData && !hasBonusData) {
+                return;
+              }
+              
+              // 月給データを保存
+              if (hasMonthlyData && monthlyYearMonth) {
+                payrollDataToProcess.push({
+                  employeeNo: normalized.employeeNo,
+                  employeeId: targetRef.id,
+                  payrollRecord: {
+                    yearMonth: monthlyYearMonth,
+                    amount: payrollRecord.amount,
+                    workedDays: payrollRecord.workedDays,
+                    // 賞与データは含めない
+                  },
+                });
+              }
+              
+              // 賞与データを保存
+              if (hasBonusData && bonusYearMonth) {
+                payrollDataToProcess.push({
+                  employeeNo: normalized.employeeNo,
+                  employeeId: targetRef.id,
+                  payrollRecord: {
+                    yearMonth: bonusYearMonth,
+                    bonusPaidOn: payrollRecord.bonusPaidOn,
+                    bonusTotal: payrollRecord.bonusTotal,
+                    standardBonus: payrollRecord.standardBonus,
+                    // 月給データは含めない
+                  },
+                });
+              }
+            });
+          }
+        }
+      });
+
+      // 社員データをコミット
+      if (created + updated > 0) {
+        console.log(`コミット前: created=${created}, updated=${updated}`);
+        await batch.commit();
+        console.log("コミット完了");
+
+        // コミット後に保存されたデータを確認
+        const updatedRecords = records.filter((record) => {
+          const validationError = validateExternalRecord(record);
+          return !validationError;
+        });
+        
+        for (const record of updatedRecords) {
+          const employeeNo = `${record.employeeNo}`.trim();
+          const employeeDoc = await colRef.where("employeeNo", "==", employeeNo).limit(1).get();
+          if (!employeeDoc.empty) {
+            const savedData = employeeDoc.docs[0].data() as ShahoEmployee;
+            console.log(`社員番号 ${employeeNo} の保存後データ:`, JSON.stringify(savedData, null, 2));
+          }
+        }
+
+        // 新規作成した社員のIDを取得
+        if (created > 0) {
+          const updatedSnapshot = await colRef.get();
+          updatedSnapshot.forEach((docSnap) => {
+            const data = docSnap.data() as ShahoEmployee;
+            if (data.employeeNo && !existingMap.has(data.employeeNo)) {
+              existingMap.set(data.employeeNo, {
+                id: docSnap.id,
+                data,
+              });
+            }
+          });
+        }
+      }
+
+      // 給与データを保存
+      const payrollPromises: Promise<any>[] = [];
+      payrollDataToProcess.forEach(({ employeeId, payrollRecord }) => {
+        // 月給データと賞与データは既に分離されているので、そのまま保存
+        const payrollData: Partial<PayrollData> = {
+          yearMonth: payrollRecord.yearMonth,
+          amount: payrollRecord.amount,
+          workedDays: payrollRecord.workedDays,
+          bonusPaidOn: payrollRecord.bonusPaidOn,
+          bonusTotal: payrollRecord.bonusTotal,
+          standardBonus: payrollRecord.standardBonus,
+          approvedBy: "外部API連携",
+          updatedAt: now,
+          updatedBy: userId,
+        };
+
+        const cleanedPayrollData = removeUndefinedFields(payrollData);
+        const payrollRef = colRef
+          .doc(employeeId)
+          .collection("payrolls")
+          .doc(payrollRecord.yearMonth);
+
+        payrollPromises.push(
+          payrollRef.set(
+            {
+              ...cleanedPayrollData,
+              createdAt: cleanedPayrollData.createdAt || now,
+              createdBy: cleanedPayrollData.createdBy || userId,
+            },
+            { merge: true }
+          ).then(() => {})
+        );
+      });
+
+      if (payrollPromises.length > 0) {
+        await Promise.all(payrollPromises);
+      }
+
+      const result: ExternalSyncResult = {
+        total: records.length,
+        processed: created + updated,
+        created,
+        updated,
+        errors,
+      };
+
+      console.log("=== 処理完了 ===");
+      console.log("結果:", JSON.stringify(result, null, 2));
+      response.status(200).json(result);
+    } catch (error) {
+      console.error("=== エラーが発生しました ===");
+      console.error("エラータイプ:", typeof error);
+      console.error("エラーオブジェクト:", error);
+      if (error instanceof Error) {
+        console.error("エラーメッセージ:", error.message);
+        console.error("エラースタック:", error.stack);
+      }
+      response.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+);

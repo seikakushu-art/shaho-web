@@ -6,6 +6,7 @@ import { Subject, takeUntil } from 'rxjs';
 import {
   ShahoEmployee,
   ShahoEmployeesService,
+  ExternalSyncResult,
 } from '../../app/services/shaho-employees.service';
 
 interface EmployeeListItem {
@@ -51,8 +52,11 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
   currentPage = 1;
 
   isLoading = true;
+  isSyncingExternal = false;
 
   filteredEmployees = [...this.employees];
+  externalSyncResult?: ExternalSyncResult;
+  externalSyncError?: string;
 
   ngOnInit() {
     this.employeesService
@@ -129,6 +133,19 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
 
   goToImport() {
     this.router.navigate(['/employees/import']);
+  }
+
+  async syncExternalData() {
+    this.isSyncingExternal = true;
+    this.externalSyncError = undefined;
+    try {
+      this.externalSyncResult = await this.employeesService.syncEmployeesFromExternalSource();
+    } catch (error) {
+      this.externalSyncError =
+        error instanceof Error ? error.message : '外部データ連携に失敗しました';
+    } finally {
+      this.isSyncingExternal = false;
+    }
   }
 
   trackByEmployee(index: number, employee: EmployeeListItem) {

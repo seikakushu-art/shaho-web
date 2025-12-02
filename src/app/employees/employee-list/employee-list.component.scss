@@ -228,6 +228,96 @@
     align-items: center;
     gap: 0.75rem;
   }
+
+  .integration-result {
+    border: 1px solid #dbeafe;
+    background: #f8fbff;
+  }
+
+  .integration-result .status-badge {
+    background: #e0f2fe;
+    color: #0f172a;
+    border-color: #bfdbfe;
+  }
+
+  .result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .metric {
+    padding: 0.75rem 0.9rem;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+  }
+
+  .metric .label {
+    margin: 0 0 0.25rem;
+    color: #475569;
+    font-size: 0.9rem;
+  }
+
+  .metric .value {
+    margin: 0;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .metric .value.success {
+    color: #16a34a;
+  }
+
+  .metric .value.info {
+    color: #2563eb;
+  }
+
+  .error-message {
+    margin: 0 0 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    background: #fef2f2;
+    color: #991b1b;
+    border: 1px solid #fecdd3;
+  }
+
+  .error-list {
+    margin-top: 0.25rem;
+  }
+
+  .error-list h3 {
+    margin: 0 0 0.5rem;
+  }
+
+  .error-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .error-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 10px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #9a3412;
+  }
+
+  .error-number {
+    font-weight: 700;
+  }
+
+  .error-body {
+    flex: 1;
+  }
   
   @media (max-width: 768px) {
     .page-header {

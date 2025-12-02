@@ -12,7 +12,13 @@
   
       <label>
         パスワード
-        <input type="password" formControlName="password" placeholder="6文字以上" />
+        <div class="password-input-wrapper">
+          <input [type]="showPassword ? 'text' : 'password'" formControlName="password" placeholder="6文字以上" />
+          <button type="button" class="password-toggle" (click)="togglePasswordVisibility()" tabindex="-1">
+            <span *ngIf="showPassword">非表示</span>
+            <span *ngIf="!showPassword">表示</span>
+          </button>
+        </div>
       </label>
   
       <button type="submit" [disabled]="loginForm.invalid">ログイン</button>

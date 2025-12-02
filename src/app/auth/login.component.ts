@@ -25,8 +25,13 @@ export class LoginComponent {
 
   errorMessage = '';
   infoMessage = '';
+  showPassword = false;
 
   readonly user$ = this.authService.user$;
+
+  togglePasswordVisibility() {
+    this.showPassword = !this.showPassword;
+  }
 
   async onSubmit() {
     if (this.loginForm.invalid) {
@@ -40,7 +45,27 @@ export class LoginComponent {
       this.infoMessage = 'ログインしました';
       await this.router.navigate(['/dashboard']);
     } catch (error: any) {
-      this.errorMessage = error?.message || 'ログインに失敗しました';
+      const errorCode = error?.code;
+      let errorMsg = 'ログインに失敗しました';
+      
+      if (errorCode === 'auth/invalid-credential') {
+        errorMsg = 'メールアドレスまたはパスワードが正しくありません';
+      } else if (errorCode === 'auth/wrong-password') {
+        errorMsg = 'パスワードが正しくありません';
+      } else if (errorCode === 'auth/user-not-found') {
+        errorMsg = 'このメールアドレスは登録されていません';
+      } else if (errorCode === 'auth/invalid-email') {
+        errorMsg = '無効なメールアドレスです';
+      } else if (errorCode === 'auth/user-disabled') {
+        errorMsg = 'このアカウントは無効化されています';
+      } else if (errorCode === 'auth/too-many-requests') {
+        errorMsg = 'リクエストが多すぎます。しばらく待ってから再度お試しください';
+      } else if (error?.message) {
+        errorMsg = error.message;
+      }
+      
+      this.errorMessage = errorMsg;
+      this.infoMessage = '';
     }
   }
 

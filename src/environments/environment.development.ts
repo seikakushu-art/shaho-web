@@ -9,4 +9,5 @@ export const environment = {
     appId: '1:412477725597:web:90766942d4dc9446f52d74',
     measurementId: 'G-5S4Z76V2KN',
   },
+  externalEmployeesApiUrl: 'https://api.example.com/employees',
 };

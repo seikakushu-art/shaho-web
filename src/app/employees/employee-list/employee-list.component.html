@@ -4,6 +4,15 @@
         <h1>社員一覧・検索</h1>
       </div>
       <div class="action-buttons">
+        <button
+        type="button"
+        class="ghost"
+        aria-label="外部データ連携を実行"
+        (click)="syncExternalData()"
+        [disabled]="isSyncingExternal"
+      >
+        {{ isSyncingExternal ? '外部データ連携中…' : '外部データ連携' }}
+      </button>
         <button type="button" class="ghost" aria-label="CSVインポート画面へ" (click)="goToImport()">
           社員情報CSVインポート
         </button>
@@ -13,6 +22,53 @@
       </div>
     </header>
   
+    <section class="card integration-result" *ngIf="externalSyncResult || externalSyncError">
+      <header>
+        <div>
+          <h2>外部データ連携の結果</h2>
+          <p class="hint">エラーがある場合でも正常な行だけ取り込みます。</p>
+        </div>
+        <div class="status">
+          <span class="status-badge" [class.status-active]="!externalSyncError" [class.status-terminated]="!!externalSyncError">
+            {{ externalSyncError ? '一部エラー' : '完了' }}
+          </span>
+        </div>
+      </header>
+
+      <div *ngIf="externalSyncResult" class="result-grid">
+        <div class="metric">
+          <p class="label">受信件数</p>
+          <p class="value">{{ externalSyncResult.total }} 件</p>
+        </div>
+        <div class="metric">
+          <p class="label">取り込み済み</p>
+          <p class="value">{{ externalSyncResult.processed }} 件</p>
+        </div>
+        <div class="metric">
+          <p class="label">新規登録</p>
+          <p class="value success">{{ externalSyncResult.created }} 件</p>
+        </div>
+        <div class="metric">
+          <p class="label">更新</p>
+          <p class="value info">{{ externalSyncResult.updated }} 件</p>
+        </div>
+      </div>
+
+      <div *ngIf="externalSyncError" class="error-message">{{ externalSyncError }}</div>
+
+      <div *ngIf="externalSyncResult?.errors?.length" class="error-list">
+        <h3>取り込みエラー</h3>
+        <ul>
+          <li *ngFor="let error of externalSyncResult?.errors || []">
+            <span class="error-number">#{{ error.index + 1 }}</span>
+            <span class="error-body">
+              <strong *ngIf="error.employeeNo">社員番号: {{ error.employeeNo }} / </strong>
+              {{ error.message }}
+            </span>
+          </li>
+        </ul>
+      </div>
+    </section>
     <section class="card search-card">
       <header>
         <div>
