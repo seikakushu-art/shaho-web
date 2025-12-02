@@ -2,8 +2,8 @@ import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
-import { Subject, of, switchMap, takeUntil } from 'rxjs';
-import { ShahoEmployee, ShahoEmployeesService } from '../app/services/shaho-employees.service';
+import { Subject, of, switchMap, takeUntil, firstValueFrom } from 'rxjs';
+import { ShahoEmployee, ShahoEmployeesService, PayrollData } from '../app/services/shaho-employees.service';
 
 interface AuditInfo {
   registeredAt: string;
@@ -132,6 +132,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
 
   displayedMonths: Date[] = [];
   socialInsuranceHistory: Record<string, SocialInsuranceHistoryData> = {};
+  allPayrolls: PayrollData[] = [];
   historyRowDefinitions: {
     key: keyof SocialInsuranceHistoryData;
     label: string;
@@ -345,13 +346,90 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     const record = this.bonusRecords.find((item) => item.id === id);
     if (record) {
       this.selectedBonus = { ...record };
+      // 選択中の賞与レコードの累計を社会保険関連基本情報に反映
+      this.socialInsurance.standardBonusAnnualTotal = record.healthCumulative;
     }
   }
 
   recalcBonus(record: BonusRecord) {
     const base = record.total;
-    record.standardHealth = Math.max(0, Math.round(base * 0.95));
+    // 標準賞与額（健・介）は賞与総額を1,000円未満切り捨てた額
+    record.standardHealth = Math.max(0, Math.floor(base / 1000) * 1000);
     record.standardPension = Math.max(0, Math.round(base * 0.93));
+    
+    // 標準賞与額年度累計（健）を計算
+    if (record.paidOn && this.employee?.id) {
+      this.calculateHealthCumulative(record);
+    } else {
+      // 社員IDまたは支給日がない場合は、今回の標準賞与額のみ
+      record.healthCumulative = record.standardHealth;
+    }
+    
+    // 社会保険関連基本情報の標準賞与額年度累計も更新
+    // 最新の賞与レコードの累計を表示（または選択中のレコードの累計）
+    if (record === this.selectedBonus) {
+      this.socialInsurance.standardBonusAnnualTotal = record.healthCumulative;
+    }
+  }
+
+  /**
+   * 標準賞与額年度累計（健）を計算
+   * 年度（4/1〜翌3/31）内の過去の賞与支給の標準賞与額（健・介）を累積
+   */
+  private calculateHealthCumulative(record: BonusRecord) {
+    if (!record.paidOn || !this.employee?.id) {
+      record.healthCumulative = record.standardHealth;
+      return;
+    }
+
+    // 賞与支給日から年度を計算（4/1〜翌3/31）
+    const bonusDate = new Date(record.paidOn.replace(/\//g, '-'));
+    if (isNaN(bonusDate.getTime())) {
+      record.healthCumulative = record.standardHealth;
+      return;
+    }
+
+    const bonusYear = bonusDate.getFullYear();
+    const bonusMonth = bonusDate.getMonth() + 1; // 1-12
+
+    // 年度の開始日（4/1）と終了日（翌3/31）を計算
+    let fiscalYearStart: Date;
+    let fiscalYearEnd: Date;
+    
+    if (bonusMonth >= 4) {
+      // 4月以降は当年4/1〜翌年3/31
+      fiscalYearStart = new Date(bonusYear, 3, 1); // 4月1日
+      fiscalYearEnd = new Date(bonusYear + 1, 2, 31); // 翌年3月31日
+    } else {
+      // 1-3月は前年4/1〜当年3/31
+      fiscalYearStart = new Date(bonusYear - 1, 3, 1); // 前年4月1日
+      fiscalYearEnd = new Date(bonusYear, 2, 31); // 当年3月31日
+    }
+
+    // 過去の給与データから、その年度内の賞与データをフィルタリング
+    let cumulativeAmount = 0;
+    
+        this.allPayrolls.forEach((payroll) => {
+          if (!payroll.bonusPaidOn) return;
+          
+          const payrollBonusDate = new Date(payroll.bonusPaidOn.replace(/\//g, '-'));
+          if (isNaN(payrollBonusDate.getTime())) return;
+
+          // 今回の賞与支給日より前の賞与のみを対象
+          if (payrollBonusDate >= bonusDate) return;
+
+          // 年度内かどうかをチェック
+          if (payrollBonusDate >= fiscalYearStart && payrollBonusDate <= fiscalYearEnd) {
+            // 標準賞与額（健・介）を累積
+            // standardBonusが標準賞与額（健・介）として保存されていると仮定
+            // standardBonusがない場合はhealthInsuranceBonusを使用
+            const standardHealthAmount = payroll.standardBonus || payroll.healthInsuranceBonus || 0;
+            cumulativeAmount += standardHealthAmount;
+          }
+        });
+
+    // 今回の標準賞与額（健・介）を加算
+    record.healthCumulative = cumulativeAmount + record.standardHealth;
   }
 
   get filteredHistory() {
@@ -392,7 +470,13 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       .getPayrolls(employeeId)
       .pipe(takeUntil(this.destroy$))
       .subscribe((payrolls) => {
+        // 給与データを保存（年度累計計算用）
+        this.allPayrolls = payrolls;
+        
         const history: Record<string, SocialInsuranceHistoryData> = {};
+        
+        // 賞与レコードを構築
+        const bonusRecordsList: BonusRecord[] = [];
 
         payrolls.forEach((payroll) => {
           const monthKey = this.formatYearMonthKey(payroll.yearMonth);
@@ -419,8 +503,12 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
             const bonusDate = new Date(payroll.bonusPaidOn.replace(/\//g, '-'));
             if (!isNaN(bonusDate.getTime())) {
               const bonusYear = bonusDate.getFullYear();
-              const bonusMonth = String(bonusDate.getMonth() + 1).padStart(2, '0');
+              const bonusMonthNum = bonusDate.getMonth() + 1; // 1-12
+              const bonusMonth = String(bonusMonthNum).padStart(2, '0');
               const bonusMonthKey = `${bonusYear}-${bonusMonth}`;
+              
+              // 年度を計算（4/1〜翌3/31）
+              const fiscalYear = bonusMonthNum >= 4 ? bonusYear : bonusYear - 1;
 
               const bonusData: SocialInsuranceHistoryData = {
                 bonusPaidOn: this.formatDateForInput(payroll.bonusPaidOn),
@@ -437,9 +525,40 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
               } else {
                 history[bonusMonthKey] = bonusData;
               }
+              
+              // 賞与レコードを追加
+              const standardHealth = payroll.standardBonus || payroll.healthInsuranceBonus || 0;
+              bonusRecordsList.push({
+                id: `bonus-${bonusDate.getTime()}`,
+                paidOn: this.formatDateForInput(payroll.bonusPaidOn) || '',
+                fiscalYear,
+                total: payroll.bonusTotal || 0,
+                standardHealth,
+                standardPension: payroll.pensionBonus || 0,
+                healthCumulative: 0, // 後で計算
+              });
             }
           }
         });
+
+        // 賞与レコードを支給日でソート（新しい順）
+        bonusRecordsList.sort((a, b) => {
+          const dateA = new Date(a.paidOn.replace(/\//g, '-'));
+          const dateB = new Date(b.paidOn.replace(/\//g, '-'));
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        // 各賞与レコードの年度累計を計算
+        bonusRecordsList.forEach((record) => {
+          this.recalcBonus(record);
+        });
+
+        this.bonusRecords = bonusRecordsList;
+        if (bonusRecordsList.length > 0) {
+          this.selectedBonus = { ...bonusRecordsList[0] };
+          // 最新の賞与レコードの累計を社会保険関連基本情報に反映
+          this.socialInsurance.standardBonusAnnualTotal = bonusRecordsList[0].healthCumulative;
+        }
 
         this.socialInsuranceHistory = history;
       });

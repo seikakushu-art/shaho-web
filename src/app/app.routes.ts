@@ -9,6 +9,7 @@ import { EmployeeImportComponent } from './employees/employee-import/employee-im
 import { ApprovalListComponent } from './approvals/approval-list/approval-list.component';
 import { ApprovalDetailComponent } from './approvals/approval-detail.component';
 import { StandardRemunerationComponent } from './procedures/standard-remuneration/standard-remuneration.component';
+import { CorporateInfoComponent } from './corporate-info/corporate-info.component';
 
 export const routes: Routes = [
   {
@@ -64,6 +65,12 @@ export const routes: Routes = [
     component: StandardRemunerationComponent,
     canActivate: [authGuard],
     title: '標準報酬月額／標準賞与額算定',
+  },
+  {
+    path: 'corporate-info',
+    component: CorporateInfoComponent,
+    canActivate: [authGuard],
+    title: '法人情報',
   },
   {
     path: '',

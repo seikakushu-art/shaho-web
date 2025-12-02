@@ -90,7 +90,8 @@ export class EmployeeCreateComponent {
   
     recalcBonus() {
       const base = this.bonusCalc.total;
-      this.bonusCalc.standardHealth = Math.max(0, Math.round(base * 0.95));
+      // 標準賞与額（健・介）は賞与総額を1,000円未満切り捨てた額
+      this.bonusCalc.standardHealth = Math.max(0, Math.floor(base / 1000) * 1000);
       this.bonusCalc.standardPension = Math.max(0, Math.round(base * 0.93));
       this.bonusCalc.healthCumulative = Math.max(
         0,

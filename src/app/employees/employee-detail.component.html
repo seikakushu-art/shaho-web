@@ -266,7 +266,7 @@
                 <div class="grid two-col">
                     <div>
                         <label>賞与支給日</label>
-                        <input type="date" [(ngModel)]="selectedBonus.paidOn" />
+                        <input type="date" [(ngModel)]="selectedBonus.paidOn" (ngModelChange)="recalcBonus(selectedBonus)" />
                     </div>
                     <div>
                         <label>賞与支給年度</label>
@@ -274,7 +274,7 @@
                     </div>
                     <div>
                         <label>賞与総支給額</label>
-                        <input type="number" [(ngModel)]="selectedBonus.total" />
+                        <input type="number" [(ngModel)]="selectedBonus.total" (ngModelChange)="recalcBonus(selectedBonus)" />
                     </div>
                     <div>
                         <label>標準賞与額（健・介）</label>

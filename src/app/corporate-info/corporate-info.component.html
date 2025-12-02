@@ -1,0 +1,160 @@
+<section class="corporate-info" *ngIf="corporateInfo$ | async as info">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">法人設定</p>
+        <h1>法人情報</h1>
+      </div>
+      <div class="actions">
+        <ng-container *ngIf="!editMode; else editButtons">
+          <button type="button" (click)="toggleEdit()">編集</button>
+        </ng-container>
+        <ng-template #editButtons>
+          <button type="button" class="secondary" (click)="cancelEdit()">キャンセル</button>
+          <button type="button" (click)="save()" [disabled]="isSaving">保存</button>
+        </ng-template>
+      </div>
+    </header>
+  
+    <p class="message" *ngIf="message">{{ message }}</p>
+  
+    <form class="cards" [formGroup]="form" (ngSubmit)="save()">
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <p class="eyebrow">法人情報</p>
+            <h2>基本情報</h2>
+          </div>
+        </div>
+        <div class="grid two-col">
+          <div class="field">
+            <label>事業所名称</label>
+            <ng-container *ngIf="editMode; else officeNameDisplay">
+              <input type="text" formControlName="officeName" placeholder="例）シャホー株式会社" />
+            </ng-container>
+            <ng-template #officeNameDisplay>
+              <p class="value">{{ info?.officeName || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>事業主氏名</label>
+            <ng-container *ngIf="editMode; else ownerDisplay">
+              <input type="text" formControlName="ownerName" placeholder="例）社会 保子" />
+            </ng-container>
+            <ng-template #ownerDisplay>
+              <p class="value">{{ info?.ownerName || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field full">
+            <label>住所</label>
+            <ng-container *ngIf="editMode; else addressDisplay">
+              <input type="text" formControlName="address" placeholder="例）東京都千代田区〇〇1-2-3" />
+            </ng-container>
+            <ng-template #addressDisplay>
+              <p class="value">{{ info?.address || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>電話番号</label>
+            <ng-container *ngIf="editMode; else phoneDisplay">
+              <input type="tel" formControlName="phoneNumber" placeholder="03-1234-5678" />
+            </ng-container>
+            <ng-template #phoneDisplay>
+              <p class="value">{{ info?.phoneNumber || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>健康保険加入区分</label>
+            <ng-container *ngIf="editMode; else healthTypeDisplay">
+              <select formControlName="healthInsuranceType">
+                <option value="協会けんぽ">協会けんぽ</option>
+                <option value="組合健保">組合健保</option>
+              </select>
+            </ng-container>
+            <ng-template #healthTypeDisplay>
+              <p class="value">{{ info?.healthInsuranceType || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>事業所整理記号（健康保険）</label>
+            <ng-container *ngIf="editMode; else healthCodeDisplay">
+              <input type="text" formControlName="healthInsuranceOfficeCode" placeholder="例）12-345678" />
+            </ng-container>
+            <ng-template #healthCodeDisplay>
+              <p class="value">{{ info?.healthInsuranceOfficeCode || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>事業所整理記号（厚生年金）</label>
+            <ng-container *ngIf="editMode; else pensionCodeDisplay">
+              <input type="text" formControlName="pensionOfficeCode" placeholder="例）12-345678" />
+            </ng-container>
+            <ng-template #pensionCodeDisplay>
+              <p class="value">{{ info?.pensionOfficeCode || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>事業所番号（健康保険/厚生年金共通）</label>
+            <ng-container *ngIf="editMode; else sharedNumberDisplay">
+              <input type="text" formControlName="sharedOfficeNumber" placeholder="例）1234567890" />
+            </ng-container>
+            <ng-template #sharedNumberDisplay>
+              <p class="value">{{ info?.sharedOfficeNumber || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>保険者番号</label>
+            <ng-container *ngIf="editMode; else insurerDisplay">
+              <input type="text" formControlName="insurerNumber" placeholder="例）12345678" />
+            </ng-container>
+            <ng-template #insurerDisplay>
+              <p class="value">{{ info?.insurerNumber || '—' }}</p>
+            </ng-template>
+          </div>
+        </div>
+      </article>
+  
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <p class="eyebrow">監査情報</p>
+            <h2>登録・更新履歴</h2>
+          </div>
+        </div>
+        <div class="grid three-col">
+          <div class="field">
+            <label>登録日</label>
+            <p class="value">{{ info?.registeredAt ? (info.registeredAt | date:'yyyy/MM/dd HH:mm') : '—' }}</p>
+          </div>
+          <div class="field">
+            <label>更新日</label>
+            <p class="value">{{ info?.updatedAt ? (info.updatedAt | date:'yyyy/MM/dd HH:mm') : '—' }}</p>
+          </div>
+          <div class="field empty-field">
+            <label>&nbsp;</label>
+            <p class="value">&nbsp;</p>
+          </div>
+          <div class="field">
+            <label>登録者</label>
+            <p class="value">{{ info?.registeredBy || '—' }}</p>
+          </div>
+          <div class="field">
+            <label>更新者</label>
+            <p class="value">{{ info?.updatedBy || '—' }}</p>
+          </div>
+          <div class="field">
+            <label>承認者</label>
+            <ng-container *ngIf="editMode; else approvedDisplay">
+              <input type="text" formControlName="approvedBy" placeholder="承認者の氏名やメールアドレス" />
+            </ng-container>
+            <ng-template #approvedDisplay>
+              <p class="value">{{ info?.approvedBy || '—' }}</p>
+            </ng-template>
+          </div>
+        </div>
+      </article>
+    </form>
+  </section>
+  
+  <ng-template #loading>
+    <p class="loading">読み込み中...</p>
+  </ng-template>
