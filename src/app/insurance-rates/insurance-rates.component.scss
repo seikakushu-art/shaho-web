@@ -1,0 +1,196 @@
+.insurance-rates {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      padding: 16px 0;
+  
+      .actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+  
+        .inline-label {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          font-size: 12px;
+        }
+      }
+    }
+  
+    .cards {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+  
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+    }
+  
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+  
+    .grid {
+      display: grid;
+      gap: 0;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .three-col {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      padding: 0;
+      border-bottom: 1px solid #e5e7eb;
+      align-items: flex-start;
+
+      &:last-child {
+        border-bottom: none;
+      }
+
+      label {
+        font-size: 14px;
+        color: #374151;
+        font-weight: 600;
+        padding: 8px 12px;
+        background: #f9fafb;
+        width: 100%;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .value {
+        font-size: 14px;
+        color: #111827;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        margin: 0;
+        padding: 8px 12px;
+      }
+
+      input,
+      select {
+        width: 100%;
+        padding: 0;
+        border: none;
+        border-radius: 0;
+        font-size: 14px;
+        background: transparent;
+      }
+    }
+  
+    .table {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      overflow: hidden;
+  
+      .table-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        padding: 8px 12px;
+        border-bottom: 1px solid #e5e7eb;
+        gap: 8px;
+        align-items: center;
+  
+        &:last-child {
+          border-bottom: none;
+        }
+  
+        &.header {
+          background: #f9fafb;
+          font-weight: 600;
+          color: #374151;
+          font-size: 14px;
+        }
+      }
+  
+      .cell {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+
+        input,
+        select {
+          width: 100%;
+        }
+
+        .value {
+          width: 100%;
+          font-size: 14px;
+          color: #111827;
+          margin: 0;
+        }
+  
+        .link {
+          color: #ef4444;
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0;
+          text-decoration: underline;
+        }
+      }
+    }
+  
+    .table-actions {
+      margin-top: 8px;
+      display: flex;
+      justify-content: flex-end;
+    }
+  
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+  
+    .history-item {
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+  
+      &.active {
+        border-color: #2563eb;
+        background: #eff6ff;
+      }
+    }
+  
+    .history-actions {
+      display: flex;
+      gap: 8px;
+    }
+  
+    .message {
+      padding: 8px 12px;
+      background: #f3f4f6;
+      border-radius: 6px;
+      color: #374151;
+    }
+  }

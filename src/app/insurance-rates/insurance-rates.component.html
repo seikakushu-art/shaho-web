@@ -1,0 +1,372 @@
+<section class="insurance-rates">
+    <header class="page-header">
+      <div>
+        <h1>保険料率</h1>
+      </div>
+      <div class="actions">
+        <label class="inline-label">
+          表示パターン
+          <select [value]="selectedHealthType" (change)="changeHealthType($any($event.target).value)">
+            <option *ngFor="let type of healthTypes" [value]="type">{{ type }}</option>
+          </select>
+        </label>
+        <button type="button" class="secondary" (click)="startNewRecord()">新規登録</button>
+        <ng-container *ngIf="viewingRecord && !editMode && isLatestSelection">
+          <button type="button" (click)="enableEdit()">編集</button>
+        </ng-container>
+        <ng-container *ngIf="editMode">
+          <button type="button" class="secondary" (click)="cancelEdit()">キャンセル</button>
+          <button type="button" (click)="save()" [disabled]="saving">保存</button>
+        </ng-container>
+      </div>
+    </header>
+  
+    <p class="message" *ngIf="message">{{ message }}</p>
+  
+    <form class="cards" [formGroup]="form" (ngSubmit)="save()">
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2>対象区分</h2>
+          </div>
+        </div>
+        <div class="grid three-col">
+          <div class="field">
+            <label>健康保険パターン</label>
+            <p class="value">{{ selectedHealthType }}</p>
+          </div>
+          <div class="field">
+            <label>保険者名称</label>
+            <ng-container *ngIf="editMode; else insurerNameDisplay">
+              <input type="text" formControlName="insurerName" placeholder="例）東京都協会けんぽ" />
+            </ng-container>
+            <ng-template #insurerNameDisplay>
+              <p class="value">{{ form.value.insurerName || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>更新日</label>
+            <p class="value">{{ viewingRecord && viewingRecord.updatedAt ? (viewingRecord.updatedAt | date: 'yyyy/MM/dd HH:mm') : '—' }}</p>
+          </div>
+          <div class="field">
+            <label>更新者</label>
+            <p class="value">{{ viewingRecord?.updatedBy || '—' }}</p>
+          </div>
+        </div>
+      </article>
+  
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2>都道府県別健康保険料率</h2>
+          </div>
+        </div>
+        <div class="table" formArrayName="healthInsuranceRates">
+          <div class="table-row header">
+            <div class="cell">都道府県</div>
+            <div class="cell">総保険料率</div>
+            <div class="cell">従業員負担率</div>
+            <div class="cell">適用開始年月</div>
+            <div class="cell" *ngIf="editMode"></div>
+          </div>
+          <div
+            class="table-row"
+            *ngFor="let rate of healthInsuranceRates.controls; let i = index"
+            [formGroupName]="i"
+          >
+            <div class="cell">
+              <ng-container *ngIf="editMode; else healthPrefDisplay">
+                <input type="text" formControlName="prefecture" />
+              </ng-container>
+              <ng-template #healthPrefDisplay>
+                <span class="value">{{ rate.value.prefecture || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else healthTotalDisplay">
+                <input type="text" formControlName="totalRate" />
+              </ng-container>
+              <ng-template #healthTotalDisplay>
+                <span class="value">{{ rate.value.totalRate || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else healthEmployeeDisplay">
+                <input type="text" formControlName="employeeRate" />
+              </ng-container>
+              <ng-template #healthEmployeeDisplay>
+                <span class="value">{{ rate.value.employeeRate || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else healthEffectiveDisplay">
+                <input type="month" formControlName="effectiveFrom" />
+              </ng-container>
+              <ng-template #healthEffectiveDisplay>
+                <span class="value">{{ rate.value.effectiveFrom || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell" *ngIf="editMode">
+              <button type="button" class="link" (click)="removeRate('healthInsuranceRates', i)">削除</button>
+            </div>
+          </div>
+        </div>
+        <div class="table-actions" *ngIf="editMode">
+          <input #csvFileInput type="file" accept=".csv" (change)="onHealthInsuranceCsvUpload($event)" style="display: none;" />
+          <button type="button" class="secondary" (click)="csvFileInput.click()">CSV一括アップロード</button>
+          <button type="button" class="secondary" (click)="addRate('healthInsuranceRates')">行を追加</button>
+        </div>
+      </article>
+  
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2>介護保険料率</h2>
+          </div>
+        </div>
+        <div class="table" formArrayName="nursingCareRates">
+          <div class="table-row header">
+            <div class="cell">総保険料率</div>
+            <div class="cell">従業員負担率</div>
+            <div class="cell">適用開始年月</div>
+            <div class="cell" *ngIf="editMode"></div>
+          </div>
+          <div
+            class="table-row"
+            *ngFor="let rate of nursingCareRates.controls; let i = index"
+            [formGroupName]="i"
+          >
+            <div class="cell">
+              <ng-container *ngIf="editMode; else nursingTotalDisplay">
+                <input type="text" formControlName="totalRate" />
+              </ng-container>
+              <ng-template #nursingTotalDisplay>
+                <span class="value">{{ rate.value.totalRate || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else nursingEmployeeDisplay">
+                <input type="text" formControlName="employeeRate" />
+              </ng-container>
+              <ng-template #nursingEmployeeDisplay>
+                <span class="value">{{ rate.value.employeeRate || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else nursingEffectiveDisplay">
+                <input type="month" formControlName="effectiveFrom" />
+              </ng-container>
+              <ng-template #nursingEffectiveDisplay>
+                <span class="value">{{ rate.value.effectiveFrom || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell" *ngIf="editMode">
+              <button type="button" class="link" (click)="removeRate('nursingCareRates', i)">削除</button>
+            </div>
+          </div>
+        </div>
+        <div class="table-actions" *ngIf="editMode">
+          <button type="button" class="secondary" (click)="addRate('nursingCareRates')">行を追加</button>
+        </div>
+      </article>
+  
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2>厚生年金保険料率</h2>
+          </div>
+        </div>
+        <div class="grid three-col" formGroupName="pensionRate">
+          <div class="field">
+            <label>総保険料率</label>
+            <ng-container *ngIf="editMode; else pensionTotalDisplay">
+              <input type="text" formControlName="totalRate" />
+            </ng-container>
+            <ng-template #pensionTotalDisplay>
+              <p class="value">{{ form.value.pensionRate?.totalRate || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>従業員負担率</label>
+            <ng-container *ngIf="editMode; else pensionEmployeeDisplay">
+              <input type="text" formControlName="employeeRate" />
+            </ng-container>
+            <ng-template #pensionEmployeeDisplay>
+              <p class="value">{{ form.value.pensionRate?.employeeRate || '—' }}</p>
+            </ng-template>
+          </div>
+          <div class="field">
+            <label>適用開始年月</label>
+            <ng-container *ngIf="editMode; else pensionEffectiveDisplay">
+              <input type="month" formControlName="effectiveFrom" />
+            </ng-container>
+            <ng-template #pensionEffectiveDisplay>
+              <p class="value">{{ form.value.pensionRate?.effectiveFrom || '—' }}</p>
+            </ng-template>
+          </div>
+        </div>
+      </article>
+  
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2>健康保険／厚生年金の等級と報酬範囲</h2>
+          </div>
+        </div>
+        <div class="table" formArrayName="standardCompensations">
+          <div class="table-row header">
+            <div class="cell">健康保険等級</div>
+            <div class="cell">厚生年金等級</div>
+            <div class="cell">標準報酬月額</div>
+            <div class="cell">報酬下限額</div>
+            <div class="cell">報酬上限額</div>
+            <div class="cell">適用開始年月</div>
+            <div class="cell" *ngIf="editMode"></div>
+          </div>
+          <div
+            class="table-row"
+            *ngFor="let grade of standardCompensations.controls; let i = index"
+            [formGroupName]="i"
+          >
+            <div class="cell">
+              <ng-container *ngIf="editMode; else healthGradeDisplay">
+                <input type="text" formControlName="healthInsuranceGrade" />
+              </ng-container>
+              <ng-template #healthGradeDisplay>
+                <span class="value">{{ grade.value.healthInsuranceGrade || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else pensionGradeDisplay">
+                <input type="text" formControlName="pensionGrade" />
+              </ng-container>
+              <ng-template #pensionGradeDisplay>
+                <span class="value">{{ grade.value.pensionGrade || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else standardMonthlyDisplay">
+                <input type="text" formControlName="standardMonthlyCompensation" />
+              </ng-container>
+              <ng-template #standardMonthlyDisplay>
+                <span class="value">{{ grade.value.standardMonthlyCompensation || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else lowerDisplay">
+                <input type="text" formControlName="lowerLimit" />
+              </ng-container>
+              <ng-template #lowerDisplay>
+                <span class="value">{{ grade.value.lowerLimit || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else upperDisplay">
+                <input type="text" formControlName="upperLimit" />
+              </ng-container>
+              <ng-template #upperDisplay>
+                <span class="value">{{ grade.value.upperLimit || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else gradeEffectiveDisplay">
+                <input type="month" formControlName="effectiveFrom" />
+              </ng-container>
+              <ng-template #gradeEffectiveDisplay>
+                <span class="value">{{ grade.value.effectiveFrom || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell" *ngIf="editMode">
+              <button type="button" class="link" (click)="removeStandardCompensation(i)">削除</button>
+            </div>
+          </div>
+        </div>
+        <div class="table-actions" *ngIf="editMode">
+          <input #standardCompensationCsvInput type="file" accept=".csv" (change)="onStandardCompensationCsvUpload($event)" style="display: none;" />
+          <button type="button" class="secondary" (click)="standardCompensationCsvInput.click()">CSV一括アップロード</button>
+          <button type="button" class="secondary" (click)="addStandardCompensation()">行を追加</button>
+        </div>
+      </article>
+  
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2>健康保険・厚生年金の標準賞与額と年度上限</h2>
+          </div>
+        </div>
+        <div class="table" formArrayName="bonusCaps">
+          <div class="table-row header">
+            <div class="cell">健康保険ー年度累計上限</div>
+            <div class="cell">適用開始年月</div>
+            <div class="cell">厚生年金ー月額上限</div>
+            <div class="cell">適用開始年月</div>
+            <div class="cell" *ngIf="editMode"></div>
+          </div>
+          <div class="table-row" *ngFor="let cap of bonusCaps.controls; let i = index" [formGroupName]="i">
+            <div class="cell">
+              <ng-container *ngIf="editMode; else yearlyCapDisplay">
+                <input type="text" formControlName="yearlyCap" />
+              </ng-container>
+              <ng-template #yearlyCapDisplay>
+                <span class="value">{{ cap.value.yearlyCap || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else yearlyCapEffectiveDisplay">
+                <input type="month" formControlName="yearlyCapEffectiveFrom" />
+              </ng-container>
+              <ng-template #yearlyCapEffectiveDisplay>
+                <span class="value">{{ cap.value.yearlyCapEffectiveFrom || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else monthlyCapDisplay">
+                <input type="text" formControlName="monthlyCap" />
+              </ng-container>
+              <ng-template #monthlyCapDisplay>
+                <span class="value">{{ cap.value.monthlyCap || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell">
+              <ng-container *ngIf="editMode; else monthlyCapEffectiveDisplay">
+                <input type="month" formControlName="monthlyCapEffectiveFrom" />
+              </ng-container>
+              <ng-template #monthlyCapEffectiveDisplay>
+                <span class="value">{{ cap.value.monthlyCapEffectiveFrom || '—' }}</span>
+              </ng-template>
+            </div>
+            <div class="cell" *ngIf="editMode">
+              <button type="button" class="link" (click)="removeBonusCap(i)">削除</button>
+            </div>
+          </div>
+        </div>
+        <div class="table-actions" *ngIf="editMode">
+          <button type="button" class="secondary" (click)="addBonusCap()">行を追加</button>
+        </div>
+      </article>
+    </form>
+  
+    <section class="card history" *ngIf="historyRecords.length">
+      <div class="card-header">
+        <div>
+          <h2>修正履歴</h2>
+        </div>
+        <p class="hint">過去の履歴は参照のみです。必要に応じて最新のレコードを編集してください。</p>
+      </div>
+      <div class="history-list">
+        <article
+          class="history-item"
+          *ngFor="let record of historyRecords"
+          [class.active]="viewingRecord?.id === record.id"
+        >
+          <div>
+            <p class="eyebrow">{{ record.healthType }}</p>
+            <p class="hint">更新: {{ record.updatedAt | date: 'yyyy/MM/dd HH:mm' }} / {{ record.updatedBy || '—' }}</p>
+          </div>
+          <div class="history-actions">
+            <button type="button" class="secondary" (click)="viewHistory(record)">表示</button>
+          </div>
+        </article>
+      </div>
+    </section>
+  </section>

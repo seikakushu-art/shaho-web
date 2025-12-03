@@ -10,6 +10,7 @@ import { ApprovalListComponent } from './approvals/approval-list/approval-list.c
 import { ApprovalDetailComponent } from './approvals/approval-detail.component';
 import { StandardRemunerationComponent } from './procedures/standard-remuneration/standard-remuneration.component';
 import { CorporateInfoComponent } from './corporate-info/corporate-info.component';
+import { InsuranceRatesComponent } from './insurance-rates/insurance-rates.component';
 
 export const routes: Routes = [
   {
@@ -71,6 +72,12 @@ export const routes: Routes = [
     component: CorporateInfoComponent,
     canActivate: [authGuard],
     title: '法人情報',
+  },
+  {
+    path: 'insurance-rates',
+    component: InsuranceRatesComponent,
+    canActivate: [authGuard],
+    title: '保険料率設定',
   },
   {
     path: '',
