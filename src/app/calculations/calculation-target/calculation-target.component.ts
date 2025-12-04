@@ -29,6 +29,7 @@ export class CalculationTargetComponent implements OnInit {
   targetMonth = '2025-02';
   bonusMonth = '2025-03';
   bonusPaymentDate = '2025-03-15';
+  includeBonusInMonth = true;
   calculationMethod: '自動算出' | '個別入力' = '自動算出';
   standardCalculationMethod: StandardCalculationMethod = '定時決定';
   department = '';
@@ -114,6 +115,7 @@ export class CalculationTargetComponent implements OnInit {
     this.department = params.get('department') ?? this.department;
     this.location = params.get('location') ?? this.location;
     this.employeeNo = params.get('employeeNo') ?? this.employeeNo;
+    this.includeBonusInMonth = params.get('includeBonusInMonth') === 'false' ? false : this.includeBonusInMonth;
 
     this.restoreInsuranceSelections(params.get('insurances'));
     this.loadEmployeeMetadata();
@@ -241,6 +243,7 @@ export class CalculationTargetComponent implements OnInit {
         method: this.calculationMethod,
         standardMethod: this.standardCalculationMethod,
         bonusPaidOn: this.bonusPaymentDate,
+        includeBonusInMonth: this.includeBonusInMonth,
         department: this.department || undefined,
         location: this.location || undefined,
         employeeNo: this.employeeNo || undefined,

@@ -75,6 +75,12 @@
       <input id="bonusPaymentDate" type="date" [(ngModel)]="bonusPaymentDate" />
       <p class="hint">社員基本情報の賞与支給日を参照して上書きできます。</p>
     </div>
+    <div class="field" *ngIf="calculationType === 'insurance'">
+      <label>
+        <input type="checkbox" [(ngModel)]="includeBonusInMonth" />
+        対象月に賞与を含める
+      </label>
+    </div>
     <div class="field">
       <label>保険種別</label>
       <div class="options">
