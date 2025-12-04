@@ -1,77 +1,99 @@
-<section class="calculation-target">
-    <header>
-      <p class="eyebrow">{{ calculationTypes[calculationType] }}</p>
-      <h1>計算対象の指定</h1>
-      <p class="hint">
-        部署・勤務地・社員番号で絞り込み、計算方法や対象年月、保険種別を指定します。絞り込んだ一覧は確認用として下部に表示されます。
-      </p>
-    </header>
-  
-    <div class="form-grid">
-      <div class="card">
-        <h2>フィルタ</h2>
-        <div class="field">
-          <label for="department">部署</label>
-          <select id="department" [(ngModel)]="department">
-            <option value="">すべて</option>
-            <option *ngFor="let dept of departments" [value]="dept">{{ dept }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="location">勤務地</label>
-          <select id="location" [(ngModel)]="location">
-            <option value="">すべて</option>
-            <option *ngFor="let loc of locations" [value]="loc">{{ loc }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="employeeNo">社員番号</label>
-          <input id="employeeNo" type="text" [(ngModel)]="employeeNo" placeholder="例: E2025" />
-        </div>
-      </div>
-  
-      <div class="card">
-        <h2>計算条件</h2>
-        <div class="field">
-          <label>計算方法</label>
-          <div class="options">
-            <label *ngFor="let method of calculationMethods">
-              <input type="radio" name="method" [value]="method" [(ngModel)]="calculationMethod" />
-              {{ method }}
-            </label>
-          </div>
-        </div>
-        <div class="field">
-          <label for="targetMonth">対象年月</label>
-          <input id="targetMonth" type="month" [(ngModel)]="targetMonth" />
-        </div>
-        <div class="field" *ngIf="calculationType !== 'standard'">
-          <label for="bonusMonth">賞与対象月</label>
-          <input id="bonusMonth" type="month" [(ngModel)]="bonusMonth" />
-        </div>
-        <div class="field">
-          <label>保険種別</label>
-          <div class="options">
-            <label>
-              <input type="checkbox" [checked]="insuranceSelections['health']" (change)="toggleInsurance('health')" />
-              健康保険
-            </label>
-            <label>
-              <input type="checkbox" [checked]="insuranceSelections['welfare']" (change)="toggleInsurance('welfare')" />
-              厚生年金
-            </label>
-            <label>
-              <input type="checkbox" [checked]="insuranceSelections['employment']" (change)="toggleInsurance('employment')" />
-              雇用保険
-            </label>
-            <label>
-              <input type="checkbox" [checked]="insuranceSelections['nursing']" (change)="toggleInsurance('nursing')" />
-              介護保険
-            </label>
-          </div>
-        </div>
+<header>
+  <p class="eyebrow">{{ calculationTypes[calculationType] }}</p>
+  <h1>計算対象の指定</h1>
+  <p class="hint">
+    部署・勤務地・社員番号で絞り込み、計算方法や対象年月、保険種別を指定します。絞り込んだ一覧は確認用として下部に表示されます。
+  </p>
+</header>
+
+<div class="form-grid">
+  <div class="card">
+    <h2>フィルタ</h2>
+    <div class="field">
+      <label>計算種別</label>
+      <div class="options">
+        <label *ngFor="let entry of (calculationTypes | keyvalue)">
+          <input
+            type="radio"
+            name="calcType"
+            [value]="entry.key"
+            [checked]="calculationType === entry.key"
+            (change)="onCalculationTypeChange(entry.key)"
+          />
+          {{ entry.value }}
+        </label>
       </div>
     </div>
+    <div class="field">
+      <label for="department">部署</label>
+      <select id="department" [(ngModel)]="department">
+        <option value="">すべて</option>
+        <option *ngFor="let dept of departments" [value]="dept">{{ dept }}</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="location">勤務地</label>
+      <select id="location" [(ngModel)]="location">
+        <option value="">すべて</option>
+        <option *ngFor="let loc of locations" [value]="loc">{{ loc }}</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="employeeNo">社員番号</label>
+      <input id="employeeNo" type="text" [(ngModel)]="employeeNo" placeholder="例: E2025" />
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>計算条件</h2>
+    <div class="field">
+      <label>計算方法</label>
+      <div class="options">
+        <label *ngFor="let method of calculationMethods">
+          <input type="radio" name="method" [value]="method" [(ngModel)]="calculationMethod" />
+          {{ method }}
+        </label>
+      </div>
+    </div>
+    <div class="field">
+      <label for="targetMonth">対象年月</label>
+      <input id="targetMonth" type="month" [(ngModel)]="targetMonth" />
+    </div>
+    <div class="field" *ngIf="isStandardCalculation">
+      <label for="standardCalculationMethod">標準報酬月額の算定方法</label>
+      <select id="standardCalculationMethod" [(ngModel)]="standardCalculationMethod">
+        <option *ngFor="let method of standardCalculationMethods" [value]="method">{{ method }}</option>
+      </select>
+      <p class="hint">標準報酬月額を算出する際の区分を選択してください。</p>
+    </div>
+    <div class="field" *ngIf="!isStandardCalculation">
+      <label for="bonusMonth">賞与対象月</label>
+      <input id="bonusMonth" type="month" [(ngModel)]="bonusMonth" />
+    </div>
+    <div class="field" *ngIf="isBonusCalculation">
+      <label for="bonusPaymentDate">賞与支給日</label>
+      <input id="bonusPaymentDate" type="date" [(ngModel)]="bonusPaymentDate" />
+      <p class="hint">社員基本情報の賞与支給日を参照して上書きできます。</p>
+    </div>
+    <div class="field">
+      <label>保険種別</label>
+      <div class="options">
+        <label>
+          <input type="checkbox" [checked]="insuranceSelections['health']" (change)="toggleInsurance('health')" />
+          健康保険
+        </label>
+        <label>
+          <input type="checkbox" [checked]="insuranceSelections['welfare']" (change)="toggleInsurance('welfare')" />
+          厚生年金
+        </label>
+        <label>
+          <input type="checkbox" [checked]="insuranceSelections['nursing']" (change)="toggleInsurance('nursing')" />
+          介護保険
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
   
     <div class="card">
       <div class="actions-row">
@@ -87,6 +109,7 @@
             <th>部署</th>
             <th>勤務地</th>
             <th>計算方法</th>
+            <th>賞与支給日</th>
           </tr>
         </thead>
         <tbody>
@@ -94,10 +117,10 @@
             <td>{{ candidate.employeeNo }}</td>
             <td>{{ candidate.name }}</td>
             <td>{{ candidate.department }}</td>
-            <td>{{ candidate.location }}</td>
+            <td>{{ getCandidateLocation(candidate) }}</td>
             <td>{{ candidate.method }}</td>
+            <td>{{ getCandidateBonusDate(candidate) || '未登録' }}</td>
           </tr>
         </tbody>
       </table>
     </div>
-  </section>
