@@ -35,13 +35,14 @@ export interface CalculationRow {
   welfareEmployerMonthly: number;
   bonusPaymentDate: string;
   bonusTotalPay: number;
-  standardBonus: number;
   healthEmployeeBonus: number;
   healthEmployerBonus: number;
   nursingEmployeeBonus: number;
   nursingEmployerBonus: number;
   welfareEmployeeBonus: number;
   welfareEmployerBonus: number;
+  standardHealthBonus: number;
+  standardWelfareBonus: number;
 }
 
 export interface CalculationQueryParams {
@@ -129,8 +130,16 @@ export class CalculationDataService {
 
     const monthlySalary = payrolls.find((p) => p.yearMonth === context.targetMonth)?.amount ?? 0;
     const bonusRecord = this.findBonus(payrolls, context.bonusMonth, fallbackBonusDate);
-    const bonusCap = extractBonusCap(rateRecord, '健康保険');
-    const standardBonus = calculateStandardBonus(bonusRecord?.bonusTotal ?? 0, bonusCap);
+    const healthBonusCap = extractBonusCap(rateRecord, '健康保険');
+    const welfareBonusCap = extractBonusCap(rateRecord, '厚生年金');
+    const standardHealthBonus = calculateStandardBonus(
+      bonusRecord?.bonusTotal ?? 0,
+      healthBonusCap,
+    );
+    const standardWelfareBonus = calculateStandardBonus(
+      bonusRecord?.bonusTotal ?? 0,
+      welfareBonusCap,
+    );
 
     const location = employee.workPrefecture || employee.department || '未設定';
     const healthRate = findPrefectureRate(rateRecord.healthInsuranceRates, location);
@@ -149,14 +158,14 @@ export class CalculationDataService {
 
     const healthBonus =
       context.activeInsurances.includes('health') && (context.includeBonusInMonth ?? true)
-        ? calculateInsurancePremium(standardBonus, healthRate)
-        : { employee: 0, employer: 0, total: 0 };
-    const nursingBonus =
-      context.activeInsurances.includes('nursing') && employee.careSecondInsured
-        ? calculateInsurancePremium(standardBonus, nursingRate)
-        : { employee: 0, employer: 0, total: 0 };
-    const welfareBonus = context.activeInsurances.includes('welfare')
-      ? calculatePensionPremium(standardBonus, rateRecord.pensionRate)
+      ? calculateInsurancePremium(standardHealthBonus, healthRate)
+      : { employee: 0, employer: 0, total: 0 };
+  const nursingBonus =
+    context.activeInsurances.includes('nursing') && employee.careSecondInsured
+      ? calculateInsurancePremium(standardHealthBonus, nursingRate)
+      : { employee: 0, employer: 0, total: 0 };
+  const welfareBonus = context.activeInsurances.includes('welfare')
+    ? calculatePensionPremium(standardWelfareBonus, rateRecord.pensionRate)
       : { employee: 0, employer: 0, total: 0 };
 
     return {
@@ -175,7 +184,8 @@ export class CalculationDataService {
       welfareEmployerMonthly: welfareMonthly.employer,
       bonusPaymentDate: bonusRecord?.bonusPaidOn ?? '',
       bonusTotalPay: bonusRecord?.bonusTotal ?? 0,
-      standardBonus,
+      standardHealthBonus,
+      standardWelfareBonus,
       healthEmployeeBonus: healthBonus.employee,
       healthEmployerBonus: healthBonus.employer,
       nursingEmployeeBonus: nursingBonus.employee,

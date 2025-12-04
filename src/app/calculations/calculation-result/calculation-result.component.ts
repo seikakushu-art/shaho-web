@@ -32,7 +32,8 @@ type ColumnKey =
   | 'welfareTotalMonthly'
   | 'bonusPaymentDate'
   | 'bonusTotalPay'
-  | 'standardBonus'
+  | 'standardHealthBonus'
+  | 'standardWelfareBonus'
   | 'healthEmployeeBonus'
   | 'healthEmployerBonus'
   | 'healthTotalBonus'
@@ -225,8 +226,16 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       format: 'money',
     },
     {
-      key: 'standardBonus',
-      label: '標準賞与額',
+      key: 'standardHealthBonus',
+      label: '標準賞与額（健・介）',
+      visible: true,
+      sortable: true,
+      category: 'bonus',
+      format: 'money',
+    },
+    {
+      key: 'standardWelfareBonus',
+      label: '標準賞与額（厚生年金）',
       visible: true,
       sortable: true,
       category: 'bonus',
@@ -519,6 +528,8 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     const insuranceMap: Partial<
       Record<ColumnKey, 'health' | 'nursing' | 'welfare'>
     > = {
+      standardHealthBonus: 'health',
+      standardWelfareBonus: 'welfare',
       healthEmployeeMonthly: 'health',
       healthEmployerMonthly: 'health',
       healthTotalMonthly: 'health',

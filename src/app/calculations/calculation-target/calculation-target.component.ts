@@ -41,8 +41,8 @@ export class CalculationTargetComponent implements OnInit {
     nursing: false,
   };
 
-  departments = ['管理部', '営業部', '開発部', 'サポート'];
-  locations = ['東京', '大阪', '名古屋', 'リモート'];
+  departments: string[] = [];
+  locations: string[] = [];
   readonly calculationMethods = ['自動算出', '個別入力'] as const;
   readonly calculationTypes: Record<CalculationType, string> = {
     standard: '標準報酬月額計算（2.4.1）',
@@ -65,36 +65,7 @@ export class CalculationTargetComponent implements OnInit {
   employeeBonusDates: Record<string, string> = {};
   employeeLocations: Record<string, string> = {};
 
-  candidates: EmployeeCandidate[] = [
-    {
-      employeeNo: 'E202501',
-      name: '佐藤 花子',
-      department: '管理部',
-      location: '東京',
-      method: '自動算出',
-    },
-    {
-      employeeNo: 'E202502',
-      name: '鈴木 太郎',
-      department: '営業部',
-      location: '大阪',
-      method: '個別入力',
-    },
-    {
-      employeeNo: 'E202503',
-      name: '高橋 未来',
-      department: '開発部',
-      location: 'リモート',
-      method: '自動算出',
-    },
-    {
-      employeeNo: 'E202504',
-      name: '田中 直樹',
-      department: 'サポート',
-      location: '名古屋',
-      method: '自動算出',
-    },
-  ];
+  candidates: EmployeeCandidate[] = [];
 
   constructor(
     private router: Router,
