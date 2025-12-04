@@ -124,6 +124,7 @@ export class CalculationDataService {
       context.standardCalculationMethod,
       context.targetMonth,
       rateRecord.standardCompensations ?? [],
+      employee.previousStandardMonthly,
     );
 
     const monthlySalary = payrolls.find((p) => p.yearMonth === context.targetMonth)?.amount ?? 0;

@@ -37,6 +37,7 @@ export interface ShahoEmployee {
   healthInsuredNumber?: string;
   pensionInsuredNumber?: string;
   insuredNumber?: string; // 被保険者番号
+  previousStandardMonthly?: number; // 従前標準報酬月額
   careSecondInsured?: boolean;
   healthAcquisition?: string;
   pensionAcquisition?: string;
