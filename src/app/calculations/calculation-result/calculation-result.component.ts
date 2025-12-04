@@ -3,7 +3,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
-import { CalculationType, StandardCalculationMethod } from '../calculation-types';
+import {
+  CalculationType,
+  StandardCalculationMethod,
+} from '../calculation-types';
 import {
   CalculationDataService,
   CalculationQueryParams,
@@ -85,7 +88,14 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       category: 'shared',
       format: 'text',
     },
-    { key: 'name', label: '氏名', visible: true, sortable: true, category: 'shared', format: 'text' },
+    {
+      key: 'name',
+      label: '氏名',
+      visible: true,
+      sortable: true,
+      category: 'shared',
+      format: 'text',
+    },
     {
       key: 'department',
       label: '部署',
@@ -312,7 +322,10 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   departmentSummaries: DepartmentSummary[] = [];
   insuranceSummaries: InsuranceSummary[] = [];
 
-  constructor(private router: Router, private route: ActivatedRoute) {}
+  constructor(
+    private router: Router,
+    private route: ActivatedRoute,
+  ) {}
 
   ngOnInit(): void {
     const params = this.route.snapshot.queryParamMap;
@@ -322,22 +335,24 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     this.bonusMonth = params.get('bonusMonth') ?? '2025-03';
     this.method = params.get('method') ?? '自動算出';
     this.standardMethod =
-    (params.get('standardMethod') as StandardCalculationMethod | null) ?? '定時決定';
-  this.activeInsurances = (params.get('insurances') ?? '健康,厚生年金,介護')
-    .split(',')
-    .filter(Boolean);
-  this.includeBonusInMonth = params.get('includeBonusInMonth') === 'false' ? false : true;
-  this.departmentFilter = params.get('department') ?? '';
-  this.locationFilter = params.get('location') ?? '';
-  this.employeeNoFilter = params.get('employeeNo') ?? '';
-  this.bonusPaidOnFilter = params.get('bonusPaidOn') ?? '';
+      (params.get('standardMethod') as StandardCalculationMethod | null) ??
+      '定時決定';
+    this.activeInsurances = (params.get('insurances') ?? '健康,厚生年金,介護')
+      .split(',')
+      .filter(Boolean);
+    this.includeBonusInMonth =
+      params.get('includeBonusInMonth') === 'false' ? false : true;
+    this.departmentFilter = params.get('department') ?? '';
+    this.locationFilter = params.get('location') ?? '';
+    this.employeeNoFilter = params.get('employeeNo') ?? '';
+    this.bonusPaidOnFilter = params.get('bonusPaidOn') ?? '';
 
-  this.loadRows();
-}
+    this.loadRows();
+  }
 
-ngOnDestroy(): void {
-  this.destroy$.next();
-  this.destroy$.complete();
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   get visibleColumns() {
@@ -359,6 +374,17 @@ ngOnDestroy(): void {
   autoHideIrrelevant() {
     this.refreshVisibility(true);
   }
+
+  private isInsuranceActive(type: 'health' | 'nursing' | 'welfare') {
+    const labelMap: Record<typeof type, string> = {
+      health: '健康',
+      nursing: '介護',
+      welfare: '厚生年金',
+    };
+
+    return this.activeInsurances.includes(labelMap[type]);
+  }
+
   private loadRows() {
     const query: CalculationQueryParams = {
       type: this.calculationType,
@@ -480,7 +506,40 @@ ngOnDestroy(): void {
     if (column.category === 'bonus' && this.calculationType === 'standard') {
       return false;
     }
+    const insuranceType = this.getInsuranceTypeForColumn(column.key);
+    if (insuranceType && !this.isInsuranceActive(insuranceType)) {
+      return false;
+    }
     return true;
+  }
+
+  private getInsuranceTypeForColumn(
+    key: ColumnKey,
+  ): 'health' | 'nursing' | 'welfare' | null {
+    const insuranceMap: Partial<
+      Record<ColumnKey, 'health' | 'nursing' | 'welfare'>
+    > = {
+      healthEmployeeMonthly: 'health',
+      healthEmployerMonthly: 'health',
+      healthTotalMonthly: 'health',
+      healthEmployeeBonus: 'health',
+      healthEmployerBonus: 'health',
+      healthTotalBonus: 'health',
+      nursingEmployeeMonthly: 'nursing',
+      nursingEmployerMonthly: 'nursing',
+      nursingTotalMonthly: 'nursing',
+      nursingEmployeeBonus: 'nursing',
+      nursingEmployerBonus: 'nursing',
+      nursingTotalBonus: 'nursing',
+      welfareEmployeeMonthly: 'welfare',
+      welfareEmployerMonthly: 'welfare',
+      welfareTotalMonthly: 'welfare',
+      welfareEmployeeBonus: 'welfare',
+      welfareEmployerBonus: 'welfare',
+      welfareTotalBonus: 'welfare',
+    };
+
+    return insuranceMap[key] ?? null;
   }
 
   private calculateSummaries() {
@@ -510,13 +569,21 @@ ngOnDestroy(): void {
       target.bonusPay += row.bonusTotalPay;
 
       const monthlyEmployee =
-        row.healthEmployeeMonthly + row.nursingEmployeeMonthly + row.welfareEmployeeMonthly;
+        (this.isInsuranceActive('health') ? row.healthEmployeeMonthly : 0) +
+        (this.isInsuranceActive('nursing') ? row.nursingEmployeeMonthly : 0) +
+        (this.isInsuranceActive('welfare') ? row.welfareEmployeeMonthly : 0);
       const monthlyEmployer =
-        row.healthEmployerMonthly + row.nursingEmployerMonthly + row.welfareEmployerMonthly;
+        (this.isInsuranceActive('health') ? row.healthEmployerMonthly : 0) +
+        (this.isInsuranceActive('nursing') ? row.nursingEmployerMonthly : 0) +
+        (this.isInsuranceActive('welfare') ? row.welfareEmployerMonthly : 0);
       const bonusEmployee =
-        row.healthEmployeeBonus + row.nursingEmployeeBonus + row.welfareEmployeeBonus;
+        (this.isInsuranceActive('health') ? row.healthEmployeeBonus : 0) +
+        (this.isInsuranceActive('nursing') ? row.nursingEmployeeBonus : 0) +
+        (this.isInsuranceActive('welfare') ? row.welfareEmployeeBonus : 0);
       const bonusEmployer =
-        row.healthEmployerBonus + row.nursingEmployerBonus + row.welfareEmployerBonus;
+        (this.isInsuranceActive('health') ? row.healthEmployerBonus : 0) +
+        (this.isInsuranceActive('nursing') ? row.nursingEmployerBonus : 0) +
+        (this.isInsuranceActive('welfare') ? row.welfareEmployerBonus : 0);
 
       target.employeeShare += monthlyEmployee + bonusEmployee;
       target.employerShare += monthlyEmployer + bonusEmployer;
@@ -529,22 +596,53 @@ ngOnDestroy(): void {
   }
 
   private buildInsuranceSummaries(): InsuranceSummary[] {
-    const summaries: InsuranceSummary[] = [
-      { type: '健康保険', employee: 0, employer: 0 },
-      { type: '介護保険', employee: 0, employer: 0 },
-      { type: '厚生年金', employee: 0, employer: 0 },
-    ];
+    const summaries: InsuranceSummary[] = [];
+    const summaryRefs: Partial<
+      Record<'health' | 'nursing' | 'welfare', InsuranceSummary>
+    > = {};
+
+    if (this.isInsuranceActive('health')) {
+      const entry = { type: '健康保険', employee: 0, employer: 0 };
+      summaryRefs.health = entry;
+      summaries.push(entry);
+    }
+
+    if (this.isInsuranceActive('nursing')) {
+      const entry = { type: '介護保険', employee: 0, employer: 0 };
+      summaryRefs.nursing = entry;
+      summaries.push(entry);
+    }
+
+    if (this.isInsuranceActive('welfare')) {
+      const entry = { type: '厚生年金', employee: 0, employer: 0 };
+      summaryRefs.welfare = entry;
+      summaries.push(entry);
+    }
 
     this.rows.forEach((row) => {
-      summaries[0].employee += row.healthEmployeeMonthly + row.healthEmployeeBonus;
-      summaries[0].employer += row.healthEmployerMonthly + row.healthEmployerBonus;
-      summaries[1].employee += row.nursingEmployeeMonthly + row.nursingEmployeeBonus;
-      summaries[1].employer += row.nursingEmployerMonthly + row.nursingEmployerBonus;
-      summaries[2].employee += row.welfareEmployeeMonthly + row.welfareEmployeeBonus;
-      summaries[2].employer += row.welfareEmployerMonthly + row.welfareEmployerBonus;
+      if (summaryRefs.health) {
+        summaryRefs.health.employee +=
+          row.healthEmployeeMonthly + row.healthEmployeeBonus;
+        summaryRefs.health.employer +=
+          row.healthEmployerMonthly + row.healthEmployerBonus;
+      }
+      if (summaryRefs.nursing) {
+        summaryRefs.nursing.employee +=
+          row.nursingEmployeeMonthly + row.nursingEmployeeBonus;
+        summaryRefs.nursing.employer +=
+          row.nursingEmployerMonthly + row.nursingEmployerBonus;
+      }
+      if (summaryRefs.welfare) {
+        summaryRefs.welfare.employee +=
+          row.welfareEmployeeMonthly + row.welfareEmployeeBonus;
+        summaryRefs.welfare.employer +=
+          row.welfareEmployerMonthly + row.welfareEmployerBonus;
+      }
     });
-
-    return summaries.map((row) => ({ ...row, total: row.employee + row.employer }));
+    return summaries.map((row) => ({
+      ...row,
+      total: row.employee + row.employer,
+    }));
   }
 
   goToApprovalFlow() {
