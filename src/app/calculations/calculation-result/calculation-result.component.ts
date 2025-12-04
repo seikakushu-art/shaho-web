@@ -1,9 +1,14 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-
-type CalculationType = 'standard' | 'bonus' | 'insurance';
+import { Subject, takeUntil } from 'rxjs';
+import { CalculationType, StandardCalculationMethod } from '../calculation-types';
+import {
+  CalculationDataService,
+  CalculationQueryParams,
+  CalculationRow,
+} from '../calculation-data.service';
 
 type ColumnKey =
   | 'employeeNo'
@@ -36,30 +41,6 @@ type ColumnKey =
   | 'welfareTotalBonus'
   | 'totalContribution';
 
-interface CalculationRow {
-  employeeNo: string;
-  name: string;
-  department: string;
-  location: string;
-  month: string;
-  monthlySalary: number;
-  standardMonthly: number;
-  healthEmployeeMonthly: number;
-  healthEmployerMonthly: number;
-  nursingEmployeeMonthly: number;
-  nursingEmployerMonthly: number;
-  welfareEmployeeMonthly: number;
-  welfareEmployerMonthly: number;
-  bonusPaymentDate: string;
-  bonusTotalPay: number;
-  standardBonus: number;
-  healthEmployeeBonus: number;
-  healthEmployerBonus: number;
-  nursingEmployeeBonus: number;
-  nursingEmployerBonus: number;
-  welfareEmployeeBonus: number;
-  welfareEmployerBonus: number;
-}
 type ColumnCategory = 'monthly' | 'bonus' | 'shared';
 type ColumnFormat = 'text' | 'money' | 'date' | 'month';
 
@@ -79,12 +60,21 @@ interface ColumnSetting {
   templateUrl: './calculation-result.component.html',
   styleUrl: './calculation-result.component.scss',
 })
-export class CalculationResultComponent implements OnInit {
+export class CalculationResultComponent implements OnInit, OnDestroy {
+  private calculationDataService = inject(CalculationDataService);
+  private destroy$ = new Subject<void>();
+
   calculationType: CalculationType = 'standard';
   targetMonth = '';
   bonusMonth = '';
   method = '';
+  standardMethod: StandardCalculationMethod = '定時決定';
   activeInsurances: string[] = [];
+  includeBonusInMonth = true;
+  departmentFilter = '';
+  locationFilter = '';
+  employeeNoFilter = '';
+  bonusPaidOnFilter = '';
 
   columns: ColumnSetting[] = [
     {
@@ -314,80 +304,7 @@ export class CalculationResultComponent implements OnInit {
     },
   ];
 
-  rows: CalculationRow[] = [
-    {
-      employeeNo: 'E202501',
-      name: '佐藤 花子',
-      department: '管理部',
-      location: '東京',
-      month: '2025-02',
-      monthlySalary: 420000,
-      standardMonthly: 420000,
-      healthEmployeeMonthly: 20500,
-      healthEmployerMonthly: 20500,
-      nursingEmployeeMonthly: 0,
-      nursingEmployerMonthly: 0,
-      welfareEmployeeMonthly: 38400,
-      welfareEmployerMonthly: 38400,
-      bonusPaymentDate: '2025-03-25',
-      bonusTotalPay: 0,
-      standardBonus: 0,
-      healthEmployeeBonus: 0,
-      healthEmployerBonus: 0,
-      nursingEmployeeBonus: 0,
-      nursingEmployerBonus: 0,
-      welfareEmployeeBonus: 0,
-      welfareEmployerBonus: 0,
-    },
-    {
-      employeeNo: 'E202502',
-      name: '鈴木 太郎',
-      department: '営業部',
-      location: '大阪',
-      month: '2025-03',
-      monthlySalary: 380000,
-      standardMonthly: 380000,
-      healthEmployeeMonthly: 18600,
-      healthEmployerMonthly: 18600,
-      nursingEmployeeMonthly: 0,
-      nursingEmployerMonthly: 0,
-      welfareEmployeeMonthly: 34700,
-      welfareEmployerMonthly: 34700,
-      bonusPaymentDate: '2025-03-10',
-      bonusTotalPay: 250000,
-      standardBonus: 250000,
-      healthEmployeeBonus: 11000,
-      healthEmployerBonus: 11000,
-      nursingEmployeeBonus: 0,
-      nursingEmployerBonus: 0,
-      welfareEmployeeBonus: 22800,
-      welfareEmployerBonus: 22800,
-    },
-    {
-      employeeNo: 'E202503',
-      name: '高橋 未来',
-      department: '開発部',
-      location: 'リモート',
-      month: '2025-02',
-      monthlySalary: 460000,
-      standardMonthly: 460000,
-      healthEmployeeMonthly: 22400,
-      healthEmployerMonthly: 22400,
-      nursingEmployeeMonthly: 4200,
-      nursingEmployerMonthly: 4200,
-      welfareEmployeeMonthly: 42200,
-      welfareEmployerMonthly: 42200,
-      bonusPaymentDate: '2025-04-05',
-      bonusTotalPay: 180000,
-      standardBonus: 180000,
-      healthEmployeeBonus: 8200,
-      healthEmployerBonus: 8200,
-      nursingEmployeeBonus: 1800,
-      nursingEmployerBonus: 1800,
-      welfareEmployeeBonus: 16400,
-      welfareEmployerBonus: 16400,
-    },
-  ];
+  rows: CalculationRow[] = [];
 
   sortKey: ColumnKey = 'employeeNo';
   sortDirection: 'asc' | 'desc' = 'asc';
@@ -404,9 +321,23 @@ export class CalculationResultComponent implements OnInit {
     this.targetMonth = params.get('targetMonth') ?? '2025-02';
     this.bonusMonth = params.get('bonusMonth') ?? '2025-03';
     this.method = params.get('method') ?? '自動算出';
-    this.activeInsurances = (params.get('insurances') ?? '健康,厚生年金,介護').split(',');
-    this.refreshVisibility(true);
-    this.calculateSummaries();
+    this.standardMethod =
+    (params.get('standardMethod') as StandardCalculationMethod | null) ?? '定時決定';
+  this.activeInsurances = (params.get('insurances') ?? '健康,厚生年金,介護')
+    .split(',')
+    .filter(Boolean);
+  this.includeBonusInMonth = params.get('includeBonusInMonth') === 'false' ? false : true;
+  this.departmentFilter = params.get('department') ?? '';
+  this.locationFilter = params.get('location') ?? '';
+  this.employeeNoFilter = params.get('employeeNo') ?? '';
+  this.bonusPaidOnFilter = params.get('bonusPaidOn') ?? '';
+
+  this.loadRows();
+}
+
+ngOnDestroy(): void {
+  this.destroy$.next();
+  this.destroy$.complete();
   }
 
   get visibleColumns() {
@@ -427,6 +358,30 @@ export class CalculationResultComponent implements OnInit {
 
   autoHideIrrelevant() {
     this.refreshVisibility(true);
+  }
+  private loadRows() {
+    const query: CalculationQueryParams = {
+      type: this.calculationType,
+      targetMonth: this.targetMonth,
+      bonusMonth: this.bonusMonth,
+      method: this.method,
+      standardMethod: this.standardMethod,
+      insurances: this.activeInsurances,
+      department: this.departmentFilter || undefined,
+      location: this.locationFilter || undefined,
+      employeeNo: this.employeeNoFilter || undefined,
+      includeBonusInMonth: this.includeBonusInMonth,
+      bonusPaidOn: this.bonusPaidOnFilter || undefined,
+    };
+
+    this.calculationDataService
+      .getCalculationRows(query)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((rows) => {
+        this.rows = rows;
+        this.refreshVisibility(true);
+        this.calculateSummaries();
+      });
   }
 
   sortBy(key: ColumnKey) {
@@ -497,6 +452,7 @@ export class CalculationResultComponent implements OnInit {
   }
 
   private refreshVisibility(autoHide = false) {
+    const hasRows = this.rows.length > 0;
     this.columns.forEach((column) => {
       const relevant = this.isRelevantForType(column);
       if (!relevant) {
@@ -504,13 +460,15 @@ export class CalculationResultComponent implements OnInit {
         return;
       }
 
-      if (autoHide) {
+      if (autoHide && hasRows) {
         const hasValue = this.rows.some((row) => {
           const value = this.getRawValue(row, column.key);
           if (typeof value === 'number') return value !== 0;
           return !!value;
         });
         column.visible = hasValue;
+      } else if (autoHide) {
+        column.visible = true;
       }
     });
   }
