@@ -33,9 +33,17 @@ export function parseRate(rate?: string): number {
   return isNaN(parsed) ? 0 : parsed / 100;
 }
 
-export function roundToInsuranceUnit(value: number, mode: 'ceil' | 'floor' = 'ceil'): number {
-  const halfRounded = mode === 'ceil' ? Math.ceil(value * 2) / 2 : Math.floor(value * 2) / 2;
-  return Math.floor(halfRounded + 1e-6);
+export function roundToInsuranceUnit(value: number): number {
+    const base = Math.floor(value);
+    const fraction = value - base;
+  
+    if (fraction > 0.5) return base + 1;
+    if (fraction < 0.5) return base;
+    return base; // 50銭は切り捨て
+  }
+  
+  export function floorInsuranceTotal(value: number): number {
+    return Math.floor(value + 1e-6);
 }
 
 export function calculateStandardBonus(totalBonus: number, cap?: number): number {
@@ -270,7 +278,6 @@ export function findPrefectureRate(
 export function calculateInsurancePremium(
   base: number,
   rate: PrefectureRate | undefined,
-  rounding: 'ceil' | 'floor' = 'ceil',
 ): PremiumBreakdown {
   if (!rate) {
     return { employee: 0, employer: 0, total: 0 };
@@ -278,25 +285,31 @@ export function calculateInsurancePremium(
 
   const totalRate = parseRate(rate.totalRate);
   const employeeRate = parseRate(rate.employeeRate);
-  const total = roundToInsuranceUnit(base * totalRate, rounding);
-  const employee = roundToInsuranceUnit(base * employeeRate, rounding);
-  const employer = roundToInsuranceUnit(total - employee, rounding);
+  const rawTotal = base * totalRate;
+  const rawEmployee = base * employeeRate;
+  const rawEmployer = rawTotal - rawEmployee;
 
+  const employee = roundToInsuranceUnit(rawEmployee);
+  const employer = roundToInsuranceUnit(rawEmployer);
+  const total = floorInsuranceTotal(employee + employer);
   return { total, employee, employer };
 }
 
 export function calculatePensionPremium(
   base: number,
   rateDetail: InsuranceRateRecord['pensionRate'] | undefined,
-  rounding: 'ceil' | 'floor' = 'ceil',
 ): PremiumBreakdown {
   if (!rateDetail) return { total: 0, employee: 0, employer: 0 };
 
   const totalRate = parseRate(rateDetail.totalRate);
   const employeeRate = parseRate(rateDetail.employeeRate);
-  const total = roundToInsuranceUnit(base * totalRate, rounding);
-  const employee = roundToInsuranceUnit(base * employeeRate, rounding);
-  const employer = roundToInsuranceUnit(total - employee, rounding);
+  const rawTotal = base * totalRate;
+  const rawEmployee = base * employeeRate;
+  const rawEmployer = rawTotal - rawEmployee;
+
+  const employee = roundToInsuranceUnit(rawEmployee);
+  const employer = roundToInsuranceUnit(rawEmployer);
+  const total = floorInsuranceTotal(employee + employer);
 
   return { total, employee, employer };
 }
