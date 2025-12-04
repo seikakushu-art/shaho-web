@@ -1,0 +1,64 @@
+<section class="calculation-result">
+    <header>
+      <p class="eyebrow">結果画面（2.4.3）</p>
+      <h1>計算結果の確認と調整</h1>
+      <p class="hint">
+        対象項目の自動非表示・並び替え・表示項目選択に対応した結果テーブルです。承認フローへの遷移フックも用意しています。
+      </p>
+      <div class="meta">
+        <span>計算種別: {{ calculationType }}</span>
+        <span>対象年月: {{ targetMonth }}</span>
+        <span *ngIf="bonusMonth">賞与対象: {{ bonusMonth }}</span>
+        <span>計算方法: {{ method }}</span>
+        <span>保険種別: {{ activeInsurances.join(' / ') }}</span>
+      </div>
+    </header>
+  
+    <div class="controls card">
+      <div class="control-row">
+        <button type="button" (click)="autoHideIrrelevant()">対象外項目を自動非表示</button>
+        <button type="button" class="primary" (click)="goToApprovalFlow()">承認フローに進む</button>
+      </div>
+      <div class="column-selector">
+        <p class="eyebrow">表示項目の選択</p>
+        <div class="checkboxes">
+          <label *ngFor="let column of columns">
+            <input type="checkbox" [checked]="column.visible" (change)="toggleColumn(column.key)" />
+            {{ column.label }}
+          </label>
+        </div>
+      </div>
+    </div>
+  
+    <div class="card">
+      <table class="result-table">
+        <thead>
+          <tr>
+            <th *ngFor="let column of visibleColumns" (click)="sortBy(column.key)" [class.sortable]="column.sortable">
+              {{ column.label }}
+              <span *ngIf="column.sortable && sortKey === column.key">{{ sortDirection === 'asc' ? '▲' : '▼' }}</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of rows">
+            <td *ngIf="isColumnVisible('employeeNo')">{{ row.employeeNo }}</td>
+            <td *ngIf="isColumnVisible('name')">{{ row.name }}</td>
+            <td *ngIf="isColumnVisible('department')">{{ row.department }}</td>
+            <td *ngIf="isColumnVisible('location')">{{ row.location }}</td>
+            <td *ngIf="isColumnVisible('target')">{{ row.target }}</td>
+            <td *ngIf="isColumnVisible('method')">{{ row.method }}</td>
+            <td *ngIf="isColumnVisible('month')">{{ row.month }}</td>
+            <td *ngIf="isColumnVisible('insurance')">{{ row.insurance.join(' / ') }}</td>
+            <td *ngIf="isColumnVisible('base')">{{ row.base | number }}</td>
+            <td *ngIf="isColumnVisible('bonus')">{{ row.bonus | number }}</td>
+            <td *ngIf="isColumnVisible('health')">{{ row.health | number }}</td>
+            <td *ngIf="isColumnVisible('welfare')">{{ row.welfare | number }}</td>
+            <td *ngIf="isColumnVisible('employment')">{{ row.employment | number }}</td>
+            <td *ngIf="isColumnVisible('nursing')">{{ row.nursing | number }}</td>
+            <td *ngIf="isColumnVisible('total')">{{ row.total | number }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>

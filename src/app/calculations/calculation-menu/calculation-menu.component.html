@@ -1,0 +1,29 @@
+<section class="calculation-menu">
+    <header>
+      <p class="eyebrow">計算メニュー</p>
+      <h1>標準報酬月額 / 賞与額 / 社会保険料</h1>
+      <p class="hint">
+        計算対象の指定から結果確認、承認フローの起票までを行うための入口です。各メニューを選択して対象指定画面に遷移します。
+      </p>
+    </header>
+  
+    <div class="menu-grid">
+      <article class="menu-card" *ngFor="let item of items">
+        <header>
+          <h2>{{ item.title }}</h2>
+          <p class="hint">{{ item.description }}</p>
+        </header>
+        <ul>
+          <li *ngFor="let d of item.detail">{{ d }}</li>
+        </ul>
+        <div class="actions-row">
+          <a
+            routerLink="/calculations/target"
+            [queryParams]="{ type: item.key }"
+            class="text-link"
+            >対象を選択する</a
+          >
+        </div>
+      </article>
+    </div>
+  </section>
