@@ -69,3 +69,26 @@
       color: #374151;
     }
   }
+
+  .table-caption {
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+
+  .result-table.compact {
+    th,
+    td {
+      padding: 0.35rem 0.5rem;
+    }
+  }
+
+  td.money,
+  th.money {
+    text-align: right;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+  }
