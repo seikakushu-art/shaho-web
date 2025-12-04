@@ -1,6 +1,6 @@
 <section class="calculation-result">
   <header>
-    <p class="eyebrow">結果画面（2.4.3）</p>
+    <p class="eyebrow">結果画面</p>
     <h1>計算結果の確認と調整</h1>
     <p class="hint">
       対象項目の自動非表示・並び替え・表示項目選択に対応した結果テーブルです。承認フローへの遷移フックも用意しています。
@@ -42,10 +42,17 @@
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let row of rows">
-          <td *ngFor="let column of visibleColumns" [class.money]="column.format === 'money'">
-            {{ getDisplayValue(row, column) }}
-          </td>
+        <tr *ngFor="let row of rows" [class.error-row]="row.error">
+          <ng-container *ngIf="row.error; else normalRow">
+            <td [attr.colspan]="visibleColumns.length" class="error-message">
+              <strong>エラー:</strong> {{ row.error }}
+            </td>
+          </ng-container>
+          <ng-template #normalRow>
+            <td *ngFor="let column of visibleColumns" [class.money]="column.format === 'money'">
+              {{ getDisplayValue(row, column) }}
+            </td>
+          </ng-template>
         </tr>
       </tbody>
     </table>

@@ -50,6 +50,7 @@ export interface CalculationRow {
   welfareEmployerBonus: number;
   standardHealthBonus: number;
   standardWelfareBonus: number;
+  error?: string;
 }
 
 export interface CalculationQueryParams {
@@ -144,6 +145,70 @@ export class CalculationDataService {
       employee.previousStandardMonthly,
     );
 
+    // エラーチェック
+    const errors: string[] = [];
+    if (standard.error) {
+      errors.push(standard.error);
+    }
+
+    const location = employee.workPrefecture || employee.department || '未設定';
+    const healthRate = findPrefectureRate(
+      rateRecord.healthInsuranceRates,
+      location,
+    );
+    const nursingRate = findPrefectureRate(
+      rateRecord.nursingCareRates,
+      location,
+    );
+
+    // 保険料率のチェック
+    if (context.activeInsurances.includes('health') && !healthRate) {
+      errors.push(`健康保険料率が設定されていません（勤務地: ${location}）。`);
+    }
+    if (
+      context.activeInsurances.includes('nursing') &&
+      employee.careSecondInsured &&
+      !nursingRate
+    ) {
+      errors.push(`介護保険料率が設定されていません（勤務地: ${location}）。`);
+    }
+    if (
+      context.activeInsurances.includes('welfare') &&
+      !rateRecord.pensionRate
+    ) {
+      errors.push('厚生年金保険料率が設定されていません。');
+    }
+
+    // エラーがある場合は計算をスキップ
+    if (errors.length > 0) {
+      return {
+        employeeNo: employee.employeeNo,
+        name: employee.name,
+        department: employee.department ?? '未設定',
+        location,
+        month: context.targetMonth,
+        monthlySalary: 0,
+        standardMonthly: 0,
+        healthEmployeeMonthly: 0,
+        healthEmployerMonthly: 0,
+        nursingEmployeeMonthly: 0,
+        nursingEmployerMonthly: 0,
+        welfareEmployeeMonthly: 0,
+        welfareEmployerMonthly: 0,
+        bonusPaymentDate: '',
+        bonusTotalPay: 0,
+        standardHealthBonus: 0,
+        standardWelfareBonus: 0,
+        healthEmployeeBonus: 0,
+        healthEmployerBonus: 0,
+        nursingEmployeeBonus: 0,
+        nursingEmployerBonus: 0,
+        welfareEmployeeBonus: 0,
+        welfareEmployerBonus: 0,
+        error: errors.join(' '),
+      };
+    }
+
     const monthlySalary =
       payrolls.find((p) => p.yearMonth === context.targetMonth)?.amount ?? 0;
     const bonusRecord = this.findBonus(
@@ -177,16 +242,6 @@ export class CalculationDataService {
       bonusRecord?.bonusTotal ?? 0,
       welfareBonusCap,
       welfareBonusCumulative,
-    );
-
-    const location = employee.workPrefecture || employee.department || '未設定';
-    const healthRate = findPrefectureRate(
-      rateRecord.healthInsuranceRates,
-      location,
-    );
-    const nursingRate = findPrefectureRate(
-      rateRecord.nursingCareRates,
-      location,
     );
 
     const healthMonthly = context.activeInsurances.includes('health')

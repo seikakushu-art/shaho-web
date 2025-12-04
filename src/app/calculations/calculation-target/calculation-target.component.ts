@@ -36,8 +36,8 @@ export class CalculationTargetComponent implements OnInit {
   location = '';
   employeeNo = '';
   insuranceSelections: Record<InsuranceKey, boolean> = {
-    health: true,
-    welfare: true,
+    health: false,
+    welfare: false,
     nursing: false,
   };
 
@@ -45,9 +45,9 @@ export class CalculationTargetComponent implements OnInit {
   locations: string[] = [];
   readonly calculationMethods = ['自動算出', '個別入力'] as const;
   readonly calculationTypes: Record<CalculationType, string> = {
-    standard: '標準報酬月額計算（2.4.1）',
-    bonus: '賞与額計算（2.4.2）',
-    insurance: '社会保険料計算（2.4.2拡張）',
+    standard: '標準報酬月額計算',
+    bonus: '賞与額計算',
+    insurance: '社会保険料計算',
   };
   readonly standardCalculationMethods: StandardCalculationMethod[] = [
     '定時決定',
@@ -123,6 +123,30 @@ export class CalculationTargetComponent implements OnInit {
 
   get isBonusCalculation() {
     return this.calculationType === 'bonus';
+  }
+
+  get isRegularDecision() {
+    return this.isStandardCalculation && this.standardCalculationMethod === '定時決定';
+  }
+
+  get targetYear(): number {
+    const year = parseInt(this.targetMonth.split('-')[0], 10);
+    return isNaN(year) ? new Date().getFullYear() : year;
+  }
+
+  set targetYear(year: number) {
+    // 定時決定では年だけ使用されるので、月は01に固定
+    this.targetMonth = `${year}-01`;
+  }
+
+  get availableYears(): number[] {
+    const currentYear = new Date().getFullYear();
+    const years: number[] = [];
+    // 過去5年から未来2年まで
+    for (let i = currentYear - 5; i <= currentYear + 2; i++) {
+      years.push(i);
+    }
+    return years;
   }
 
   onCalculationTypeChange(type: string) {

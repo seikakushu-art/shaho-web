@@ -23,6 +23,7 @@ export interface PremiumBreakdown {
 export interface StandardCompensationResult {
   standardMonthly: number;
   source: 'payroll' | 'master' | 'fallback';
+  error?: string;
 }
 
 const WORKED_DAYS_THRESHOLD = 17;
@@ -156,29 +157,29 @@ export function resolveStandardMonthly(
   compensationTable: StandardCompensationGrade[],
   previousStandardMonthly?: number,
 ): StandardCompensationResult {
-  const fallback =
-    previousStandardMonthly ??
-    employee.standardMonthly ??
-    payrolls.find((p) => p.amount)?.amount ??
-    0;
   const eligiblePayrolls = filterEligiblePayrolls(payrolls);
   let base: number | undefined;
+  let error: string | undefined;
 
   switch (method) {
     case '定時決定':
       base = (() => {
         const parsed = toYearMonthParts(targetMonth);
-        if (!parsed)
-          return averageRecentPayroll(eligiblePayrolls, targetMonth, 3);
+        if (!parsed) {
+          error = '対象年月の解析に失敗しました。';
+          return undefined;
+        }
         const months = [4, 5, 6].map((month) =>
           buildYearMonth(parsed.year, month),
         );
         const targetMonths = eligiblePayrolls.filter((p) =>
           months.includes(p.yearMonth),
         );
-        if (targetMonths.length === 3) return averagePayroll(targetMonths);
-        if (targetMonths.length > 0) return averagePayroll(targetMonths);
-        return averageRecentPayroll(eligiblePayrolls, targetMonth, 3);
+        if (targetMonths.length === 0) {
+          error = `4-6月の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
+        }
+        return averagePayroll(targetMonths);
       })();
       break;
     case '随時決定':
@@ -188,9 +189,15 @@ export function resolveStandardMonthly(
           .sort((a, b) => a.yearMonth.localeCompare(b.yearMonth))
           .slice(0, 3);
         const average = averagePayroll(targetOrAfter);
-        const candidateStandard = average
-          ? findStandardCompensation(average, compensationTable, '健康保険')
-          : undefined;
+        if (average === undefined) {
+          error = `対象月以降の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
+        }
+        const candidateStandard = findStandardCompensation(
+          average,
+          compensationTable,
+          '健康保険',
+        );
         const previousGrade = resolveGradeNumber(
           previousStandardMonthly ?? employee.standardMonthly,
           compensationTable,
@@ -212,7 +219,7 @@ export function resolveStandardMonthly(
           if (diff < 2) return previousStandardMonthly;
         }
 
-        return average ?? previousStandardMonthly ?? employee.standardMonthly;
+        return average;
       })();
       break;
     case '年間平均':
@@ -222,24 +229,27 @@ export function resolveStandardMonthly(
           targetMonth,
           12,
         );
+        if (annualAverage === undefined) {
+          error = `過去12ヶ月の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
+        }
         const regularAverage = averageRecentPayroll(
           eligiblePayrolls,
           targetMonth,
           3,
         );
-        const regularStandard = findStandardCompensation(
-          regularAverage ?? fallback,
+        const regularStandard = regularAverage
+          ? findStandardCompensation(
+              regularAverage,
+              compensationTable,
+              '健康保険',
+            )
+          : undefined;
+        const annualStandard = findStandardCompensation(
+          annualAverage,
           compensationTable,
           '健康保険',
         );
-        const annualStandard =
-          annualAverage !== undefined
-            ? findStandardCompensation(
-                annualAverage,
-                compensationTable,
-                '健康保険',
-              )
-            : undefined;
         const regularGrade = resolveGradeNumber(
           regularStandard,
           compensationTable,
@@ -260,13 +270,16 @@ export function resolveStandardMonthly(
           return annualStandard;
         }
 
-        return regularAverage ?? annualAverage ?? fallback;
+        return regularAverage ?? annualAverage;
       })();
       break;
     case '資格取得時':
       base = eligiblePayrolls.sort((a, b) =>
         a.yearMonth.localeCompare(b.yearMonth),
       )[0]?.amount;
+      if (base === undefined) {
+        error = `資格取得時の計算に必要な給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+      }
       break;
     case '育休復帰時':
       base = (() => {
@@ -275,9 +288,15 @@ export function resolveStandardMonthly(
           .sort((a, b) => a.yearMonth.localeCompare(b.yearMonth))
           .slice(0, 3);
         const average = averagePayroll(targetOrAfter);
-        const candidateStandard = average
-          ? findStandardCompensation(average, compensationTable, '健康保険')
-          : undefined;
+        if (average === undefined) {
+          error = `対象月以降の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
+        }
+        const candidateStandard = findStandardCompensation(
+          average,
+          compensationTable,
+          '健康保険',
+        );
         const previousGrade = resolveGradeNumber(
           previousStandardMonthly ?? employee.standardMonthly,
           compensationTable,
@@ -299,14 +318,37 @@ export function resolveStandardMonthly(
           if (diff < 1) return previousStandardMonthly;
         }
 
-        return average ?? previousStandardMonthly ?? employee.standardMonthly;
+        return average;
       })();
       break;
   }
 
-  const resolvedBase = base ?? fallback;
+  if (error) {
+    return {
+      standardMonthly: 0,
+      source: 'fallback',
+      error,
+    };
+  }
+
+  if (base === undefined) {
+    return {
+      standardMonthly: 0,
+      source: 'fallback',
+      error: `計算に必要な給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`,
+    };
+  }
+
+  if (compensationTable.length === 0) {
+    return {
+      standardMonthly: 0,
+      source: 'fallback',
+      error: '標準報酬等級表が設定されていません。',
+    };
+  }
+
   const standardMonthly = findStandardCompensation(
-    resolvedBase,
+    base,
     compensationTable,
     '健康保険',
   );

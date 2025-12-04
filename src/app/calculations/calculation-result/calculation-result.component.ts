@@ -349,7 +349,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     this.standardMethod =
       (params.get('standardMethod') as StandardCalculationMethod | null) ??
       '定時決定';
-    this.activeInsurances = (params.get('insurances') ?? '健康,厚生年金,介護')
+    this.activeInsurances = (params.get('insurances') ?? '')
       .split(',')
       .filter(Boolean);
     this.includeBonusInMonth =
@@ -500,6 +500,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
 
       if (autoHide && hasRows) {
         const hasValue = this.rows.some((row) => {
+          if (row.error) return false; // エラーがある行はスキップ
           const value = this.getRawValue(row, column.key);
           if (typeof value === 'number') return value !== 0;
           return !!value;
@@ -566,6 +567,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     const summaryMap = new Map<string, DepartmentSummary>();
 
     this.rows.forEach((row) => {
+      if (row.error) return; // エラーがある行は集計から除外
       const key = `${row.month}-${row.department}`;
       if (!summaryMap.has(key)) {
         summaryMap.set(key, {
@@ -654,6 +656,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     }
 
     this.rows.forEach((row) => {
+      if (row.error) return; // エラーがある行は集計から除外
       if (summaryRefs.health) {
         summaryRefs.health.employee +=
           row.healthEmployeeMonthly + row.healthEmployeeBonus;
@@ -683,6 +686,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     const summaryMap = new Map<string, InsuranceMonthlySummary>();
 
     this.rows.forEach((row) => {
+      if (row.error) return; // エラーがある行は集計から除外
       const candidates: { key: string; label: string; type: InsuranceKey }[] = [];
       if (this.isInsuranceActive('health'))
         candidates.push({ key: 'health', label: '健康保険', type: 'health' });

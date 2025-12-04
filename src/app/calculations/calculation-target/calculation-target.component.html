@@ -1,14 +1,9 @@
 <header>
-  <p class="eyebrow">{{ calculationTypes[calculationType] }}</p>
-  <h1>計算対象の指定</h1>
-  <p class="hint">
-    部署・勤務地・社員番号で絞り込み、計算方法や対象年月、保険種別を指定します。絞り込んだ一覧は確認用として下部に表示されます。
-  </p>
+  <h1>{{ calculationTypes[calculationType] }}</h1>
 </header>
 
 <div class="form-grid">
   <div class="card">
-    <h2>フィルタ</h2>
     <div class="field">
       <label>計算種別</label>
       <div class="options">
@@ -45,7 +40,6 @@
   </div>
 
   <div class="card">
-    <h2>計算条件</h2>
     <div class="field">
       <label>計算方法</label>
       <div class="options">
@@ -56,15 +50,27 @@
       </div>
     </div>
     <div class="field">
-      <label for="targetMonth">対象年月</label>
-      <input id="targetMonth" type="month" [(ngModel)]="targetMonth" />
+      <label for="targetMonth" *ngIf="!isRegularDecision">対象年月</label>
+      <label for="targetYear" *ngIf="isRegularDecision">対象年度</label>
+      <input
+        *ngIf="!isRegularDecision"
+        id="targetMonth"
+        type="month"
+        [(ngModel)]="targetMonth"
+      />
+      <select
+        *ngIf="isRegularDecision"
+        id="targetYear"
+        [(ngModel)]="targetYear"
+      >
+        <option *ngFor="let year of availableYears" [value]="year">{{ year }}年</option>
+      </select>
     </div>
     <div class="field" *ngIf="isStandardCalculation">
       <label for="standardCalculationMethod">標準報酬月額の算定方法</label>
       <select id="standardCalculationMethod" [(ngModel)]="standardCalculationMethod">
         <option *ngFor="let method of standardCalculationMethods" [value]="method">{{ method }}</option>
       </select>
-      <p class="hint">標準報酬月額を算出する際の区分を選択してください。</p>
     </div>
     <div class="field" *ngIf="!isStandardCalculation">
       <label for="bonusMonth">賞与対象月</label>
@@ -105,7 +111,6 @@
       <div class="actions-row">
         <button type="button" class="primary" (click)="onSubmit()">この条件で計算結果を表示</button>
       </div>
-      <div class="hint">選択した条件を保持したまま結果画面（2.4.3）へ遷移します。</div>
   
       <table class="preview-table">
         <thead>
