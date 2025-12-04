@@ -159,14 +159,17 @@ export class CalculationDataService {
     const healthBonus =
       context.activeInsurances.includes('health') && (context.includeBonusInMonth ?? true)
       ? calculateInsurancePremium(standardHealthBonus, healthRate)
-      : { employee: 0, employer: 0, total: 0 };
-  const nursingBonus =
-    context.activeInsurances.includes('nursing') && employee.careSecondInsured
-      ? calculateInsurancePremium(standardHealthBonus, nursingRate)
-      : { employee: 0, employer: 0, total: 0 };
-  const welfareBonus = context.activeInsurances.includes('welfare')
-    ? calculatePensionPremium(standardWelfareBonus, rateRecord.pensionRate)
-      : { employee: 0, employer: 0, total: 0 };
+        : { employee: 0, employer: 0, total: 0 };
+    const nursingBonus =
+      context.activeInsurances.includes('nursing') &&
+      employee.careSecondInsured &&
+      (context.includeBonusInMonth ?? true)
+        ? calculateInsurancePremium(standardHealthBonus, nursingRate)
+        : { employee: 0, employer: 0, total: 0 };
+    const welfareBonus =
+      context.activeInsurances.includes('welfare') && (context.includeBonusInMonth ?? true)
+        ? calculatePensionPremium(standardWelfareBonus, rateRecord.pensionRate)
+        : { employee: 0, employer: 0, total: 0 };
 
     return {
       employeeNo: employee.employeeNo,
