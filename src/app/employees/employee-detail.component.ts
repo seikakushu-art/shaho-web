@@ -1,7 +1,7 @@
 import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subject, of, switchMap, takeUntil, firstValueFrom } from 'rxjs';
 import { ShahoEmployee, ShahoEmployeesService, PayrollData } from '../app/services/shaho-employees.service';
 
@@ -72,12 +72,13 @@ interface SocialInsuranceHistoryData {
 })
 export class EmployeeDetailComponent implements OnInit, OnDestroy {
     private route = inject(ActivatedRoute);
+    private router = inject(Router);
     private employeesService = inject(ShahoEmployeesService);
     private destroy$ = new Subject<void>();
   tabs = [
     { key: 'basic', label: '基本情報' },
     { key: 'insurance', label: '社会保険情報' },
-    { key: 'insurance-history', label: '社会保険データ履歴' },
+    { key: 'insurance-history', label: '給与/賞与/社会保険料履歴' },
     { key: 'bonus', label: '標準賞与額算定' },
     { key: 'history', label: '変更履歴' },
   ];
@@ -262,6 +263,12 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
 
   changeTab(key: string) {
     this.selectedTab = key;
+  }
+
+  navigateToEdit() {
+    if (this.employee?.id) {
+      this.router.navigate(['/employees', this.employee.id, 'edit']);
+    }
   }
 
   get formattedAddress(): string {

@@ -1,12 +1,10 @@
 <section class="import-page">
     <header class="page-header">
         <div>
-            <p class="eyebrow">社員マスター</p>
             <div class="title-row">
                 <h1>CSV一括アップロード</h1>
                 <a routerLink="/employees" class="ghost-link">社員一覧へ戻る</a>
             </div>
-            <p class="hint">CSVテンプレートのダウンロードから差分確認・承認依頼までをウィザード形式で案内します。</p>
         </div>
     </header>
 
@@ -26,7 +24,6 @@
             <div>
                 <p class="eyebrow">Step 1</p>
                 <h2>テンプレートをダウンロード</h2>
-                <p class="hint">必須項目や文字コード（UTF-8）、改行コード（LF）に注意して、最新フォーマットを利用してください。</p>
             </div>
         </div>
         <div class="action-grid">
@@ -35,9 +32,9 @@
         </div>
         <div class="notes">
             <ul>
-                <li>必須項目：社員番号、氏名(漢字)、氏名(カナ)、性別、生年月日、所属部署名、勤務地都道府県名、健康保険資格取得日、厚生年金資格取得日</li>
-                <li>文字コードはUTF-8、改行コードはLFで保存してください。</li>
-                <li>日付はYYYY/MM/DD形式、金額はカンマ無しの半角数字で入力してください。</li>
+                <li><strong>必須項目（新規登録時）：</strong>社員番号、氏名(漢字)、氏名(カナ)、性別（男/女）、生年月日（YYYY/MM/DD）、所属部署名、勤務地都道府県名、健康保険資格取得日（YYYY/MM/DD）、厚生年金資格取得日（YYYY/MM/DD）<br><span class="hint">※既存社員の更新時は、社員番号と氏名(漢字)のみ必須です。</span></li>
+                <li><strong>ファイル形式：</strong>文字コードはUTF-8、改行コードはLFで保存してください。</li>
+                <li><strong>入力形式：</strong>日付はYYYY/MM/DD形式、金額はカンマ無しの半角数字で入力してください。</li>
             </ul>
         </div>
         <div class="navigation">

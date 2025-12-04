@@ -91,10 +91,18 @@
         padding: 8px 12px;
       }
 
-      input,
-      select {
+      input {
         width: 100%;
         padding: 0;
+        border: none;
+        border-radius: 0;
+        font-size: 14px;
+        background: transparent;
+      }
+
+      select {
+        width: 100%;
+        padding: 8px 12px;
         border: none;
         border-radius: 0;
         font-size: 14px;

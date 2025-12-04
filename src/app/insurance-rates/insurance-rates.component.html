@@ -4,12 +4,6 @@
         <h1>保険料率</h1>
       </div>
       <div class="actions">
-        <label class="inline-label">
-          表示パターン
-          <select [value]="selectedHealthType" (change)="changeHealthType($any($event.target).value)">
-            <option *ngFor="let type of healthTypes" [value]="type">{{ type }}</option>
-          </select>
-        </label>
         <button type="button" class="secondary" (click)="startNewRecord()">新規登録</button>
         <ng-container *ngIf="viewingRecord && !editMode && isLatestSelection">
           <button type="button" (click)="enableEdit()">編集</button>
@@ -33,7 +27,9 @@
         <div class="grid three-col">
           <div class="field">
             <label>健康保険パターン</label>
-            <p class="value">{{ selectedHealthType }}</p>
+            <select [value]="selectedHealthType" (change)="changeHealthType($any($event.target).value)">
+              <option *ngFor="let type of healthTypes" [value]="type">{{ type }}</option>
+            </select>
           </div>
           <div class="field">
             <label>保険者名称</label>

@@ -12,6 +12,8 @@ import {
   CalculationQueryParams,
   CalculationRow,
 } from '../calculation-data.service';
+import { InsuranceKey } from '../calculation-utils';
+
 
 type ColumnKey =
   | 'employeeNo'
@@ -330,6 +332,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
 
   departmentSummaries: DepartmentSummary[] = [];
   insuranceSummaries: InsuranceSummary[] = [];
+  insuranceMonthlySummaries: InsuranceMonthlySummary[] = [];
 
   constructor(
     private router: Router,
@@ -556,6 +559,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   private calculateSummaries() {
     this.departmentSummaries = this.buildDepartmentSummaries();
     this.insuranceSummaries = this.buildInsuranceSummaries();
+    this.insuranceMonthlySummaries = this.buildInsuranceMonthlySummaries();
   }
 
   private buildDepartmentSummaries(): DepartmentSummary[] {
@@ -570,6 +574,11 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           headcount: 0,
           monthlyPay: 0,
           bonusPay: 0,
+          monthlyEmployeeShare: 0,
+          monthlyEmployerShare: 0,
+          bonusStandardBonus: 0,
+          bonusEmployeeShare: 0,
+          bonusEmployerShare: 0,
           employeeShare: 0,
           employerShare: 0,
         });
@@ -596,12 +605,26 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         (this.isInsuranceActive('nursing') ? row.nursingEmployerBonus : 0) +
         (this.isInsuranceActive('welfare') ? row.welfareEmployerBonus : 0);
 
+        const includeHealthBonusStandard =
+        this.isInsuranceActive('health') || this.isInsuranceActive('nursing');
+      const includeWelfareBonusStandard = this.isInsuranceActive('welfare');
+
+      target.monthlyEmployeeShare += monthlyEmployee;
+      target.monthlyEmployerShare += monthlyEmployer;
+      target.bonusEmployeeShare += bonusEmployee;
+      target.bonusEmployerShare += bonusEmployer;
+      target.bonusStandardBonus +=
+        (includeHealthBonusStandard ? row.standardHealthBonus : 0) +
+        (includeWelfareBonusStandard ? row.standardWelfareBonus : 0);
+
       target.employeeShare += monthlyEmployee + bonusEmployee;
       target.employerShare += monthlyEmployer + bonusEmployer;
     });
 
     return Array.from(summaryMap.values()).map((entry) => ({
       ...entry,
+      monthlyTotal: entry.monthlyEmployeeShare + entry.monthlyEmployerShare,
+      bonusTotal: entry.bonusEmployeeShare + entry.bonusEmployerShare,
       total: entry.employeeShare + entry.employerShare,
     }));
   }
@@ -656,6 +679,79 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     }));
   }
 
+  private buildInsuranceMonthlySummaries(): InsuranceMonthlySummary[] {
+    const summaryMap = new Map<string, InsuranceMonthlySummary>();
+
+    this.rows.forEach((row) => {
+      const candidates: { key: string; label: string; type: InsuranceKey }[] = [];
+      if (this.isInsuranceActive('health'))
+        candidates.push({ key: 'health', label: '健康保険', type: 'health' });
+      if (this.isInsuranceActive('nursing'))
+        candidates.push({ key: 'nursing', label: '介護保険', type: 'nursing' });
+      if (this.isInsuranceActive('welfare'))
+        candidates.push({ key: 'welfare', label: '厚生年金', type: 'welfare' });
+
+      candidates.forEach((candidate) => {
+        const key = `${row.month}-${candidate.key}`;
+        if (!summaryMap.has(key)) {
+          summaryMap.set(key, {
+            month: row.month,
+            insurance: candidate.label,
+            standardBonus: 0,
+            monthlyEmployee: 0,
+            monthlyEmployer: 0,
+            bonusEmployee: 0,
+            bonusEmployer: 0,
+          });
+        }
+
+        const target = summaryMap.get(key)!;
+        switch (candidate.type) {
+          case 'health':
+            target.monthlyEmployee += row.healthEmployeeMonthly;
+            target.monthlyEmployer += row.healthEmployerMonthly;
+            target.bonusEmployee += row.healthEmployeeBonus;
+            target.bonusEmployer += row.healthEmployerBonus;
+            target.standardBonus += row.standardHealthBonus;
+            break;
+          case 'nursing':
+            target.monthlyEmployee += row.nursingEmployeeMonthly;
+            target.monthlyEmployer += row.nursingEmployerMonthly;
+            target.bonusEmployee += row.nursingEmployeeBonus;
+            target.bonusEmployer += row.nursingEmployerBonus;
+            target.standardBonus += row.standardHealthBonus;
+            break;
+          case 'welfare':
+            target.monthlyEmployee += row.welfareEmployeeMonthly;
+            target.monthlyEmployer += row.welfareEmployerMonthly;
+            target.bonusEmployee += row.welfareEmployeeBonus;
+            target.bonusEmployer += row.welfareEmployerBonus;
+            target.standardBonus += row.standardWelfareBonus;
+            break;
+        }
+      });
+    });
+
+    return Array.from(summaryMap.values()).map((summary) => ({
+      ...summary,
+      monthlyTotal: summary.monthlyEmployee + summary.monthlyEmployer,
+      bonusTotal: summary.bonusEmployee + summary.bonusEmployer,
+      total:
+        summary.monthlyEmployee +
+        summary.monthlyEmployer +
+        summary.bonusEmployee +
+        summary.bonusEmployer,
+    }));
+  }
+
+  get showMonthlyBreakdown() {
+    return this.calculationType !== 'bonus';
+  }
+
+  get showBonusBreakdown() {
+    return this.calculationType !== 'standard';
+  }
+
   goToApprovalFlow() {
     this.router.navigate(['/approvals'], {
       queryParams: {
@@ -673,6 +769,13 @@ interface DepartmentSummary {
   headcount: number;
   monthlyPay: number;
   bonusPay: number;
+  monthlyEmployeeShare: number;
+  monthlyEmployerShare: number;
+  monthlyTotal?: number;
+  bonusStandardBonus: number;
+  bonusEmployeeShare: number;
+  bonusEmployerShare: number;
+  bonusTotal?: number;
   employeeShare: number;
   employerShare: number;
   total?: number;
@@ -682,5 +785,18 @@ interface InsuranceSummary {
   type: string;
   employee: number;
   employer: number;
+  total?: number;
+}
+
+interface InsuranceMonthlySummary {
+  month: string;
+  insurance: string;
+  standardBonus: number;
+  monthlyEmployee: number;
+  monthlyEmployer: number;
+  monthlyTotal?: number;
+  bonusEmployee: number;
+  bonusEmployer: number;
+  bonusTotal?: number;
   total?: number;
 }

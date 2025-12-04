@@ -62,9 +62,24 @@
             <th>対象人数</th>
             <th>月給支払額</th>
             <th>賞与総支給額</th>
-            <th>個人負担合計</th>
-            <th>会社負担合計</th>
-            <th>総計</th>
+            <th *ngIf="showMonthlyBreakdown" colspan="3">月例分</th>
+            <th *ngIf="showBonusBreakdown" colspan="4">賞与分</th>
+            <th rowspan="2">個人負担合計</th>
+            <th rowspan="2">会社負担合計</th>
+            <th rowspan="2">総計</th>
+          </tr>
+          <tr *ngIf="showMonthlyBreakdown || showBonusBreakdown">
+            <ng-container *ngIf="showMonthlyBreakdown">
+              <th>個人負担</th>
+              <th>会社負担</th>
+              <th>合計</th>
+            </ng-container>
+            <ng-container *ngIf="showBonusBreakdown">
+              <th>標準賞与額</th>
+              <th>個人負担</th>
+              <th>会社負担</th>
+              <th>合計</th>
+            </ng-container>
           </tr>
         </thead>
         <tbody>
@@ -74,6 +89,17 @@
             <td>{{ summary.headcount }}</td>
             <td class="money">{{ summary.monthlyPay | number }}</td>
             <td class="money">{{ summary.bonusPay | number }}</td>
+            <ng-container *ngIf="showMonthlyBreakdown">
+              <td class="money">{{ summary.monthlyEmployeeShare | number }}</td>
+              <td class="money">{{ summary.monthlyEmployerShare | number }}</td>
+              <td class="money">{{ summary.monthlyTotal | number }}</td>
+            </ng-container>
+            <ng-container *ngIf="showBonusBreakdown">
+              <td class="money">{{ summary.bonusStandardBonus | number }}</td>
+              <td class="money">{{ summary.bonusEmployeeShare | number }}</td>
+              <td class="money">{{ summary.bonusEmployerShare | number }}</td>
+              <td class="money">{{ summary.bonusTotal | number }}</td>
+            </ng-container>
             <td class="money">{{ summary.employeeShare | number }}</td>
             <td class="money">{{ summary.employerShare | number }}</td>
             <td class="money">{{ summary.total | number }}</td>
@@ -99,6 +125,51 @@
             <td class="money">{{ insurance.employee | number }}</td>
             <td class="money">{{ insurance.employer | number }}</td>
             <td class="money">{{ insurance.total | number }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="table-caption">対象年月・保険種別内訳</div>
+      <table class="result-table compact">
+        <thead>
+          <tr>
+            <th>対象年月</th>
+            <th>保険種別</th>
+            <th *ngIf="showMonthlyBreakdown" colspan="3">月例分</th>
+            <th *ngIf="showBonusBreakdown" colspan="4">賞与分</th>
+            <th rowspan="2">合計</th>
+          </tr>
+          <tr *ngIf="showMonthlyBreakdown || showBonusBreakdown">
+            <ng-container *ngIf="showMonthlyBreakdown">
+              <th>個人負担</th>
+              <th>会社負担</th>
+              <th>合計</th>
+            </ng-container>
+            <ng-container *ngIf="showBonusBreakdown">
+              <th>標準賞与額</th>
+              <th>個人負担</th>
+              <th>会社負担</th>
+              <th>合計</th>
+            </ng-container>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let summary of insuranceMonthlySummaries">
+            <td>{{ summary.month }}</td>
+            <td>{{ summary.insurance }}</td>
+            <ng-container *ngIf="showMonthlyBreakdown">
+              <td class="money">{{ summary.monthlyEmployee | number }}</td>
+              <td class="money">{{ summary.monthlyEmployer | number }}</td>
+              <td class="money">{{ summary.monthlyTotal | number }}</td>
+            </ng-container>
+            <ng-container *ngIf="showBonusBreakdown">
+              <td class="money">{{ summary.standardBonus | number }}</td>
+              <td class="money">{{ summary.bonusEmployee | number }}</td>
+              <td class="money">{{ summary.bonusEmployer | number }}</td>
+              <td class="money">{{ summary.bonusTotal | number }}</td>
+            </ng-container>
+            <td class="money">{{ summary.total | number }}</td>
           </tr>
         </tbody>
       </table>

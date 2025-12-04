@@ -10,6 +10,9 @@ import { ApprovalListComponent } from './approvals/approval-list/approval-list.c
 import { ApprovalDetailComponent } from './approvals/approval-detail.component';
 import { CorporateInfoComponent } from './corporate-info/corporate-info.component';
 import { InsuranceRatesComponent } from './insurance-rates/insurance-rates.component';
+import { CalculationMenuComponent } from './calculations/calculation-menu/calculation-menu.component';
+import { CalculationTargetComponent } from './calculations/calculation-target/calculation-target.component';
+import { CalculationResultComponent } from './calculations/calculation-result/calculation-result.component';
 
 export const routes: Routes = [
   {
@@ -43,6 +46,12 @@ export const routes: Routes = [
     title: 'CSVインポート',
   },
   {
+    path: 'employees/:id/edit',
+    component: EmployeeCreateComponent,
+    canActivate: [authGuard],
+    title: '社員編集',
+  },
+  {
     path: 'employees/:id',
     component: EmployeeDetailComponent,
     canActivate: [authGuard],
@@ -71,6 +80,24 @@ export const routes: Routes = [
     component: InsuranceRatesComponent,
     canActivate: [authGuard],
     title: '保険料率設定',
+  },
+  {
+    path: 'calculations',
+    component: CalculationMenuComponent,
+    canActivate: [authGuard],
+    title: '計算メニュー',
+  },
+  {
+    path: 'calculations/target',
+    component: CalculationTargetComponent,
+    canActivate: [authGuard],
+    title: '計算対象選択',
+  },
+  {
+    path: 'calculations/results',
+    component: CalculationResultComponent,
+    canActivate: [authGuard],
+    title: '計算結果',
   },
   {
     path: '',
