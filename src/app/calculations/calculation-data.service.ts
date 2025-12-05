@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { combineLatest, map, switchMap } from 'rxjs';
+import { BehaviorSubject,combineLatest, map, switchMap } from 'rxjs';
 import { CorporateInfoService } from '../app/services/corporate-info.service';
 import {
   InsuranceRateRecord,
@@ -67,11 +67,27 @@ export interface CalculationQueryParams {
   bonusPaidOn?: string;
 }
 
+export interface CalculationResultHistory {
+  id: string;
+  title: string;
+  createdAt: string;
+  query: CalculationQueryParams;
+  rows: CalculationRow[];
+  meta?: {
+    rowCount: number;
+    activeInsurances: string[];
+  };
+}
+
 @Injectable({ providedIn: 'root' })
 export class CalculationDataService {
   private employeesService = inject(ShahoEmployeesService);
   private insuranceRatesService = inject(InsuranceRatesService);
   private corporateInfoService = inject(CorporateInfoService);
+  private readonly historyStorageKey = 'calculation_result_history';
+  private history$ = new BehaviorSubject<CalculationResultHistory[]>(
+    this.loadHistory(),
+  );
 
   getCalculationRows(params: CalculationQueryParams) {
     const { type, targetMonth, insurances, standardMethod } =
@@ -105,6 +121,69 @@ export class CalculationDataService {
         ),
       ),
     );
+  }
+
+  getCalculationHistory() {
+    return this.history$.pipe(
+      map((history) =>
+        [...history].sort((a, b) =>
+          (b.createdAt ?? '').localeCompare(a.createdAt ?? ''),
+        ),
+      ),
+    );
+  }
+
+  getHistoryById(id: string) {
+    return this.history$.value.find((entry) => entry.id === id);
+  }
+
+  async saveCalculationHistory(
+    query: CalculationQueryParams,
+    rows: CalculationRow[],
+    options?: { title?: string; id?: string },
+  ) {
+    const history: CalculationResultHistory = {
+      id: options?.id ?? `calc-${Date.now()}`,
+      title:
+        options?.title ??
+        `${query.type.toUpperCase()} (${query.targetMonth.replace(/-/g, '/')})`,
+      createdAt: new Date().toISOString(),
+      query,
+      rows,
+      meta: {
+        rowCount: rows.length,
+        activeInsurances: query.insurances,
+      },
+    };
+
+    const historyList = [history, ...this.history$.value];
+    this.persistHistory(historyList);
+    this.history$.next(historyList);
+
+    return history.id;
+  }
+
+  private loadHistory(): CalculationResultHistory[] {
+    if (typeof localStorage === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem(this.historyStorageKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as CalculationResultHistory[];
+      if (!Array.isArray(parsed)) return [];
+      return parsed;
+    } catch (error) {
+      console.warn('計算履歴の読み込みに失敗しました', error);
+      return [];
+    }
+  }
+
+  private persistHistory(history: CalculationResultHistory[]) {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      localStorage.setItem(this.historyStorageKey, JSON.stringify(history));
+    } catch (error) {
+      console.warn('計算履歴の保存に失敗しました', error);
+    }
   }
 
   private filterEmployees(

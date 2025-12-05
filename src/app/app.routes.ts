@@ -13,6 +13,7 @@ import { InsuranceRatesComponent } from './insurance-rates/insurance-rates.compo
 import { CalculationMenuComponent } from './calculations/calculation-menu/calculation-menu.component';
 import { CalculationTargetComponent } from './calculations/calculation-target/calculation-target.component';
 import { CalculationResultComponent } from './calculations/calculation-result/calculation-result.component';
+import { CsvExportComponent } from './employees/emloyee-export/csv-export.component';
 
 export const routes: Routes = [
   {
@@ -38,6 +39,12 @@ export const routes: Routes = [
     component: EmployeeCreateComponent,
     canActivate: [authGuard],
     title: '新規社員登録',
+  },
+  {
+    path: 'csv-export',
+    component: CsvExportComponent,
+    canActivate: [authGuard],
+    title: 'CSVエクスポート',
   },
   {
     path: 'employees/import',

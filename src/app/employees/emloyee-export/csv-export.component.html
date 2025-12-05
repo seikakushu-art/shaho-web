@@ -21,6 +21,18 @@
     <p class="hint">
       クエリパラメータや navigation state の <code>context</code> によって画面内容が変わります。
     </p>
+    <div class="context-meta" *ngIf="calculationContext">
+        <span>対象: {{ calculationContext.meta?.targetMonth || '未設定' }}</span>
+        <span>
+          保険種別:
+          {{
+            (calculationContext.meta?.activeInsurances ?? []).join(' / ') || '未指定'
+          }}
+        </span>
+        <span *ngIf="calculationContext.meta?.historyId">
+          履歴ID: {{ calculationContext.meta?.historyId }}
+        </span>
+      </div>
   </section>
   
   <section class="card">

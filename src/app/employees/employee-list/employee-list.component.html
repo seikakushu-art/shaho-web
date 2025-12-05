@@ -13,6 +13,9 @@
       >
         {{ isSyncingExternal ? '外部データ連携中…' : '外部データ連携' }}
       </button>
+      <button type="button" class="ghost" aria-label="CSV一括出力画面へ" (click)="goToCsvExport()">
+        社員情報CSV一括出力
+      </button>
         <button type="button" class="ghost" aria-label="CSVインポート画面へ" (click)="goToImport()">
           社員情報CSVインポート
         </button>

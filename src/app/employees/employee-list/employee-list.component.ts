@@ -135,6 +135,10 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
     this.router.navigate(['/employees/import']);
   }
 
+  goToCsvExport() {
+    this.router.navigate(['/csv-export']);
+  }
+
   async syncExternalData() {
     this.isSyncingExternal = true;
     this.externalSyncError = undefined;

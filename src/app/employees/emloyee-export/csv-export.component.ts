@@ -2,7 +2,12 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { CsvExportService, ExportContext, ExportSection } from './csv-export.service';
+import {
+    CalculationCsvContext,
+    CsvExportService,
+    ExportContext,
+    ExportSection,
+  } from './csv-export.service';
 
 interface CsvExportOption {
   key: ExportSection;
@@ -25,6 +30,7 @@ export class CsvExportComponent implements OnInit {
   context: ExportContext = 'import';
   statusMessage = '';
   isExporting = false;
+  calculationContext?: CalculationCsvContext;
 
   options: CsvExportOption[] = [
     {
@@ -51,6 +57,12 @@ export class CsvExportComponent implements OnInit {
       description: '計算結果画面で確認した控除内訳や標準賞与額など',
       availableIn: ['calculation'],
     },
+    {
+        key: 'calculationResult',
+        label: '計算結果の出力項目',
+        description: '選択中の計算結果セット（社員ごとの保険料や標準額）をCSV化します',
+        availableIn: ['calculation'],
+      },
   ];
 
   selectedSections = new Set<ExportSection>();
@@ -58,12 +70,20 @@ export class CsvExportComponent implements OnInit {
   ngOnInit(): void {
     const queryContext = this.route.snapshot.queryParamMap.get('context');
     const stateContext = history.state?.context as ExportContext | undefined;
+    this.calculationContext = history.state?.calculationContext as
+      | CalculationCsvContext
+      | undefined;
     this.context = this.normalizeContext(queryContext, stateContext);
     this.initializeSelection();
   }
 
   get visibleOptions() {
-    return this.options.filter((option) => option.availableIn.includes(this.context));
+    return this.options.filter(
+        (option) =>
+          option.availableIn.includes(this.context) &&
+          (option.key !== 'calculationResult' ||
+            !!this.calculationContext?.rows?.length),
+      );
   }
 
   get isCalculationContext() {
@@ -98,6 +118,7 @@ export class CsvExportComponent implements OnInit {
     try {
       const blob = await this.csvExportService.exportEmployeesCsv({
         context: this.context,
+        calculationContext: this.calculationContext,
         sections: Array.from(this.selectedSections),
       });
       const url = URL.createObjectURL(blob);

@@ -15,6 +15,9 @@
       <button type="button" (click)="saveResults()" [disabled]="saving">
         {{ saving ? '保存中...' : '保存' }}
       </button>
+      <button type="button" class="secondary" (click)="goToCsvExport()">
+        計算結果CSV出力
+      </button>
       <button type="button" class="primary" (click)="goToApprovalFlow()">承認フローに進む</button>
     </div>
     <div class="column-selector">
@@ -24,6 +27,37 @@
           {{ column.label }}
         </label>
       </div>
+    </div>
+  </div>
+
+  <div class="card history-card" *ngIf="historyEntries.length">
+    <div class="history-header">
+      <div>
+        <p class="eyebrow">保存済み計算履歴</p>
+        <h2>過去の結果を再表示</h2>
+      </div>
+      <span class="history-count">{{ historyEntries.length }}件</span>
+    </div>
+    <p class="hint">クリックすると保存時点の結果と条件を即座に再表示します。</p>
+    <div class="history-list">
+      <button
+        type="button"
+        class="history-item"
+        *ngFor="let history of historyEntries"
+        (click)="onSelectHistory(history.id)"
+        [class.active]="currentHistoryId === history.id"
+      >
+        <div class="history-title-row">
+          <span class="history-title">{{ history.title }}</span>
+          <span class="history-date">{{ history.createdAt | date: 'yyyy/MM/dd HH:mm' }}</span>
+        </div>
+        <div class="history-meta">
+          <span>{{ calculationTypes[history.query.type] }}</span>
+          <span>対象: {{ history.query.targetMonth }}</span>
+          <span>保険: {{ history.meta?.activeInsurances?.join(' / ') || history.query.insurances.join(' / ') }}</span>
+          <span>件数: {{ history.meta?.rowCount ?? history.rows.length }}</span>
+        </div>
+      </button>
     </div>
   </div>
 

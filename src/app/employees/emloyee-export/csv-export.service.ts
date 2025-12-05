@@ -1,13 +1,32 @@
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
 import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
+import {
+    CalculationRow,
+    CalculationResultHistory,
+  } from '../../calculations/calculation-data.service';
+  import { CalculationType } from '../../calculations/calculation-types';
 
 export type ExportContext = 'import' | 'calculation';
 export type ExportSection =
   | 'basic'
   | 'socialInsurance'
   | 'payrollHistory'
-  | 'calculationReview';
+  | 'calculationReview'
+  | 'calculationResult';
+
+type CalculationCsvMeta = {
+  id?: CalculationResultHistory['id'];
+  targetMonth?: string;
+  calculationType?: CalculationType;
+  activeInsurances?: string[];
+  historyId?: string;
+};
+
+export interface CalculationCsvContext {
+  rows: CalculationRow[];
+  meta?: CalculationCsvMeta;
+}
 
 type EmployeesObservable = ReturnType<ShahoEmployeesService['getEmployeesWithPayrolls']>;
 type EmployeeWithPayrolls = EmployeesObservable extends Observable<infer Arr>
@@ -29,9 +48,14 @@ export class CsvExportService {
   async exportEmployeesCsv(options: {
     sections: ExportSection[];
     context: ExportContext;
+    calculationContext?: CalculationCsvContext;
   }): Promise<Blob> {
     const employees = await firstValueFrom(this.employeesService.getEmployeesWithPayrolls());
-    const columns = this.buildColumns(options.sections, options.context);
+    const columns = this.buildColumns(
+        options.sections,
+        options.context,
+        options.calculationContext,
+      );
 
     const rows = employees.map((employee) =>
       columns.map((column) => this.escapeForCsv(column.value(employee))),
@@ -46,7 +70,11 @@ export class CsvExportService {
     return context === 'calculation' ? 'calculation-csv-export.csv' : 'employee-csv-export.csv';
   }
 
-  private buildColumns(sections: ExportSection[], context: ExportContext): CsvColumn[] {
+  private buildColumns(
+    sections: ExportSection[],
+    context: ExportContext,
+    calculationContext?: CalculationCsvContext,
+  ): CsvColumn[] {
     const columns: CsvColumn[] = [];
 
     if (sections.includes('basic')) {
@@ -116,6 +144,117 @@ export class CsvExportService {
             .join(' | '),
       });
     }
+
+    if (
+        sections.includes('calculationResult') &&
+        context === 'calculation' &&
+        calculationContext?.rows?.length
+      ) {
+        const rowMap = new Map(
+          calculationContext.rows.map((row) => [row.employeeNo, row]),
+        );
+        const meta: CalculationCsvMeta = calculationContext.meta ?? {};
+  
+        columns.push(
+          { header: '計算ID', value: () => meta.historyId ?? meta.id },
+          { header: '計算種別', value: () => meta.calculationType },
+          { header: '対象年/年月', value: () => meta.targetMonth },
+          {
+            header: '対象保険種別',
+            value: () => (meta.activeInsurances ?? []).join('/'),
+          },
+          {
+            header: '標準報酬月額(計算結果)',
+            value: (employee) => rowMap.get(employee.employeeNo)?.standardMonthly,
+          },
+          {
+            header: '賞与支給日',
+            value: (employee) => rowMap.get(employee.employeeNo)?.bonusPaymentDate,
+          },
+          {
+            header: '賞与総支給額',
+            value: (employee) => rowMap.get(employee.employeeNo)?.bonusTotalPay,
+          },
+          {
+            header: '標準賞与額(健・介)',
+            value: (employee) => rowMap.get(employee.employeeNo)?.standardHealthBonus,
+          },
+          {
+            header: '標準賞与額(厚生年金)',
+            value: (employee) => rowMap.get(employee.employeeNo)?.standardWelfareBonus,
+          },
+          {
+            header: '健康保険（月例 個人/会社）',
+            value: (employee) => {
+              const row = rowMap.get(employee.employeeNo);
+              if (!row) return '';
+              return `${row.healthEmployeeMonthly} / ${row.healthEmployerMonthly}`;
+            },
+          },
+          {
+            header: '介護保険（月例 個人/会社）',
+            value: (employee) => {
+              const row = rowMap.get(employee.employeeNo);
+              if (!row) return '';
+              return `${row.nursingEmployeeMonthly} / ${row.nursingEmployerMonthly}`;
+            },
+          },
+          {
+            header: '厚生年金（月例 個人/会社）',
+            value: (employee) => {
+              const row = rowMap.get(employee.employeeNo);
+              if (!row) return '';
+              return `${row.welfareEmployeeMonthly} / ${row.welfareEmployerMonthly}`;
+            },
+          },
+          {
+            header: '健康保険（賞与 個人/会社）',
+            value: (employee) => {
+              const row = rowMap.get(employee.employeeNo);
+              if (!row) return '';
+              return `${row.healthEmployeeBonus} / ${row.healthEmployerBonus}`;
+            },
+          },
+          {
+            header: '厚生年金（賞与 個人/会社）',
+            value: (employee) => {
+              const row = rowMap.get(employee.employeeNo);
+              if (!row) return '';
+              return `${row.welfareEmployeeBonus} / ${row.welfareEmployerBonus}`;
+            },
+          },
+          {
+            header: '介護保険（賞与 個人/会社）',
+            value: (employee) => {
+              const row = rowMap.get(employee.employeeNo);
+              if (!row) return '';
+              return `${row.nursingEmployeeBonus} / ${row.nursingEmployerBonus}`;
+            },
+          },
+          {
+            header: '個人＋会社 保険料合計',
+            value: (employee) => {
+              const row = rowMap.get(employee.employeeNo);
+              if (!row) return '';
+              const personal =
+                (row.healthEmployeeMonthly ?? 0) +
+                (row.nursingEmployeeMonthly ?? 0) +
+                (row.welfareEmployeeMonthly ?? 0) +
+                (row.healthEmployeeBonus ?? 0) +
+                (row.nursingEmployeeBonus ?? 0) +
+                (row.welfareEmployeeBonus ?? 0);
+              const employer =
+                (row.healthEmployerMonthly ?? 0) +
+                (row.nursingEmployerMonthly ?? 0) +
+                (row.welfareEmployerMonthly ?? 0) +
+                (row.healthEmployerBonus ?? 0) +
+                (row.nursingEmployerBonus ?? 0) +
+                (row.welfareEmployerBonus ?? 0);
+              return personal + employer;
+            },
+          },
+        );
+      }
 
     return columns;
   }

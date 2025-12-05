@@ -11,6 +11,7 @@ import {
   CalculationDataService,
   CalculationQueryParams,
   CalculationRow,
+  CalculationResultHistory,
 } from '../calculation-data.service';
 import { InsuranceKey } from '../calculation-utils';
 import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
@@ -363,6 +364,9 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   insuranceSummaries: InsuranceSummary[] = [];
   insuranceMonthlySummaries: InsuranceMonthlySummary[] = [];
 
+  historyEntries: CalculationResultHistory[] = [];
+  currentHistoryId?: string;
+
   constructor(
     private router: Router,
     private route: ActivatedRoute,
@@ -386,6 +390,11 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     this.locationFilter = params.get('location') ?? '';
     this.employeeNoFilter = params.get('employeeNo') ?? '';
     this.bonusPaidOnFilter = params.get('bonusPaidOn') ?? '';
+
+    this.calculationDataService
+      .getCalculationHistory()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((history) => (this.historyEntries = history));
 
     this.loadRows();
   }
@@ -438,7 +447,22 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   }
 
   private loadRows() {
-    const query: CalculationQueryParams = {
+    const query = this.buildQueryParams();
+
+    this.calculationDataService
+      .getCalculationRows(query)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((rows) => {
+        this.rows = rows;
+        this.currentHistoryId = undefined;
+        this.refreshVisibility(true);
+        this.calculateSummaries();
+        this.updateFilterOptions();
+      });
+  }
+
+  private buildQueryParams(): CalculationQueryParams {
+    return {
       type: this.calculationType,
       targetMonth: this.targetMonth,
       method: this.method,
@@ -450,16 +474,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       includeBonusInMonth: this.includeBonusInMonth,
       bonusPaidOn: this.bonusPaidOnFilter || undefined,
     };
-
-    this.calculationDataService
-      .getCalculationRows(query)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((rows) => {
-        this.rows = rows;
-        this.refreshVisibility(true);
-        this.calculateSummaries();
-        this.updateFilterOptions();
-      });
   }
 
   sortBy(key: ColumnKey) {
@@ -873,10 +887,56 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     });
   }
 
+  goToCsvExport() {
+    const query = this.buildQueryParams();
+    const exportRows = this.rows.filter((row) => !row.error);
+    this.router.navigate(['/employees/export'], {
+      queryParams: { context: 'calculation' },
+      state: {
+        context: 'calculation',
+        calculationContext: {
+          rows: exportRows,
+          meta: {
+            targetMonth: query.targetMonth,
+            calculationType: query.type,
+            activeInsurances: query.insurances,
+            historyId: this.currentHistoryId,
+          },
+        },
+      },
+    });
+  }
+
+  onSelectHistory(historyId: string) {
+    const history = this.calculationDataService.getHistoryById(historyId);
+    if (!history) return;
+    this.applyHistory(history);
+  }
+
+  private applyHistory(history: CalculationResultHistory) {
+    const query = history.query;
+    this.calculationType = query.type;
+    this.targetMonth = query.targetMonth;
+    this.method = query.method;
+    this.standardMethod = query.standardMethod;
+    this.activeInsurances = query.insurances;
+    this.includeBonusInMonth = query.includeBonusInMonth ?? true;
+    this.departmentFilter = query.department ?? '';
+    this.locationFilter = query.location ?? '';
+    this.employeeNoFilter = query.employeeNo ?? '';
+    this.bonusPaidOnFilter = query.bonusPaidOn ?? '';
+    this.rows = history.rows;
+    this.currentHistoryId = history.id;
+    this.refreshVisibility(true);
+    this.calculateSummaries();
+    this.updateFilterOptions();
+  }
+
   async saveResults() {
     if (this.saving || this.rows.length === 0) return;
 
     this.saving = true;
+    const query = this.buildQueryParams();
     try {
       // エラーがある行はスキップ
       const validRows = this.rows.filter((row) => !row.error);
@@ -961,6 +1021,13 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       });
 
       await Promise.all(savePromises);
+      this.currentHistoryId = await this.calculationDataService.saveCalculationHistory(
+        query,
+        validRows,
+        {
+          title: `${this.calculationTypeLabel} ${this.targetMonth.replace(/-/g, '/')}`,
+        },
+      );
       alert(`${validRows.length}件の計算結果を保存しました。`);
     } catch (error) {
       console.error('保存エラー:', error);
