@@ -1,0 +1,74 @@
+<section class="page-header">
+    <div>
+      <p class="eyebrow">CSVエクスポート</p>
+      <h1>出力項目の選択</h1>
+      <p class="lead">
+        {{
+          isCalculationContext
+            ? '計算結果から遷移しました。結果確認画面に表示される項目も含めて出力できます。'
+            : '社員情報CSVインポートから遷移しました。基本情報や社会保険情報を選んで出力してください。'
+        }}
+      </p>
+    </div>
+    <a routerLink="/employees" class="link">社員一覧に戻る</a>
+  </section>
+  
+  <section class="card context">
+    <div class="context-label">遷移元</div>
+    <div class="context-value" [class.calculation]="isCalculationContext">
+      {{ isCalculationContext ? '計算結果/確認画面からのエクスポート' : '社員情報CSVインポートからのエクスポート' }}
+    </div>
+    <p class="hint">
+      クエリパラメータや navigation state の <code>context</code> によって画面内容が変わります。
+    </p>
+  </section>
+  
+  <section class="card">
+    <header>
+      <div>
+        <p class="eyebrow">出力対象</p>
+        <h2>項目を選択</h2>
+      </div>
+      <div class="actions">
+        <button type="button" class="ghost" (click)="selectAll()">すべて選択</button>
+        <button type="button" class="ghost" (click)="deselectAll()">すべて解除</button>
+      </div>
+    </header>
+  
+    <ul class="option-list">
+      <li *ngFor="let option of visibleOptions" class="option">
+        <label>
+          <input
+            type="checkbox"
+            [checked]="selectedSections.has(option.key)"
+            (change)="onToggle(option.key, ($any($event.target)?.checked) ?? false)"
+          />
+          <div>
+            <div class="option-title">{{ option.label }}</div>
+            <p class="description">{{ option.description }}</p>
+          </div>
+        </label>
+      </li>
+    </ul>
+  </section>
+  
+  <section class="card">
+    <header>
+      <div>
+        <p class="eyebrow">エクスポート</p>
+        <h2>CSV生成</h2>
+      </div>
+    </header>
+  
+    <p class="hint">
+      選択した項目をもとにサーバー/クライアント側のCSV生成処理へリクエストします。
+      項目を切り替えると出力内容が変わります。
+    </p>
+  
+    <div class="cta">
+      <button type="button" class="primary" [disabled]="isExporting" (click)="exportCsv()">
+        {{ isExporting ? '生成中...' : 'CSVを出力' }}
+      </button>
+      <span class="status" *ngIf="statusMessage">{{ statusMessage }}</span>
+    </div>
+  </section>

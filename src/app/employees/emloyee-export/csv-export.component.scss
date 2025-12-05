@@ -1,0 +1,159 @@
+:host {
+    display: block;
+    padding: 24px;
+    background: #f7f9fb;
+    color: #1f2937;
+  }
+  
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  
+    h1 {
+      margin: 4px 0;
+      font-size: 24px;
+    }
+  
+    .lead {
+      margin: 0;
+      color: #4b5563;
+    }
+  
+    .link {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 600;
+    }
+  }
+  
+  .card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+  
+    h2 {
+      margin: 0;
+    }
+  }
+  
+  .eyebrow {
+    margin: 0;
+    font-size: 12px;
+    color: #6b7280;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  
+  .lead,
+  .hint {
+    color: #6b7280;
+    margin: 0;
+  }
+  
+  .context {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 12px;
+    align-items: center;
+  
+    .context-label {
+      font-weight: 600;
+      color: #111827;
+    }
+  
+    .context-value {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #312e81;
+      font-weight: 600;
+  
+      &.calculation {
+        background: #ecfdf3;
+        color: #065f46;
+      }
+    }
+  }
+  
+  .actions {
+    display: flex;
+    gap: 8px;
+  }
+  
+  button {
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  
+  button.primary {
+    background: #2563eb;
+    color: #fff;
+  }
+  
+  button.ghost {
+    background: transparent;
+    color: #2563eb;
+    border: 1px solid #bfdbfe;
+  }
+  
+  .option-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 8px;
+  }
+  
+  .option {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px;
+  
+    label {
+      display: flex;
+      gap: 12px;
+      cursor: pointer;
+    }
+  
+    input[type='checkbox'] {
+      margin-top: 4px;
+      width: 18px;
+      height: 18px;
+    }
+  
+    .option-title {
+      font-weight: 700;
+      margin: 0;
+    }
+  
+    .description {
+      margin: 4px 0 0;
+      color: #4b5563;
+    }
+  }
+  
+  .cta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .status {
+    color: #2563eb;
+    font-weight: 600;
+  }
