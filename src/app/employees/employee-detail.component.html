@@ -114,7 +114,10 @@
                     </div>
                     <div>
                         <label>標準賞与額年度累計</label>
-                        <p class="value">{{ displayAmount(socialInsurance.standardBonusAnnualTotal) }}</p>
+                        <p class="value">{{ displayAmount(displayedStandardBonusAnnualTotal) }}</p>
+                        <p class="hint" *ngIf="socialInsurance.standardBonusAnnualTotal === null || socialInsurance.standardBonusAnnualTotal === undefined" style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                            ※ 給与データから自動計算した値です
+                        </p>
                     </div>
                     <div>
                         <label>被保険者番号ー健康保険</label>
@@ -218,74 +221,6 @@
         </section>
 
         <section *ngIf="selectedTab === 'bonus'" class="tab-body">
-            <article class="card">
-                <div class="card-header">
-                    <div>
-                        <p class="eyebrow">賞与履歴</p>
-                        <h2>賞与一覧</h2>
-                    </div>
-                    <p class="hint">行をクリックすると詳細フォームが開きます。</p>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>賞与支給日</th>
-                            <th>賞与支給年度</th>
-                            <th>賞与総支給額</th>
-                            <th>標準賞与額（健・介）</th>
-                            <th>標準賞与額（厚年）</th>
-                            <th>標準賞与額年度累計（健）</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr *ngFor="let record of bonusRecords" (click)="selectBonus(record.id)"
-                            [class.selected]="selectedBonus.id === record.id">
-                            <td>{{ record.paidOn }}</td>
-                            <td>{{ record.fiscalYear }}</td>
-                            <td>{{ record.total | number }}</td>
-                            <td>{{ record.standardHealth | number }}</td>
-                            <td>{{ record.standardPension | number }}</td>
-                            <td>{{ record.healthCumulative | number }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </article>
-
-            <article class="card" *ngIf="selectedBonus">
-                <div class="card-header">
-                    <div>
-                        <p class="eyebrow">賞与詳細</p>
-                        <h2>選択中の賞与</h2>
-                    </div>
-                    <button type="button" class="outline" (click)="recalcBonus(selectedBonus)">再計算</button>
-                </div>
-                <div class="grid two-col">
-                    <div>
-                        <label>賞与支給日</label>
-                        <input type="date" [(ngModel)]="selectedBonus.paidOn" (ngModelChange)="recalcBonus(selectedBonus)" />
-                    </div>
-                    <div>
-                        <label>賞与支給年度</label>
-                        <input type="number" [(ngModel)]="selectedBonus.fiscalYear" />
-                    </div>
-                    <div>
-                        <label>賞与総支給額</label>
-                        <input type="number" [(ngModel)]="selectedBonus.total" (ngModelChange)="recalcBonus(selectedBonus)" />
-                    </div>
-                    <div>
-                        <label>標準賞与額（健・介）</label>
-                        <input type="number" [(ngModel)]="selectedBonus.standardHealth" />
-                    </div>
-                    <div>
-                        <label>標準賞与額（厚年）</label>
-                        <input type="number" [(ngModel)]="selectedBonus.standardPension" />
-                    </div>
-                    <div>
-                        <label>標準賞与額年度累計（健）</label>
-                        <input type="number" [(ngModel)]="selectedBonus.healthCumulative" />
-                    </div>
-                </div>
-            </article>
         </section>
 
         <section *ngIf="selectedTab === 'history'" class="tab-body">

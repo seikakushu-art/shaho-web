@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subject, takeUntil } from 'rxjs';
+import { Subject, takeUntil, firstValueFrom } from 'rxjs';
 import {
   CalculationType,
   StandardCalculationMethod,
@@ -13,6 +13,7 @@ import {
   CalculationRow,
 } from '../calculation-data.service';
 import { InsuranceKey } from '../calculation-utils';
+import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 
 
 type ColumnKey =
@@ -68,11 +69,13 @@ interface ColumnSetting {
 })
 export class CalculationResultComponent implements OnInit, OnDestroy {
   private calculationDataService = inject(CalculationDataService);
+  private employeesService = inject(ShahoEmployeesService);
   private destroy$ = new Subject<void>();
+
+  saving = false;
 
   calculationType: CalculationType = 'standard';
   targetMonth = '';
-  bonusMonth = '';
   method = '';
   standardMethod: StandardCalculationMethod = '定時決定';
   activeInsurances: string[] = [];
@@ -81,8 +84,34 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   locationFilter = '';
   employeeNoFilter = '';
   bonusPaidOnFilter = '';
+  departmentOptions: string[] = [];
+  locationOptions: string[] = [];
 
-  columns: ColumnSetting[] = [
+  readonly calculationTypes: Record<CalculationType, string> = {
+    standard: '標準報酬月額計算',
+    bonus: '標準賞与額計算',
+    insurance: '社会保険料計算',
+  };
+
+  readonly noWrapColumns = ['name', 'department', 'location'];
+
+  get calculationTypeLabel(): string {
+    return this.calculationTypes[this.calculationType];
+  }
+
+  get targetYear(): string {
+    return this.targetMonth.split('-')[0] || '';
+  }
+
+  get targetYearMonthLabel(): string {
+    return this.calculationType === 'standard' ? '対象年' : '対象年月';
+  }
+
+  get targetYearMonthValue(): string {
+    return this.calculationType === 'standard' ? this.targetYear : this.targetMonth;
+  }
+
+  columns: ColumnSetting[] = [  
     {
       key: 'employeeNo',
       label: '社員番号',
@@ -117,7 +146,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     },
     {
       key: 'month',
-      label: '対象年月',
+      label: '対象年/年月',
       visible: true,
       sortable: true,
       category: 'shared',
@@ -126,7 +155,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     {
       key: 'monthlySalary',
       label: '月給支払額',
-      visible: true,
+      visible: false,
       sortable: true,
       category: 'monthly',
       format: 'money',
@@ -344,7 +373,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     const type = params.get('type') as CalculationType | null;
     this.calculationType = type ?? 'standard';
     this.targetMonth = params.get('targetMonth') ?? '2025-02';
-    this.bonusMonth = params.get('bonusMonth') ?? '2025-03';
     this.method = params.get('method') ?? '自動算出';
     this.standardMethod =
       (params.get('standardMethod') as StandardCalculationMethod | null) ??
@@ -368,7 +396,19 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   }
 
   get visibleColumns() {
-    return this.columns.filter((c) => c.visible && this.isRelevantForType(c));
+    return this.columns
+      .filter((c) => c.visible && this.isRelevantForType(c))
+      .map((c) => {
+        // 定時計算の場合、「対象年月」列のラベルを「対象年」に変更
+        if (c.key === 'month' && this.calculationType === 'standard') {
+          return { ...c, label: '対象年' };
+        }
+        // 標準報酬月額計算の場合、「月給支払額」列のラベルを「平均月給支払額」に変更
+        if (c.key === 'monthlySalary' && this.calculationType === 'standard') {
+          return { ...c, label: '平均月給支払額' };
+        }
+        return c;
+      });
   }
 
   isColumnVisible(key: ColumnKey): boolean {
@@ -401,7 +441,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     const query: CalculationQueryParams = {
       type: this.calculationType,
       targetMonth: this.targetMonth,
-      bonusMonth: this.bonusMonth,
       method: this.method,
       standardMethod: this.standardMethod,
       insurances: this.activeInsurances,
@@ -419,6 +458,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         this.rows = rows;
         this.refreshVisibility(true);
         this.calculateSummaries();
+        this.updateFilterOptions();
       });
   }
 
@@ -440,6 +480,34 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       }
       return String(valA).localeCompare(String(valB), 'ja') * direction;
     });
+  }
+
+  onDepartmentFilterChange(value: string) {
+    this.departmentFilter = value;
+    this.loadRows();
+  }
+
+  onLocationFilterChange(value: string) {
+    this.locationFilter = value;
+    this.loadRows();
+  }
+
+  private updateFilterOptions() {
+    const departments = new Set<string>();
+    const locations = new Set<string>();
+
+    this.rows.forEach((row) => {
+      if (row.error) return;
+      if (row.department) departments.add(row.department);
+      if (row.location) locations.add(row.location);
+    });
+
+    this.departmentOptions = Array.from(departments).sort((a, b) =>
+      a.localeCompare(b, 'ja'),
+    );
+    this.locationOptions = Array.from(locations).sort((a, b) =>
+      a.localeCompare(b, 'ja'),
+    );
   }
 
   getRawValue(row: CalculationRow, key: ColumnKey) {
@@ -486,7 +554,25 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     if (typeof value === 'number' && column.format === 'money') {
       return value.toLocaleString('ja-JP');
     }
+    if (column.format === 'date' && typeof value === 'string') {
+      return this.formatDate(value);
+    }
+    // 定時計算の場合、「対象年月」列の表示値を年のみに変更
+    if (column.key === 'month' && this.calculationType === 'standard' && typeof value === 'string') {
+      return value.split('-')[0] || value;
+    }
     return value;
+  }
+
+  private formatDate(dateStr: string): string {
+    // YYYY-MM-DD または YYYY/MM/DD 形式を YYYY/MM/DD に統一
+    const normalized = dateStr.replace(/\//g, '-');
+    const date = new Date(normalized);
+    if (isNaN(date.getTime())) return dateStr;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}/${month}/${day}`;
   }
 
   private refreshVisibility(autoHide = false) {
@@ -505,19 +591,40 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           if (typeof value === 'number') return value !== 0;
           return !!value;
         });
-        column.visible = hasValue;
+        // 月給支払額はユーザーがチェックするまで自動で表示しない
+        if (column.key === 'monthlySalary' && column.visible === false) {
+          column.visible = false;
+        } else {
+          column.visible = hasValue;
+        }
       } else if (autoHide) {
-        column.visible = true;
+        if (column.key === 'monthlySalary' && column.visible === false) {
+          column.visible = false;
+        } else {
+          column.visible = true;
+        }
       }
     });
   }
 
   private isRelevantForType(column: ColumnSetting) {
+    // 対象年/年月を標準賞与額計算では非表示
+    if (column.key === 'month' && this.calculationType === 'bonus') {
+      return false;
+    }
+    // 社会保険料計算では賞与支給日を表示しない
+    if (column.key === 'bonusPaymentDate' && this.calculationType === 'insurance') {
+      return false;
+    }
     if (column.category === 'monthly' && this.calculationType === 'bonus') {
       return false;
     }
     if (column.category === 'bonus' && this.calculationType === 'standard') {
       return false;
+    }
+    // 標準賞与額（健・介）と標準賞与額（厚生年金）は保険種別に関係なく表示
+    if (column.key === 'standardHealthBonus' || column.key === 'standardWelfareBonus') {
+      return true;
     }
     const insuranceType = this.getInsuranceTypeForColumn(column.key);
     if (insuranceType && !this.isInsuranceActive(insuranceType)) {
@@ -764,6 +871,103 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         month: this.targetMonth,
       },
     });
+  }
+
+  async saveResults() {
+    if (this.saving || this.rows.length === 0) return;
+
+    this.saving = true;
+    try {
+      // エラーがある行はスキップ
+      const validRows = this.rows.filter((row) => !row.error);
+      if (validRows.length === 0) {
+        alert('保存できるデータがありません。');
+        return;
+      }
+
+      // 社員データを取得して、employeeNoからidをマッピング
+      const employees = await firstValueFrom(
+        this.employeesService.getEmployeesWithPayrolls(),
+      );
+      const employeeMap = new Map<string, string>();
+      employees.forEach((emp) => {
+        if (emp.id && emp.employeeNo) {
+          employeeMap.set(emp.employeeNo, emp.id);
+        }
+      });
+
+      // 各計算結果を保存
+      const savePromises = validRows.map(async (row) => {
+        const employeeId = employeeMap.get(row.employeeNo);
+        if (!employeeId) {
+          console.warn(`社員番号 ${row.employeeNo} の社員IDが見つかりません`);
+          return;
+        }
+
+        // 給与データとして保存
+        // PayrollDataのフィールドに合わせて、合計値を計算
+        const healthMonthlyTotal =
+          (row.healthEmployeeMonthly || 0) + (row.healthEmployerMonthly || 0);
+        const careMonthlyTotal =
+          (row.nursingEmployeeMonthly || 0) + (row.nursingEmployerMonthly || 0);
+        const pensionMonthlyTotal =
+          (row.welfareEmployeeMonthly || 0) + (row.welfareEmployerMonthly || 0);
+        const healthBonusTotal =
+          (row.healthEmployeeBonus || 0) + (row.healthEmployerBonus || 0);
+        const careBonusTotal =
+          (row.nursingEmployeeBonus || 0) + (row.nursingEmployerBonus || 0);
+        const pensionBonusTotal =
+          (row.welfareEmployeeBonus || 0) + (row.welfareEmployerBonus || 0);
+
+        const payrollData: any = {
+          yearMonth: row.month,
+          amount: row.monthlySalary || undefined,
+          bonusPaidOn: row.bonusPaymentDate || undefined,
+          bonusTotal: row.bonusTotalPay || undefined,
+          standardBonus:
+            row.standardHealthBonus || row.standardWelfareBonus || undefined,
+          // 保険料データ（合計値）
+          healthInsuranceMonthly:
+            healthMonthlyTotal > 0 ? healthMonthlyTotal : undefined,
+          careInsuranceMonthly:
+            careMonthlyTotal > 0 ? careMonthlyTotal : undefined,
+          pensionMonthly:
+            pensionMonthlyTotal > 0 ? pensionMonthlyTotal : undefined,
+          healthInsuranceBonus:
+            healthBonusTotal > 0 ? healthBonusTotal : undefined,
+          careInsuranceBonus: careBonusTotal > 0 ? careBonusTotal : undefined,
+          pensionBonus: pensionBonusTotal > 0 ? pensionBonusTotal : undefined,
+        };
+
+        // undefinedのフィールドを削除
+        Object.keys(payrollData).forEach((key) => {
+          if (payrollData[key] === undefined) {
+            delete payrollData[key];
+          }
+        });
+
+        await this.employeesService.addOrUpdatePayroll(
+          employeeId,
+          row.month,
+          payrollData,
+        );
+
+        // 標準報酬月額を社員のメインデキュメントに保存
+        if (row.standardMonthly && row.standardMonthly > 0) {
+          await this.employeesService.updateEmployee(employeeId, {
+            standardMonthly: row.standardMonthly,
+          });
+        }
+      });
+
+      await Promise.all(savePromises);
+      alert(`${validRows.length}件の計算結果を保存しました。`);
+    } catch (error) {
+      console.error('保存エラー:', error);
+      alert('保存に失敗しました。時間をおいて再度お試しください。');
+    } finally {
+      this.saving = false;
+    }
   }
 }
 

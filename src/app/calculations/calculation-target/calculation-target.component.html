@@ -7,15 +7,15 @@
     <div class="field">
       <label>計算種別</label>
       <div class="options">
-        <label *ngFor="let entry of (calculationTypes | keyvalue)">
+        <label *ngFor="let type of calculationTypeOrder">
           <input
             type="radio"
             name="calcType"
-            [value]="entry.key"
-            [checked]="calculationType === entry.key"
-            (change)="onCalculationTypeChange(entry.key)"
+            [value]="type"
+            [checked]="calculationType === type"
+            (change)="onCalculationTypeChange(type)"
           />
-          {{ entry.value }}
+          {{ calculationTypes[type] }}
         </label>
       </div>
     </div>
@@ -35,25 +35,17 @@
     </div>
     <div class="field">
       <label for="employeeNo">社員番号</label>
-      <input id="employeeNo" type="text" [(ngModel)]="employeeNo" placeholder="例: E2025" />
+      <input id="employeeNo" type="text" [(ngModel)]="employeeNo" placeholder="例: E2025,E2026,E2027" />
     </div>
   </div>
 
   <div class="card">
     <div class="field">
-      <label>計算方法</label>
-      <div class="options">
-        <label *ngFor="let method of calculationMethods">
-          <input type="radio" name="method" [value]="method" [(ngModel)]="calculationMethod" />
-          {{ method }}
-        </label>
-      </div>
-    </div>
-    <div class="field">
-      <label for="targetMonth" *ngIf="!isRegularDecision">対象年月</label>
-      <label for="targetYear" *ngIf="isRegularDecision">対象年度</label>
+      <label for="targetMonth" *ngIf="!isRegularDecision && !isBonusCalculation">対象年月</label>
+      <label for="targetYear" *ngIf="isRegularDecision">対象年</label>
+      <div style="display: flex; align-items: center; gap: 8px;">
       <input
-        *ngIf="!isRegularDecision"
+        *ngIf="!isRegularDecision && !isBonusCalculation"
         id="targetMonth"
         type="month"
         [(ngModel)]="targetMonth"
@@ -65,6 +57,8 @@
       >
         <option *ngFor="let year of availableYears" [value]="year">{{ year }}年</option>
       </select>
+        <span class="hint" *ngIf="isAdHocDecision" style="font-size: 0.85em; color: #666;">選択された月から3ヶ月の給与で標準報酬月額を計算する。</span>
+      </div>
     </div>
     <div class="field" *ngIf="isStandardCalculation">
       <label for="standardCalculationMethod">標準報酬月額の算定方法</label>
@@ -72,20 +66,17 @@
         <option *ngFor="let method of standardCalculationMethods" [value]="method">{{ method }}</option>
       </select>
     </div>
-    <div class="field" *ngIf="!isStandardCalculation">
-      <label for="bonusMonth">賞与対象月</label>
-      <input id="bonusMonth" type="month" [(ngModel)]="bonusMonth" />
-    </div>
     <div class="field" *ngIf="isBonusCalculation">
       <label for="bonusPaymentDate">賞与支給日</label>
+      <div class="hint" style="font-size: 0.85em; color: #666;">標準賞与額は社会保険料計算時にも自動計算されます。</div>
       <input id="bonusPaymentDate" type="date" [(ngModel)]="bonusPaymentDate" />
-      <p class="hint">社員基本情報の賞与支給日を参照して上書きできます。</p>
     </div>
     <div class="field" *ngIf="calculationType === 'insurance'">
       <label>
         <input type="checkbox" [(ngModel)]="includeBonusInMonth" />
         対象月に賞与を含める
       </label>
+      <div class="hint" style="font-size: 0.85em; color: #666;">標準賞与額は自動計算されます。</div>
     </div>
     <div class="field">
       <label>保険種別</label>
@@ -104,14 +95,13 @@
         </label>
       </div>
     </div>
+    <div class="actions-row">
+      <button type="button" class="primary" (click)="onSubmit()">この条件で計算結果を表示</button>
+    </div>
   </div>
 </div>
   
     <div class="card">
-      <div class="actions-row">
-        <button type="button" class="primary" (click)="onSubmit()">この条件で計算結果を表示</button>
-      </div>
-  
       <table class="preview-table">
         <thead>
           <tr>
@@ -119,8 +109,8 @@
             <th>氏名</th>
             <th>部署</th>
             <th>勤務地</th>
-            <th>計算方法</th>
-            <th>賞与支給日</th>
+            <th *ngIf="isStandardCalculation">標準報酬月額</th>
+            <th *ngIf="!isStandardCalculation">賞与支給日</th>
           </tr>
         </thead>
         <tbody>
@@ -129,8 +119,10 @@
             <td>{{ candidate.name }}</td>
             <td>{{ candidate.department }}</td>
             <td>{{ getCandidateLocation(candidate) }}</td>
-            <td>{{ candidate.method }}</td>
-            <td>{{ getCandidateBonusDate(candidate) || '未登録' }}</td>
+            <td *ngIf="isStandardCalculation">
+              {{ candidate.standardMonthly ? (candidate.standardMonthly | number: '1.0-0') + ' 円' : '未設定' }}
+            </td>
+            <td *ngIf="!isStandardCalculation">{{ getCandidateBonusDate(candidate) || '未登録' }}</td>
           </tr>
         </tbody>
       </table>

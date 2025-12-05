@@ -11,6 +11,9 @@ class EmployeesStub {
   getEmployees() {
     return of(this.employees);
   }
+  getEmployeesWithPayrolls() {
+    return of(this.employees);
+  }
 }
 
 class RatesStub {
@@ -117,11 +120,11 @@ describe('CalculationDataService bonus caps', () => {
     const params: CalculationQueryParams = {
       type: 'bonus',
       targetMonth: '2024-04',
-      bonusMonth: '2024-04',
       method: 'none',
       standardMethod: '定時決定',
       insurances: ['健康', '厚生年金'],
       employeeNo: 'E001',
+      bonusPaidOn: '2024-04-25',
     };
 
     const [row] = await firstValueFrom(service.getCalculationRows(params));
@@ -149,11 +152,11 @@ describe('CalculationDataService bonus caps', () => {
     const params: CalculationQueryParams = {
       type: 'bonus',
       targetMonth: '2024-06',
-      bonusMonth: '2024-06',
       method: 'none',
       standardMethod: '定時決定',
       insurances: ['健康', '厚生年金'],
       employeeNo: 'E002',
+      bonusPaidOn: '2024-06-20',
     };
 
     const [row] = await firstValueFrom(service.getCalculationRows(params));

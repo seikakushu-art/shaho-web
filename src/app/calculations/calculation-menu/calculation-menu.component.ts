@@ -24,7 +24,7 @@ export class CalculationMenuComponent {
     },
     {
       key: 'bonus',
-      title: '賞与額計算',
+      title: '標準賞与額計算',
       description: '賞与計算用の対象指定に対応し、支給確定前の試算も行えます。',
     },
     {

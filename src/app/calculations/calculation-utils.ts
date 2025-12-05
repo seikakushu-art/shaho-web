@@ -30,7 +30,7 @@ const WORKED_DAYS_THRESHOLD = 17;
 
 export interface CalculationContext {
   targetMonth: string;
-  bonusMonth: string;
+  bonusPaymentDate?: string;
   calculationType: CalculationType;
   standardCalculationMethod: StandardCalculationMethod;
   activeInsurances: InsuranceKey[];
@@ -95,7 +95,7 @@ function filterEligiblePayrolls(payrolls: PayrollData[]): PayrollData[] {
 function averagePayroll(payrolls: PayrollData[]): number | undefined {
   if (!payrolls.length) return undefined;
   const total = payrolls.reduce((sum, p) => sum + (p.amount ?? 0), 0);
-  return total / payrolls.length;
+  return Math.floor(total / payrolls.length);
 }
 
 function averageRecentPayroll(
@@ -111,17 +111,91 @@ function averageRecentPayroll(
   return averagePayroll(sorted);
 }
 
+/**
+ * 前年7月～当年6月の12か月の給与データの平均を計算する
+ * 対象月が当年6月の場合、前年7月～当年6月の12か月を取得
+ */
+function averageAnnualPayroll(
+  payrolls: PayrollData[],
+  targetMonth: string,
+): number | undefined {
+  const parsed = toYearMonthParts(targetMonth);
+  if (!parsed) return undefined;
+  
+  // 前年7月～当年6月の12か月を生成
+  const startYear = parsed.year - 1;
+  const startMonth = 7;
+  const endYear = parsed.year;
+  const endMonth = 6;
+  
+  const targetMonths: string[] = [];
+  // 前年7月～12月
+  for (let month = startMonth; month <= 12; month++) {
+    targetMonths.push(buildYearMonth(startYear, month));
+  }
+  // 当年1月～6月
+  for (let month = 1; month <= endMonth; month++) {
+    targetMonths.push(buildYearMonth(endYear, month));
+  }
+  
+  const eligible = filterEligiblePayrolls(payrolls);
+  const targetPayrolls = eligible.filter((p) =>
+    targetMonths.includes(p.yearMonth),
+  );
+  
+  return averagePayroll(targetPayrolls);
+}
+
 function toYearMonthParts(
   yearMonth: string,
 ): { year: number; month: number } | undefined {
-  const [year, month] = yearMonth.split('-').map(Number);
-  if (Number.isNaN(year) || Number.isNaN(month)) return undefined;
+  if (!yearMonth || yearMonth.trim() === '') return undefined;
+  const parts = yearMonth.split('-');
+  if (parts.length < 2) return undefined;
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  if (Number.isNaN(year) || Number.isNaN(month) || year <= 0 || month <= 0 || month > 12) return undefined;
   return { year, month };
 }
 
 function buildYearMonth(year: number, month: number): string {
   const normalizedMonth = String(month).padStart(2, '0');
   return `${year}-${normalizedMonth}`;
+}
+
+/**
+ * 日付文字列を YYYY-MM 形式に正規化する
+ * 対応形式: YYYY-MM-DD, YYYY/MM/DD, YYYY-M-D, YYYY/M/D など
+ */
+export function normalizeToYearMonth(dateString: string): string | undefined {
+  if (!dateString || dateString.length < 7) return undefined;
+  
+  // YYYY-MM-DD または YYYY-M-D 形式の場合
+  if (dateString.includes('-')) {
+    const parts = dateString.split('-');
+    if (parts.length >= 2) {
+      const year = parts[0];
+      const month = parts[1].padStart(2, '0');
+      return `${year}-${month}`;
+    }
+  }
+  
+  // YYYY/MM/DD または YYYY/M/D 形式の場合
+  if (dateString.includes('/')) {
+    const parts = dateString.split('/');
+    if (parts.length >= 2) {
+      const year = parts[0];
+      const month = parts[1].padStart(2, '0');
+      return `${year}-${month}`;
+    }
+  }
+  
+  // 既に YYYY-MM 形式の場合
+  if (dateString.length === 7 && dateString.match(/^\d{4}-\d{2}$/)) {
+    return dateString;
+  }
+  
+  return undefined;
 }
 
 function resolveGradeNumber(
@@ -176,7 +250,23 @@ export function resolveStandardMonthly(
           months.includes(p.yearMonth),
         );
         if (targetMonths.length === 0) {
-          error = `4-6月の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          // デバッグ情報: 全給与データから該当する月のデータを確認
+          const allPayrollsForMonths = payrolls.filter((p) =>
+            months.includes(p.yearMonth) && p.amount !== undefined,
+          );
+          if (allPayrollsForMonths.length > 0) {
+            // データは存在するが、workedDays < 17で除外されている
+            const workedDaysInfo = allPayrollsForMonths
+              .map((p) => `${p.yearMonth}: 勤務日数=${p.workedDays ?? '未設定'}`)
+              .join(', ');
+            error = `4-6月の給与データは存在しますが、勤務日数が17日未満のため計算対象外です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）[${workedDaysInfo}]`;
+          } else {
+            // 全給与データから該当月のデータを確認（yearMonthの形式チェック）
+            const allYearMonths = payrolls.map((p) => p.yearMonth).filter(Boolean);
+            const targetYearMonthsStr = months.join(', ');
+            const availableYearMonthsStr = [...new Set(allYearMonths)].join(', ');
+            error = `4-6月の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）対象月: ${targetYearMonthsStr}、利用可能な年月: ${availableYearMonthsStr || 'なし'}`;
+          }
           return undefined;
         }
         return averagePayroll(targetMonths);
@@ -184,10 +274,43 @@ export function resolveStandardMonthly(
       break;
     case '随時決定':
       base = (() => {
-        const targetOrAfter = eligiblePayrolls
-          .filter((p) => p.yearMonth >= targetMonth)
-          .sort((a, b) => a.yearMonth.localeCompare(b.yearMonth))
-          .slice(0, 3);
+        const parsed = toYearMonthParts(targetMonth);
+        if (!parsed) {
+          error = '対象年月の解析に失敗しました。';
+          return undefined;
+        }
+        
+        // 対象月から連続した3ヶ月を生成
+        const targetMonths: string[] = [];
+        for (let i = 0; i < 3; i++) {
+          let year = parsed.year;
+          let month = parsed.month + i;
+          while (month > 12) {
+            month -= 12;
+            year += 1;
+          }
+          targetMonths.push(buildYearMonth(year, month));
+        }
+        
+        // 連続した3ヶ月のデータを取得（3ヶ月分揃っていなくても良い）
+        const targetOrAfter = eligiblePayrolls.filter((p) =>
+          targetMonths.includes(p.yearMonth),
+        );
+        
+        // データが0件の場合はエラー、1件以上あれば利用可能なデータで計算
+        if (targetOrAfter.length === 0) {
+          // 全給与データから該当する月のデータを確認（workedDaysの条件なし）
+          const allPayrollsForMonths = payrolls.filter((p) =>
+            targetMonths.includes(p.yearMonth) && p.amount !== undefined,
+          );
+          if (allPayrollsForMonths.length > 0) {
+            // データは存在するが、workedDays < 17で除外されている
+            error = `対象月（${targetMonth}）から連続した3ヶ月の給与データは存在しますが、勤務日数が17日未満のため計算対象外です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          } else {
+            error = `対象月（${targetMonth}）から連続した3ヶ月（${targetMonths.join(', ')}）の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          }
+          return undefined;
+        }
         const average = averagePayroll(targetOrAfter);
         if (average === undefined) {
           error = `対象月以降の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
@@ -224,62 +347,71 @@ export function resolveStandardMonthly(
       break;
     case '年間平均':
       base = (() => {
-        const annualAverage = averageRecentPayroll(
-          eligiblePayrolls,
-          targetMonth,
-          12,
-        );
-        if (annualAverage === undefined) {
-          error = `過去12ヶ月の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+        // 対象月が1～5月の場合はエラー
+        const parsed = toYearMonthParts(targetMonth);
+        if (!parsed) {
+          error = '対象年月の解析に失敗しました。';
           return undefined;
         }
-        const regularAverage = averageRecentPayroll(
+        if (parsed.month >= 1 && parsed.month <= 5) {
+          error = `年間平均の計算は6月以降の対象月のみ指定可能です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
+        }
+        // 前年7月～当年6月の12か月の平均を計算
+        const annualAverage = averageAnnualPayroll(
           eligiblePayrolls,
           targetMonth,
-          3,
         );
-        const regularStandard = regularAverage
-          ? findStandardCompensation(
-              regularAverage,
-              compensationTable,
-              '健康保険',
-            )
-          : undefined;
-        const annualStandard = findStandardCompensation(
-          annualAverage,
-          compensationTable,
-          '健康保険',
-        );
-        const regularGrade = resolveGradeNumber(
-          regularStandard,
-          compensationTable,
-          '健康保険',
-        );
-        const annualGrade = resolveGradeNumber(
-          annualStandard,
-          compensationTable,
-          '健康保険',
-        );
-
-        if (
-          annualStandard !== undefined &&
-          annualGrade !== undefined &&
-          regularGrade !== undefined &&
-          Math.abs(annualGrade - regularGrade) >= 2
-        ) {
-          return annualStandard;
+        if (annualAverage === undefined) {
+          error = `前年7月～当年6月の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
         }
-
-        return regularAverage ?? annualAverage;
+        return annualAverage;
       })();
       break;
     case '資格取得時':
-      base = eligiblePayrolls.sort((a, b) =>
-        a.yearMonth.localeCompare(b.yearMonth),
-      )[0]?.amount;
-      if (base === undefined) {
-        error = `資格取得時の計算に必要な給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
-      }
+      base = (() => {
+        // 健康保険と厚生年金の資格取得日のうち、古い方を取得
+        const healthAcq = employee.healthAcquisition;
+        const pensionAcq = employee.pensionAcquisition;
+        
+        if (!healthAcq && !pensionAcq) {
+          error = `資格取得日が設定されていません。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
+        }
+        
+        // 古い方の資格取得日を特定
+        const earliestAcquisition: string | undefined = healthAcq && pensionAcq
+          ? (healthAcq < pensionAcq ? healthAcq : pensionAcq)
+          : (healthAcq || pensionAcq);
+        
+        if (!earliestAcquisition || earliestAcquisition.length < 7) {
+          error = `資格取得日が不正です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
+        }
+        
+        // 型ガード: この時点でearliestAcquisitionはstring型であることが保証されている
+        const acquisitionDate: string = earliestAcquisition;
+        
+        // 資格取得日の年月を取得（YYYY-MM形式に正規化）
+        const acquisitionYearMonth = normalizeToYearMonth(acquisitionDate);
+        if (!acquisitionYearMonth) {
+          error = `資格取得日が不正です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
+        }
+        
+        // 該当月の給与データを取得
+        const acquisitionPayroll = eligiblePayrolls.find(
+          (p) => p.yearMonth === acquisitionYearMonth,
+        );
+        
+        if (!acquisitionPayroll || acquisitionPayroll.amount === undefined) {
+          error = `資格取得月（${acquisitionYearMonth}）の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          return undefined;
+        }
+        
+        return acquisitionPayroll.amount;
+      })();
       break;
     case '育休復帰時':
       base = (() => {

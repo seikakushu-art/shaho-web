@@ -14,7 +14,7 @@ import {
   writeBatch,
 } from '@angular/fire/firestore';
 import { Auth } from '@angular/fire/auth';
-import { Observable } from 'rxjs';
+import { Observable, combineLatest, map, of, switchMap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export interface ShahoEmployee {
@@ -122,6 +122,31 @@ export class ShahoEmployeesService {
     return collectionData(this.colRef, { idField: 'id' }) as Observable<
       ShahoEmployee[]
     >;
+  }
+
+  getEmployeesWithPayrolls(): Observable<
+    (ShahoEmployee & { payrolls: PayrollData[] })[]
+  > {
+    return this.getEmployees().pipe(
+      switchMap((employees) => {
+        if (!employees.length) return of([]);
+
+        const employeesWithPayrolls$ = employees.map((employee) => {
+          const payrolls$ = employee.id
+            ? this.getPayrolls(employee.id)
+            : of<PayrollData[]>([]);
+
+          return payrolls$.pipe(
+            map((payrolls) => ({
+              ...employee,
+              payrolls: payrolls ?? [],
+            })),
+          );
+        });
+
+        return combineLatest(employeesWithPayrolls$);
+      }),
+    );
   }
 
   /**
