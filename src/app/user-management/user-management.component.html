@@ -20,31 +20,43 @@
       <form [formGroup]="form" (ngSubmit)="saveUser()" class="form-grid">
         <label>
           <span>メールアドレス</span>
-          <input type="email" formControlName="email" placeholder="user@example.com" />
+          <input type="email" formControlName="email" placeholder="user@example.com" [disabled]="!(canEdit$ | async)" />
         </label>
-  
+
         <label>
           <span>表示名</span>
-          <input type="text" formControlName="displayName" placeholder="山田 太郎" />
+          <input type="text" formControlName="displayName" placeholder="山田 太郎" [disabled]="!(canEdit$ | async)" />
         </label>
-  
+
         <div class="roles">
           <p>ロール</p>
+          <p class="hint">付与済みロールのバッジをクリックすると剥奪できます。最低1つは必須です。</p>
+          <div class="assigned-roles">
+            <span class="pill" *ngFor="let role of form.value.roles || []">
+              {{ getRoleLabel(role) }}
+              <button type="button" (click)="toggleRole(role)" [disabled]="!(canEdit$ | async)">×</button>
+            </span>
+            <span class="hint" *ngIf="!(form.value.roles?.length)">ロールが付与されていません</span>
+          </div>
           <div class="role-list">
             <label *ngFor="let role of roleDefinitions">
               <input
                 type="checkbox"
                 [checked]="isRoleSelected(role.key)"
                 (change)="toggleRole(role.key)"
+                [disabled]="!(canEdit$ | async)"
               />
               <span class="role-name">{{ role.name }}</span>
               <small>{{ role.summary }}</small>
             </label>
           </div>
+          <p class="error" *ngIf="form.controls['roles'].hasError('roleRequired')">1つ以上のロールを付与してください。</p>
         </div>
-  
+
         <div class="actions">
-          <button type="submit" class="primary">{{ selectedUser ? '更新する' : '登録する' }}</button>
+          <button type="submit" class="primary" [disabled]="form.invalid || !(canEdit$ | async)">
+            {{ selectedUser ? '更新する' : '登録する' }}
+          </button>
           <span class="status" *ngIf="statusMessage">{{ statusMessage }}</span>
         </div>
       </form>
@@ -67,7 +79,14 @@
           </div>
           <div class="actions">
             <button type="button" class="ghost" (click)="selectUser(user)">編集</button>
-            <button type="button" class="danger" (click)="deleteUser(user); $event.stopPropagation()">削除</button>
+            <button
+            type="button"
+            class="danger"
+            (click)="deleteUser(user); $event.stopPropagation()"
+            [disabled]="!(canEdit$ | async)"
+          >
+            削除
+          </button>
           </div>
         </article>
       </div>

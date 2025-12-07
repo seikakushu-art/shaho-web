@@ -16,6 +16,7 @@ import {
 import { ApprovalNotificationService } from './approval-notification.service';
 import { ApprovalWorkflowService } from './approval-workflow.service';
 import { ApprovalAttachmentService } from './approval-attachment.service';
+import { RoleKey } from '../models/roles';
 
 type EmployeeStatus = 'OK' | '警告';
 
@@ -89,6 +90,8 @@ export class ApprovalDetailComponent implements OnDestroy {
       this.approval = approval;
     }),
   );
+
+  readonly canApprove$ = this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver]);
 
   private expiryWatcher = interval(30_000)
     .pipe(

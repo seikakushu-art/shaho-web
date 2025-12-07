@@ -18,6 +18,10 @@ import { CsvExportComponent } from './employees/emloyee-export/csv-export.compon
 import { UserManagementComponent } from './user-management/user-management.component';
 import { RoleKey } from './models/roles';
 
+const adminOnly = [RoleKey.SystemAdmin];
+const operators = [RoleKey.SystemAdmin, RoleKey.Operator];
+const approvalParticipants = [RoleKey.SystemAdmin, RoleKey.Approver, RoleKey.Operator];
+
 export const routes: Routes = [
   {
     path: 'login',
@@ -34,85 +38,85 @@ export const routes: Routes = [
     path: 'employees',
     component: EmployeeListComponent,
     pathMatch: 'full',
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(approvalParticipants)],
     title: '社員一覧',
   },
   {
     path: 'employees/new',
     component: EmployeeCreateComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(operators)],
     title: '新規社員登録',
   },
   {
     path: 'csv-export',
     component: CsvExportComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(operators)],
     title: 'CSVエクスポート',
   },
   {
     path: 'employees/import',
     component: EmployeeImportComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(operators)],
     title: 'CSVインポート',
   },
   {
     path: 'employees/:id/edit',
     component: EmployeeCreateComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(operators)],
     title: '社員編集',
   },
   {
     path: 'employees/:id',
     component: EmployeeDetailComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(approvalParticipants)],
     title: '社員詳細',
   },
   {
     path: 'approvals',
     component: ApprovalListComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(approvalParticipants)],
     title: '承認一覧',
   },
   {
     path: 'approvals/:id',
     component: ApprovalDetailComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(approvalParticipants)],
     title: '承認詳細',
   },
   {
     path: 'corporate-info',
     component: CorporateInfoComponent,
-    canActivate: [authGuard, roleGuard(RoleKey.SystemAdmin)],
+    canActivate: [authGuard, roleGuard(adminOnly)],
     title: '法人情報',
   },
   {
     path: 'insurance-rates',
     component: InsuranceRatesComponent,
-    canActivate: [authGuard, roleGuard(RoleKey.SystemAdmin)],
+    canActivate: [authGuard, roleGuard(adminOnly)],
     title: '保険料率設定',
   },
   {
     path: 'user-management',
     component: UserManagementComponent,
-    canActivate: [authGuard, roleGuard(RoleKey.SystemAdmin)],
+    canActivate: [authGuard, roleGuard(adminOnly)],
     title: 'ユーザー管理',
   },
   {
     path: 'calculations',
     component: CalculationMenuComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(operators)],
     title: '計算メニュー',
   },
   {
     path: 'calculations/target',
     component: CalculationTargetComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(operators)],
     title: '計算対象選択',
   },
   {
     path: 'calculations/results',
     component: CalculationResultComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(approvalParticipants)],
     title: '計算結果',
   },
   {

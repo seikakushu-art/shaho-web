@@ -1,10 +1,11 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, AbstractControl } from '@angular/forms';
 import { ROLE_DEFINITIONS, RoleDefinition, RoleKey } from '../models/roles';
 import { UserDirectoryService, AppUser } from '../auth/user-directory.service';
-import { Observable } from 'rxjs';
+import { firstValueFrom, Observable } from 'rxjs';
 import { RouterLink } from '@angular/router';
+import { AuthService } from '../auth/auth.service';
 
 @Component({
   selector: 'app-user-management',
@@ -16,39 +17,52 @@ import { RouterLink } from '@angular/router';
 export class UserManagementComponent {
   private fb = inject(FormBuilder);
   private userDirectory = inject(UserDirectoryService);
+  private authService = inject(AuthService);
 
   readonly users$: Observable<AppUser[]> = this.userDirectory.getUsers();
   readonly roleDefinitions: RoleDefinition[] = ROLE_DEFINITIONS;
   readonly RoleKey = RoleKey;
+  readonly canEdit$ = this.authService.hasAnyRole([RoleKey.SystemAdmin]);
 
   form: FormGroup = this.fb.group({
     email: ['', [Validators.required, Validators.email]],
     displayName: ['', [Validators.required]],
-    roles: this.fb.control<RoleKey[]>([]),
+    roles: this.fb.control<RoleKey[]>([RoleKey.Guest], [this.requireAtLeastOneRole]),
   });
 
   statusMessage = '';
   selectedUser?: AppUser;
+
+  private requireAtLeastOneRole(control: AbstractControl<RoleKey[] | null>) {
+    const roles = control.value ?? [];
+    return roles.length ? null : { roleRequired: true };
+  }
 
   selectUser(user: AppUser) {
     this.selectedUser = user;
     this.form.setValue({
       email: user.email,
       displayName: user.displayName ?? '',
-      roles: user.roles ?? [],
+      roles: user.roles?.length ? user.roles : [RoleKey.Guest],
     });
     this.statusMessage = `選択中: ${user.email}`;
   }
 
   resetForm() {
     this.selectedUser = undefined;
-    this.form.reset({ email: '', displayName: '', roles: [] });
+    this.form.reset({ email: '', displayName: '', roles: [RoleKey.Guest] });
     this.statusMessage = '';
   }
 
   async saveUser() {
-    if (this.form.invalid) {
-      this.statusMessage = 'メール・表示名・ロールを正しく入力してください';
+    const canEdit = await firstValueFrom(this.canEdit$);
+    if (!canEdit) {
+      this.statusMessage = 'システム管理者のみユーザー情報を更新できます';
+      return;
+    }
+
+    if (this.form.invalid || !this.form.value.roles?.length) {
+      this.statusMessage = 'メール・表示名・ロールを正しく入力し、1件以上のロールを付与してください';
       return;
     }
 
@@ -63,6 +77,11 @@ export class UserManagementComponent {
   }
 
   async deleteUser(user: AppUser) {
+    const canEdit = await firstValueFrom(this.canEdit$);
+    if (!canEdit) {
+      this.statusMessage = 'システム管理者のみユーザー削除が可能です';
+      return;
+    }
     await this.userDirectory.deleteUser(user.email);
     this.statusMessage = `${user.email} を削除しました`;
     if (this.selectedUser?.email === user.email) {
@@ -77,6 +96,10 @@ export class UserManagementComponent {
   toggleRole(role: RoleKey) {
     const roles: RoleKey[] = this.form.value.roles ?? [];
     if (roles.includes(role)) {
+        if (roles.length === 1) {
+            this.statusMessage = '最低1つのロールを付与してください';
+            return;
+          }
       this.form.patchValue({ roles: roles.filter((r) => r !== role) });
     } else {
       this.form.patchValue({ roles: [...roles, role] });
@@ -88,5 +111,9 @@ export class UserManagementComponent {
     return effectiveRoles
       .map((role) => this.roleDefinitions.find((r) => r.key === role)?.name ?? role)
       .join(' / ');
+  }
+
+  getRoleLabel(role: RoleKey): string {
+    return this.roleDefinitions.find((r) => r.key === role)?.name ?? role;
   }
 }

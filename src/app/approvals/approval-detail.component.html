@@ -146,7 +146,7 @@
             multiple
             (change)="onFileSelected($event)"
             [accept]="attachmentService.acceptExtensions"
-            [disabled]="current.status !== 'pending' || uploading"
+            [disabled]="current.status !== 'pending' || uploading || !(canApprove$ | async)"
           />
           ファイルを選択
         </label>
@@ -162,7 +162,9 @@
               <p class="file-name">{{ file.name }}</p>
               <p class="hint">{{ formatFileSize(file.size) }}</p>
             </div>
-            <button type="button" class="ghost" (click)="removeFile(i)">削除</button>
+            <button type="button" class="ghost" (click)="removeFile(i)" [disabled]="!(canApprove$ | async)">
+              削除
+            </button>
           </li>
         </ul>
       </div>
@@ -192,13 +194,14 @@
         <h2>コメントを残して意思決定</h2>
       </div>
       <p class="hint">申請者と次ステップの承認者へバッジ／トーストで通知します。</p>
+      <p class="hint warning" *ngIf="!(canApprove$ | async)">承認・差戻しは承認者／システム管理者のみ実行できます。</p>
     </header>
 
     <textarea
       [(ngModel)]="approvalComment"
       rows="4"
       placeholder="確認内容や差戻し理由を入力してください"
-      [disabled]="current.status !== 'pending' || uploading"
+      [disabled]="current.status !== 'pending' || uploading || !(canApprove$ | async)"
     ></textarea>
 
     <div class="action-buttons">
@@ -206,7 +209,7 @@
         type="button"
         class="ghost"
         (click)="saveApproval('remand')"
-        [disabled]="current.status !== 'pending' || uploading"
+        [disabled]="current.status !== 'pending' || uploading || !(canApprove$ | async)"
       >
         差戻し
       </button>
@@ -214,7 +217,7 @@
         type="button"
         class="primary"
         (click)="saveApproval('approve')"
-        [disabled]="current.status !== 'pending' || uploading"
+        [disabled]="current.status !== 'pending' || uploading || !(canApprove$ | async)"
       >
         承認
       </button>
