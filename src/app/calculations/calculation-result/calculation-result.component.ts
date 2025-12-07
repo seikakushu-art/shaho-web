@@ -364,7 +364,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   insuranceSummaries: InsuranceSummary[] = [];
   insuranceMonthlySummaries: InsuranceMonthlySummary[] = [];
 
-  historyEntries: CalculationResultHistory[] = [];
   currentHistoryId?: string;
 
   constructor(
@@ -390,11 +389,11 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     this.locationFilter = params.get('location') ?? '';
     this.employeeNoFilter = params.get('employeeNo') ?? '';
     this.bonusPaidOnFilter = params.get('bonusPaidOn') ?? '';
-
-    this.calculationDataService
-      .getCalculationHistory()
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((history) => (this.historyEntries = history));
+    const historyId = params.get('historyId');
+    if (historyId) {
+      void this.loadHistoryById(historyId);
+      return;
+    }
 
     this.loadRows();
   }
@@ -890,7 +889,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   goToCsvExport() {
     const query = this.buildQueryParams();
     const exportRows = this.rows.filter((row) => !row.error);
-    this.router.navigate(['/employees/export'], {
+    this.router.navigate(['/csv-export'], {
       queryParams: { context: 'calculation' },
       state: {
         context: 'calculation',
@@ -907,10 +906,24 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     });
   }
 
-  onSelectHistory(historyId: string) {
-    const history = this.calculationDataService.getHistoryById(historyId);
+  async onSelectHistory(historyId: string) {
+    const history = await this.calculationDataService.getHistoryById(historyId);
     if (!history) return;
     this.applyHistory(history);
+  }
+
+  private async loadHistoryById(historyId: string) {
+    try {
+      const history =
+        await this.calculationDataService.getHistoryById(historyId);
+      if (history) {
+        this.applyHistory(history);
+        return;
+      }
+    } catch (error) {
+      console.error('履歴取得に失敗しました', error);
+    }
+    this.loadRows();
   }
 
   private applyHistory(history: CalculationResultHistory) {
@@ -1025,7 +1038,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         query,
         validRows,
         {
-          title: `${this.calculationTypeLabel} ${this.targetMonth.replace(/-/g, '/')}`,
+          title: this.calculationTypeLabel,
         },
       );
       alert(`${validRows.length}件の計算結果を保存しました。`);

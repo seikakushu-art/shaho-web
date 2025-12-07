@@ -19,4 +19,40 @@
         </div>
       </article>
     </div>
+
+    <div class="card history-card" *ngIf="historyEntries.length">
+      <div class="history-header">
+        <div>
+          <h2>過去の結果を再表示</h2>
+        </div>
+        <span class="history-count">{{ historyEntries.length }}件</span>
+      </div>
+      <div class="history-list">
+        <button
+          type="button"
+          class="history-item"
+          *ngFor="let history of historyEntries"
+          (click)="goToHistory(history)"
+        >
+          <div class="history-title-row">
+            <span class="history-title">{{ history.title }}</span>
+            <span class="history-date">{{
+              history.createdAt | date: 'yyyy/MM/dd HH:mm'
+            }}</span>
+          </div>
+          <div class="history-meta">
+            <span>{{ calculationTypes[history.query.type] }}</span>
+            <span>{{ getHistoryTargetLabel(history) }}: {{ getHistoryTargetDisplay(history) }}</span>
+            <span>
+              保険:
+              {{
+                history.meta?.activeInsurances?.join(' / ')
+                  || history.query.insurances.join(' / ')
+              }}
+            </span>
+            <span>件数: {{ history.meta?.rowCount ?? history.rows.length }}</span>
+          </div>
+        </button>
+      </div>
+    </div>
   </section>

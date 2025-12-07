@@ -2,57 +2,99 @@
     <div>
       <p class="eyebrow">CSVエクスポート</p>
       <h1>出力項目の選択</h1>
-      <p class="lead">
-        {{
-          isCalculationContext
-            ? '計算結果から遷移しました。結果確認画面に表示される項目も含めて出力できます。'
-            : '社員情報CSVインポートから遷移しました。基本情報や社会保険情報を選んで出力してください。'
-        }}
-      </p>
     </div>
     <a routerLink="/employees" class="link">社員一覧に戻る</a>
-  </section>
-  
-  <section class="card context">
-    <div class="context-label">遷移元</div>
-    <div class="context-value" [class.calculation]="isCalculationContext">
-      {{ isCalculationContext ? '計算結果/確認画面からのエクスポート' : '社員情報CSVインポートからのエクスポート' }}
-    </div>
-    <p class="hint">
-      クエリパラメータや navigation state の <code>context</code> によって画面内容が変わります。
-    </p>
-    <div class="context-meta" *ngIf="calculationContext">
-        <span>対象: {{ calculationContext.meta?.targetMonth || '未設定' }}</span>
-        <span>
-          保険種別:
-          {{
-            (calculationContext.meta?.activeInsurances ?? []).join(' / ') || '未指定'
-          }}
-        </span>
-        <span *ngIf="calculationContext.meta?.historyId">
-          履歴ID: {{ calculationContext.meta?.historyId }}
-        </span>
-      </div>
   </section>
   
   <section class="card">
     <header>
       <div>
-        <p class="eyebrow">出力対象</p>
+        <p class="eyebrow">期間を指定してください。</p>
         <h2>項目を選択</h2>
       </div>
       <div class="actions">
-        <button type="button" class="ghost" (click)="selectAll()">すべて選択</button>
-        <button type="button" class="ghost" (click)="deselectAll()">すべて解除</button>
+        <button type="button" class="ghost" [disabled]="!canSelectItems" (click)="selectAll()">
+          すべて選択
+        </button>
+        <button type="button" class="ghost" [disabled]="!canSelectItems" (click)="deselectAll()">
+          すべて解除
+        </button>
+        <button
+          type="button"
+          class="primary"
+          [disabled]="isExporting || !canSelectItems || isPayrollRangeIncomplete"
+          (click)="exportCsv()"
+        >
+          {{ isExporting ? '生成中...' : 'CSVを出力' }}
+        </button>
+        <span class="status" *ngIf="statusMessage">{{ statusMessage }}</span>
       </div>
     </header>
   
+    <div class="filters">
+      <div class="filter-field">
+        <label for="department">部署</label>
+        <select
+          id="department"
+          [(ngModel)]="selectedDepartment"
+          (ngModelChange)="onFilterChange()"
+        >
+          <option value="">選択してください</option>
+          <option *ngFor="let department of departmentOptions" [ngValue]="department">
+            {{ department === EXPORT_ALL ? 'すべて' : department }}
+          </option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="workPrefecture">勤務地</label>
+        <select
+          id="workPrefecture"
+          [(ngModel)]="selectedWorkPrefecture"
+          (ngModelChange)="onFilterChange()"
+        >
+          <option value="">選択してください</option>
+          <option *ngFor="let prefecture of workPrefectureOptions" [ngValue]="prefecture">
+            {{ prefecture === EXPORT_ALL ? 'すべて' : prefecture }}
+          </option>
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="payrollStartMonth">給与履歴 開始年月</label>
+        <input
+          id="payrollStartMonth"
+          type="month"
+          [(ngModel)]="payrollStartMonth"
+          (ngModelChange)="onPayrollRangeChange()"
+        />
+      </div>
+      <div class="filter-field">
+        <label for="payrollEndMonth">給与履歴 終了年月</label>
+        <input
+          id="payrollEndMonth"
+          type="month"
+          [(ngModel)]="payrollEndMonth"
+          (ngModelChange)="onPayrollRangeChange()"
+        />
+      </div>
+    </div>
+    <p class="hint" *ngIf="!canSelectItems">
+      まず部署と勤務地を選択してください。選択後に出力項目を設定できます。
+    </p>
+    <p class="hint" *ngIf="canSelectItems && isPayrollRangeIncomplete">
+      給与履歴の開始年月と終了年月を指定してください。
+    </p>
+    <p class="hint" *ngIf="payrollStartMonth && payrollEndMonth && payrollStartMonth > payrollEndMonth">
+      開始年月は終了年月以前を指定してください。
+    </p>
+
+
     <ul class="option-list">
       <li *ngFor="let option of visibleOptions" class="option">
         <label>
           <input
             type="checkbox"
             [checked]="selectedSections.has(option.key)"
+            [disabled]="!canSelectItems"
             (change)="onToggle(option.key, ($any($event.target)?.checked) ?? false)"
           />
           <div>
@@ -62,25 +104,34 @@
         </label>
       </li>
     </ul>
-  </section>
-  
-  <section class="card">
-    <header>
-      <div>
-        <p class="eyebrow">エクスポート</p>
-        <h2>CSV生成</h2>
+
+    <div
+      *ngIf="isCalculationContext && selectedSections.has('calculationResult')"
+      class="calculation-field-panel"
+    >
+      <div class="panel-header">
+        <div>
+          <p class="hint">すべて当時の計算結果のデータになります。最新の情報ではありません。</p>
+        </div>
+        <div class="actions">
+          <button type="button" class="ghost" [disabled]="!canSelectItems" (click)="initializeCalculationFields()">
+            すべて選択
+          </button>
+          <button type="button" class="ghost" [disabled]="!canSelectItems" (click)="selectedCalculationFields.clear()">
+            すべて解除
+          </button>
+        </div>
       </div>
-    </header>
-  
-    <p class="hint">
-      選択した項目をもとにサーバー/クライアント側のCSV生成処理へリクエストします。
-      項目を切り替えると出力内容が変わります。
-    </p>
-  
-    <div class="cta">
-      <button type="button" class="primary" [disabled]="isExporting" (click)="exportCsv()">
-        {{ isExporting ? '生成中...' : 'CSVを出力' }}
-      </button>
-      <span class="status" *ngIf="statusMessage">{{ statusMessage }}</span>
+      <div class="calculation-field-grid">
+        <label *ngFor="let field of calculationFieldOptions" class="calc-field">
+          <input
+            type="checkbox"
+            [checked]="selectedCalculationFields.has(field.key)"
+            [disabled]="!canSelectItems"
+            (change)="onToggleCalculationField(field.key, ($any($event.target)?.checked) ?? false)"
+          />
+          <span>{{ field.header }}</span>
+        </label>
+      </div>
     </div>
   </section>

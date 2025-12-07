@@ -680,3 +680,182 @@ export const receiveEmployees = functions.https.onRequest(
     }
   }
 );
+
+/**
+ * 指定範囲の給与データを取得するヘルパー
+ */
+async function fetchPayrolls(
+  employeeId: string,
+  startMonth?: string,
+  endMonth?: string
+): Promise<PayrollData[]> {
+  const db = admin.firestore();
+  const payrollRef = db
+    .collection("shaho_employees")
+    .doc(employeeId)
+    .collection("payrolls");
+
+  let payrollQuery:
+    | admin.firestore.Query<admin.firestore.DocumentData>
+    | admin.firestore.CollectionReference<admin.firestore.DocumentData> = payrollRef;
+
+  // 範囲指定がある場合は年月でソート＋絞り込み
+  if (startMonth || endMonth) {
+    payrollQuery = payrollQuery.orderBy("yearMonth");
+    if (startMonth) {
+      payrollQuery = payrollQuery.where("yearMonth", ">=", startMonth);
+    }
+    if (endMonth) {
+      payrollQuery = payrollQuery.where("yearMonth", "<=", endMonth);
+    }
+  }
+
+  const snapshot = await payrollQuery.get();
+  return snapshot.docs.map(
+    (docSnap: admin.firestore.QueryDocumentSnapshot<admin.firestore.DocumentData>) => {
+      const data = docSnap.data() as PayrollData;
+      return {
+        ...data,
+        id: docSnap.id,
+      };
+    }
+  );
+}
+
+/**
+ * CSV出力相当のデータをJSONで提供するエンドポイント
+ * GET /api/export/csv-data
+ * クエリ: department, workPrefecture, payrollStartMonth, payrollEndMonth,
+ *        includeCalculation=true|false, calculationId, calculationLimit
+ */
+export const exportCsvData = functions.https.onRequest(
+  async (request, response) => {
+    response.set("Access-Control-Allow-Origin", "*");
+    response.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    response.set(
+      "Access-Control-Allow-Headers",
+      "Content-Type, X-API-Key, Authorization"
+    );
+
+    if (request.method === "OPTIONS") {
+      response.status(204).send("");
+      return;
+    }
+
+    if (request.method !== "GET") {
+      response.status(405).json({
+        error: "Method not allowed. Only GET is supported.",
+      });
+      return;
+    }
+
+    // APIキー検証（既存と同じヘッダーを使用）
+    const apiKeyValid = validateApiKey(request);
+    if (!apiKeyValid) {
+      response.status(401).json({
+        error: "Unauthorized. Invalid or missing API key.",
+      });
+      return;
+    }
+
+    // フィルタパラメータ
+    const department = request.query.department as string | undefined;
+    const workPrefecture = request.query.workPrefecture as string | undefined;
+    const payrollStartMonth = request.query
+      .payrollStartMonth as string | undefined;
+    const payrollEndMonth = request.query.payrollEndMonth as string | undefined;
+
+    // 計算結果の含有制御
+    const includeCalculation =
+      (request.query.includeCalculation as string | undefined)?.toLowerCase() ===
+      "true";
+    const calculationId = request.query.calculationId as string | undefined;
+    const calculationLimit = Math.min(
+      Number.isNaN(Number(request.query.calculationLimit))
+        ? 10
+        : Number(request.query.calculationLimit ?? 10),
+      50
+    ); // 過大レスポンス抑制
+
+    try {
+      const db = admin.firestore();
+      const employeesSnapshot = await db.collection("shaho_employees").get();
+
+      const employeesWithPayrolls: Array<
+        ShahoEmployee & { payrolls: PayrollData[] }
+      > = [];
+
+      for (const docSnap of employeesSnapshot.docs) {
+        const data = docSnap.data() as ShahoEmployee;
+
+        // 部署／勤務地フィルタ（空や"__ALL__"は素通し）
+        if (
+          department &&
+          department !== "__ALL__" &&
+          data.department !== department
+        ) {
+          continue;
+        }
+        if (
+          workPrefecture &&
+          workPrefecture !== "__ALL__" &&
+          data.workPrefecture !== workPrefecture
+        ) {
+          continue;
+        }
+
+        const payrolls = await fetchPayrolls(
+          docSnap.id,
+          payrollStartMonth,
+          payrollEndMonth
+        );
+
+        employeesWithPayrolls.push({
+          ...data,
+          id: docSnap.id,
+          payrolls,
+        });
+      }
+
+      // 計算結果履歴（必要な場合のみ）
+      let calculationHistory:
+        | admin.firestore.DocumentData[]
+        | undefined = undefined;
+
+      if (includeCalculation) {
+        if (calculationId) {
+          const docRef = db
+            .collection("calculation_result_history")
+            .doc(calculationId);
+          const snap = await docRef.get();
+          if (snap.exists) {
+            calculationHistory = [{ id: snap.id, ...snap.data() }];
+          } else {
+            calculationHistory = [];
+          }
+        } else {
+          const historyQuery = db
+            .collection("calculation_result_history")
+            .orderBy("createdAt", "desc")
+            .limit(Math.max(calculationLimit, 1));
+          const snap = await historyQuery.get();
+          calculationHistory = snap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }));
+        }
+      }
+
+      response.status(200).json({
+        employees: employeesWithPayrolls,
+        calculationHistory,
+      });
+    } catch (error) {
+      console.error("exportCsvData error", error);
+      response.status(500).json({
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+);

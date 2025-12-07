@@ -1,5 +1,16 @@
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject,combineLatest, map, switchMap } from 'rxjs';
+import { Observable, combineLatest, map, switchMap } from 'rxjs';
+import {
+  Firestore,
+  collection,
+  collectionData,
+  doc,
+  getDoc,
+  orderBy,
+  query,
+  setDoc,
+} from '@angular/fire/firestore';
+import { Auth } from '@angular/fire/auth';
 import { CorporateInfoService } from '../app/services/corporate-info.service';
 import {
   InsuranceRateRecord,
@@ -71,6 +82,9 @@ export interface CalculationResultHistory {
   id: string;
   title: string;
   createdAt: string;
+  updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
   query: CalculationQueryParams;
   rows: CalculationRow[];
   meta?: {
@@ -84,9 +98,11 @@ export class CalculationDataService {
   private employeesService = inject(ShahoEmployeesService);
   private insuranceRatesService = inject(InsuranceRatesService);
   private corporateInfoService = inject(CorporateInfoService);
-  private readonly historyStorageKey = 'calculation_result_history';
-  private history$ = new BehaviorSubject<CalculationResultHistory[]>(
-    this.loadHistory(),
+  private firestore = inject(Firestore);
+  private auth = inject(Auth);
+  private historyCollection = collection(
+    this.firestore,
+    'calculation_result_history',
   );
 
   getCalculationRows(params: CalculationQueryParams) {
@@ -123,18 +139,19 @@ export class CalculationDataService {
     );
   }
 
-  getCalculationHistory() {
-    return this.history$.pipe(
-      map((history) =>
-        [...history].sort((a, b) =>
-          (b.createdAt ?? '').localeCompare(a.createdAt ?? ''),
-        ),
-      ),
-    );
+  getCalculationHistory(): Observable<CalculationResultHistory[]> {
+    const q = query(this.historyCollection, orderBy('createdAt', 'desc'));
+    return collectionData(q, { idField: 'id' }) as Observable<
+      CalculationResultHistory[]
+    >;
   }
 
-  getHistoryById(id: string) {
-    return this.history$.value.find((entry) => entry.id === id);
+  async getHistoryById(id: string) {
+    const docRef = doc(this.historyCollection, id);
+    const snapshot = await getDoc(docRef);
+    if (!snapshot.exists()) return undefined;
+    const data = snapshot.data() as CalculationResultHistory;
+    return { ...data, id: snapshot.id };
   }
 
   async saveCalculationHistory(
@@ -142,12 +159,15 @@ export class CalculationDataService {
     rows: CalculationRow[],
     options?: { title?: string; id?: string },
   ) {
+    const now = new Date().toISOString();
+    const currentUser = this.getUserDisplayName();
     const history: CalculationResultHistory = {
       id: options?.id ?? `calc-${Date.now()}`,
-      title:
-        options?.title ??
-        `${query.type.toUpperCase()} (${query.targetMonth.replace(/-/g, '/')})`,
-      createdAt: new Date().toISOString(),
+      title: options?.title ?? `${query.type.toUpperCase()}`,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: currentUser,
+      updatedBy: currentUser,
       query,
       rows,
       meta: {
@@ -156,34 +176,25 @@ export class CalculationDataService {
       },
     };
 
-    const historyList = [history, ...this.history$.value];
-    this.persistHistory(historyList);
-    this.history$.next(historyList);
+    const { id, ...dataWithoutId } = history;
+    const docRef = doc(this.historyCollection, id);
+    const snapshot = await getDoc(docRef);
+    const existing = snapshot.exists()
+      ? (snapshot.data() as CalculationResultHistory)
+      : undefined;
+    const { id: existingId, ...existingWithoutId } = existing || {};
 
-    return history.id;
-  }
+    const docData = this.removeUndefined({
+      ...existingWithoutId,
+      ...dataWithoutId,
+      createdAt: existing?.createdAt ?? now,
+      createdBy: existing?.createdBy ?? currentUser,
+      updatedAt: now,
+      updatedBy: currentUser,
+    });
 
-  private loadHistory(): CalculationResultHistory[] {
-    if (typeof localStorage === 'undefined') return [];
-    try {
-      const raw = localStorage.getItem(this.historyStorageKey);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw) as CalculationResultHistory[];
-      if (!Array.isArray(parsed)) return [];
-      return parsed;
-    } catch (error) {
-      console.warn('計算履歴の読み込みに失敗しました', error);
-      return [];
-    }
-  }
-
-  private persistHistory(history: CalculationResultHistory[]) {
-    if (typeof localStorage === 'undefined') return;
-    try {
-      localStorage.setItem(this.historyStorageKey, JSON.stringify(history));
-    } catch (error) {
-      console.warn('計算履歴の保存に失敗しました', error);
-    }
+    await setDoc(docRef, docData);
+    return docRef.id;
   }
 
   private filterEmployees(
@@ -220,6 +231,7 @@ export class CalculationDataService {
     const normalizedTarget = bonusPaidOn.replace(/\//g, '-');
     const isExactDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedTarget);
 
+    // 日付指定（YYYY-MM-DD）の場合は完全一致のみ許容
     if (isExactDate) {
       return payrolls.some(
         (p) =>
@@ -227,6 +239,7 @@ export class CalculationDataService {
       );
     }
 
+    // 月指定の場合のみ前方一致で許容
     const bonusMonth = normalizeToYearMonth(normalizedTarget);
     if (!bonusMonth) return false;
 
@@ -313,8 +326,10 @@ export class CalculationDataService {
 
     // 標準賞与額計算の場合、標準賞与額が未設定の場合はエラー
     if (context.calculationType === 'bonus') {
-      if (!bonusRecord || !bonusRecord.bonusTotal || bonusRecord.bonusTotal <= 0) {
-        errors.push('標準賞与額を計算してください。');
+      if (!bonusRecord) {
+        errors.push('指定の賞与支給日に該当する賞与データが見つかりません。');
+      } else if (!bonusRecord.bonusTotal || bonusRecord.bonusTotal <= 0) {
+        errors.push('賞与総額が未設定または0です。');
       }
     }
 
@@ -729,6 +744,30 @@ export class CalculationDataService {
     const remaining = Math.max(cap - cumulative, 0);
     if (remaining <= 0) return 0;
     return calculateStandardBonus(Math.min(currentBonusTotal, remaining));
+  }
+
+  private getUserDisplayName(): string {
+    const user = this.auth.currentUser;
+    if (!user) return 'システム';
+    if (user.displayName) return user.displayName;
+    if (user.email) return user.email.split('@')[0];
+    return user.uid ?? 'ユーザー';
+  }
+
+  private removeUndefined<T>(obj: T): T {
+    if (obj === null || typeof obj !== 'object') {
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this.removeUndefined(item)) as T;
+    }
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(obj as any)) {
+      if (value !== undefined) {
+        cleaned[key] = this.removeUndefined(value as any);
+      }
+    }
+    return cleaned as T;
   }
 
   private buildFallbackRate(): InsuranceRateRecord {
