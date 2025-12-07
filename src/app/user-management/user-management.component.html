@@ -1,0 +1,75 @@
+<section class="user-management">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">システム管理者メニュー</p>
+        <h1>ユーザー管理</h1>
+        <p class="hint">社員アカウントの登録・ロール付与／剥奪・削除を行います。</p>
+      </div>
+      <a class="text-link" routerLink="/dashboard">ダッシュボードに戻る</a>
+    </header>
+  
+    <section class="card">
+      <header>
+        <div>
+          <p class="eyebrow">ユーザー情報</p>
+          <h2>{{ selectedUser ? 'ユーザー編集' : '新規登録' }}</h2>
+        </div>
+        <button type="button" class="ghost" (click)="resetForm()">入力をクリア</button>
+      </header>
+  
+      <form [formGroup]="form" (ngSubmit)="saveUser()" class="form-grid">
+        <label>
+          <span>メールアドレス</span>
+          <input type="email" formControlName="email" placeholder="user@example.com" />
+        </label>
+  
+        <label>
+          <span>表示名</span>
+          <input type="text" formControlName="displayName" placeholder="山田 太郎" />
+        </label>
+  
+        <div class="roles">
+          <p>ロール</p>
+          <div class="role-list">
+            <label *ngFor="let role of roleDefinitions">
+              <input
+                type="checkbox"
+                [checked]="isRoleSelected(role.key)"
+                (change)="toggleRole(role.key)"
+              />
+              <span class="role-name">{{ role.name }}</span>
+              <small>{{ role.summary }}</small>
+            </label>
+          </div>
+        </div>
+  
+        <div class="actions">
+          <button type="submit" class="primary">{{ selectedUser ? '更新する' : '登録する' }}</button>
+          <span class="status" *ngIf="statusMessage">{{ statusMessage }}</span>
+        </div>
+      </form>
+    </section>
+  
+    <section class="card">
+      <header>
+        <p class="eyebrow">登録済みユーザー</p>
+        <h2>一覧</h2>
+      </header>
+  
+      <div class="user-list">
+        <article class="user" *ngFor="let user of users$ | async" (click)="selectUser(user)">
+          <div>
+            <h3>{{ user.displayName || user.email }}</h3>
+            <p class="hint">{{ user.email }}</p>
+          </div>
+          <div class="roles-label">
+            {{ getRoleNames(user.roles) }}
+          </div>
+          <div class="actions">
+            <button type="button" class="ghost" (click)="selectUser(user)">編集</button>
+            <button type="button" class="danger" (click)="deleteUser(user); $event.stopPropagation()">削除</button>
+          </div>
+        </article>
+      </div>
+    </section>
+  </section>

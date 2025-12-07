@@ -8,47 +8,84 @@ import {
   User,
   user,
 } from '@angular/fire/auth';
-import { BehaviorSubject, combineLatest, map, Observable } from 'rxjs';
-import { ROLE_DEFINITIONS, roleDirectory, RoleDefinition, RoleKey } from '../models/roles';
+import {
+  BehaviorSubject,
+  combineLatest,
+  firstValueFrom,
+  map,
+  Observable,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
+import { ROLE_DEFINITIONS, RoleDefinition, RoleKey } from '../models/roles';
+import { UserDirectoryService } from './user-directory.service';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private auth = inject(Auth);
+  private userDirectoryService = inject(UserDirectoryService);
 
-  private roleSubject = new BehaviorSubject<RoleKey>(RoleKey.Guest);
+  private roleSubject = new BehaviorSubject<RoleKey[]>([RoleKey.Guest]);
 
   readonly user$: Observable<User | null> = authState(this.auth);
-  readonly role$: Observable<RoleKey> = this.roleSubject.asObservable();
+  readonly userRoles$: Observable<RoleKey[]> = this.roleSubject.asObservable();
+  readonly primaryRoleKey$: Observable<RoleKey> = this.userRoles$.pipe(
+    map((roles) => roles[0] ?? RoleKey.Guest),
+  );
   readonly roleDefinition$: Observable<RoleDefinition> = combineLatest([
-    this.role$,
+    this.primaryRoleKey$,
   ]).pipe(
-    map(([role]) =>
-      ROLE_DEFINITIONS.find((definition) => definition.key === role) ||
-      ROLE_DEFINITIONS[ROLE_DEFINITIONS.length - 1]
+    map(([role]) => this.getRoleDefinition(role) ?? this.getRoleDefinition(RoleKey.Guest)!),
+  );
+  readonly roleDefinitions$: Observable<RoleDefinition[]> = this.userRoles$.pipe(
+    map((roles) => (roles.length ? roles : [RoleKey.Guest])),
+    map((roles) =>
+      roles
+        .map((role) => this.getRoleDefinition(role) ?? this.getRoleDefinition(RoleKey.Guest)!)
+        .filter(Boolean) as RoleDefinition[],
     ),
   );
 
   constructor() {
-    user(this.auth).subscribe((firebaseUser) => {
-      if (!firebaseUser?.email) {
-        this.roleSubject.next(RoleKey.Guest);
-        return;
-      }
-      const email = firebaseUser.email.toLowerCase();
-      this.roleSubject.next(roleDirectory[email] ?? RoleKey.Guest);
-    });
+    user(this.auth)
+      .pipe(
+        switchMap((firebaseUser) => {
+          if (!firebaseUser?.email) {
+            this.roleSubject.next([RoleKey.Guest]);
+            return of(null);
+          }
+          const email = firebaseUser.email.toLowerCase();
+          return this.userDirectoryService
+            .ensureUser(email, firebaseUser.displayName ?? undefined)
+            .pipe(
+              tap((appUser) => {
+                const roles = appUser.roles?.length ? appUser.roles : [RoleKey.Guest];
+                this.roleSubject.next(roles);
+              }),
+            );
+        }),
+      )
+      .subscribe();
   }
 
   async login(email: string, password: string): Promise<void> {
     const credential = await signInWithEmailAndPassword(this.auth, email, password);
     const normalizedEmail = credential.user.email?.toLowerCase();
-    const role = normalizedEmail ? roleDirectory[normalizedEmail] : undefined;
-    this.roleSubject.next(role ?? RoleKey.Guest);
+    if (normalizedEmail) {
+      const appUser = await firstValueFrom(
+        this.userDirectoryService.ensureUser(normalizedEmail, credential.user.displayName ?? undefined),
+      );
+      const roles = appUser.roles?.length ? appUser.roles : [RoleKey.Guest];
+      this.roleSubject.next(roles);
+    } else {
+      this.roleSubject.next([RoleKey.Guest]);
+    }
   }
 
   async logout(): Promise<void> {
     await signOut(this.auth);
-    this.roleSubject.next(RoleKey.Guest);
+    this.roleSubject.next([RoleKey.Guest]);
   }
 
   async sendPasswordResetEmailToCurrentUser(): Promise<void> {
@@ -96,7 +133,7 @@ export class AuthService {
   }
 
   hasAnyRole(roles: RoleKey[]): Observable<boolean> {
-    return this.role$.pipe(map((role) => roles.includes(role)));
+    return this.userRoles$.pipe(map((userRoles) => roles.some((role) => userRoles.includes(role))));
   }
 
   getRoleDefinition(key: RoleKey): RoleDefinition | undefined {

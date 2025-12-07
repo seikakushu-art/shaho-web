@@ -1,0 +1,159 @@
+.user-management {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .card {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  }
+  
+  .card header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: #6b7280;
+    margin: 0;
+    text-transform: uppercase;
+  }
+  
+  .hint {
+    color: #6b7280;
+    margin: 4px 0 0 0;
+  }
+  
+  .text-link {
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 600;
+  }
+  
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: 600;
+  }
+  
+  input[type='email'],
+  input[type='text'] {
+    padding: 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  
+  .roles {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .role-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px;
+  }
+  
+  .role-list label {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px;
+    background: #f9fafb;
+  }
+  
+  .role-name {
+    font-weight: 700;
+    margin-left: 6px;
+  }
+  
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  button.primary {
+    background: #2563eb;
+    color: #fff;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  
+  button.ghost {
+    background: transparent;
+    border: 1px solid #d1d5db;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  
+  button.danger {
+    background: #ef4444;
+    color: #fff;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  
+  .status {
+    color: #047857;
+    font-weight: 600;
+  }
+  
+  .user-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .user {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: 2fr 1fr auto;
+    gap: 12px;
+    align-items: center;
+  }
+  
+  .user:hover {
+    background: #f9fafb;
+  }
+  
+  .roles-label {
+    color: #111827;
+    font-weight: 600;
+  }
+  
+  .user .actions {
+    justify-content: flex-end;
+  }

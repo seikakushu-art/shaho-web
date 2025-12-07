@@ -6,11 +6,12 @@ import { AsyncPipe, NgFor, NgIf } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
 import { ShahoEmployeesService, ShahoEmployee } from '../app/services/shaho-employees.service';
+import { HasRoleDirective } from '../auth/has-role.directive';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, AsyncPipe, NgIf, NgFor, RouterLink],
+  imports: [CommonModule, AsyncPipe, NgIf, NgFor, RouterLink, HasRoleDirective],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
 })
@@ -19,9 +20,15 @@ export class DashboardComponent {
   private employeesService = inject(ShahoEmployeesService);
 
   readonly user$ = this.authService.user$;
+  readonly roleDefinitions$ = this.authService.roleDefinitions$;
   readonly role$ = this.authService.roleDefinition$;
   readonly allRoles: RoleDefinition[] = ROLE_DEFINITIONS;
   readonly employees$: Observable<ShahoEmployee[]> = this.employeesService.getEmployees();
 
   readonly RoleKey = RoleKey;
+
+  getRoleNames(roleDefinitions: readonly RoleDefinition[] | null | undefined): string {
+    if (!roleDefinitions?.length) return '';
+    return roleDefinitions.map((role) => role.name).join(' / ');
+  }
 }

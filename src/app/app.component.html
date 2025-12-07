@@ -8,7 +8,11 @@
   <div class="actions" *ngIf="user$ | async as user">
     <span>{{ getUserDisplayName(user) }}</span>
     <span class="separator">|</span>
-    <span>{{ (role$ | async)?.name }}</span>
+    <span class="roles" *ngIf="roleDefinitions$ | async as roleDefinitions">
+      {{ getRoleNames(roleDefinitions) }}
+    </span>
+    <span class="separator">|</span>
+    <a routerLink="/user-management" *appHasRole="RoleKey.SystemAdmin">ユーザー管理</a>
     <span class="separator">|</span>
     <button type="button" (click)="logout()">ログアウト</button>
   </div>

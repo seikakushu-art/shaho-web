@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { LoginComponent } from './auth/login.component';
 import { DashboardComponent } from './dashboard/dashboard.component';
 import { authGuard } from './auth/auth.guard';
+import { roleGuard } from './auth/role.guard';
 import { EmployeeDetailComponent } from './employees/employee-detail.component';
 import { EmployeeListComponent } from './employees/employee-list/employee-list.component';
 import { EmployeeCreateComponent } from './employees/employee-create/employee-create.component';
@@ -14,6 +15,8 @@ import { CalculationMenuComponent } from './calculations/calculation-menu/calcul
 import { CalculationTargetComponent } from './calculations/calculation-target/calculation-target.component';
 import { CalculationResultComponent } from './calculations/calculation-result/calculation-result.component';
 import { CsvExportComponent } from './employees/emloyee-export/csv-export.component';
+import { UserManagementComponent } from './user-management/user-management.component';
+import { RoleKey } from './models/roles';
 
 export const routes: Routes = [
   {
@@ -79,14 +82,20 @@ export const routes: Routes = [
   {
     path: 'corporate-info',
     component: CorporateInfoComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(RoleKey.SystemAdmin)],
     title: '法人情報',
   },
   {
     path: 'insurance-rates',
     component: InsuranceRatesComponent,
-    canActivate: [authGuard],
+    canActivate: [authGuard, roleGuard(RoleKey.SystemAdmin)],
     title: '保険料率設定',
+  },
+  {
+    path: 'user-management',
+    component: UserManagementComponent,
+    canActivate: [authGuard, roleGuard(RoleKey.SystemAdmin)],
+    title: 'ユーザー管理',
   },
   {
     path: 'calculations',
