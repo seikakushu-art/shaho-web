@@ -104,7 +104,7 @@ export class ApprovalWorkflowService {
     await addDoc(this.flowsRef, payload);
   }
 
-  async saveRequest(request: ApprovalRequest): Promise<void> {
+  async saveRequest(request: ApprovalRequest): Promise<ApprovalRequest> {
     const payload: ApprovalRequest = {
       ...request,
       steps: request.steps.slice(0, 5),
@@ -120,11 +120,13 @@ export class ApprovalWorkflowService {
       const ref = doc(this.requestsRef, payload.id);
       await setDoc(ref, payload, { merge: true });
       this.refreshLocal(payload);
-      return;
+      return payload;
     }
 
     const ref = await addDoc(this.requestsRef, payload);
-    this.refreshLocal({ ...payload, id: ref.id });
+    const created: ApprovalRequest = { ...payload, id: ref.id };
+    this.refreshLocal(created);
+    return created;
   }
 
   async approve(id: string, approverId: string, approverName: string, comment?: string) {
@@ -185,7 +187,7 @@ export class ApprovalWorkflowService {
       updatedAt: Timestamp.fromDate(new Date()),
     };
 
-    await this.saveRequest(updatedRequest);
+    const saved = await this.saveRequest(updatedRequest);
 
     const nextAssignees =
       status === 'pending'
@@ -195,7 +197,7 @@ export class ApprovalWorkflowService {
             : request.flowSnapshot.steps[currentIndex + 1]?.candidates.map((c) => c.id) ?? []
         : [];
 
-    return { request: updatedRequest, nextAssignees };
+        return { request: saved, nextAssignees };
   }
 
   private refreshLocal(request: ApprovalRequest) {
@@ -215,6 +217,7 @@ export class ApprovalWorkflowService {
         id: 'default-flow',
         name: '給与・社保承認フロー',
         maxSteps: 5,
+        allowDirectApply: true,
         steps: [
           {
             order: 1,
@@ -251,6 +254,7 @@ export class ApprovalWorkflowService {
       applicantName: string,
       targetCount: number,
       comment: string,
+      diffSummary?: string,
     ): ApprovalRequest => ({
       id,
       title: `${category}申請 ${id}`,
@@ -263,6 +267,7 @@ export class ApprovalWorkflowService {
       applicantName,
       currentStep,
       comment,
+      diffSummary,
       createdAt: Timestamp.fromDate(new Date('2025-01-25T09:00:00Z')),
       dueDate: Timestamp.fromDate(dueDate),
       steps: flow.steps.map((step) => ({
@@ -287,6 +292,7 @@ export class ApprovalWorkflowService {
         '佐藤 花子',
         3,
         '新入社員3名の一括登録です。標準報酬月額と健康保険区分を確認してください。',
+        '雇用契約に基づく初期登録・社会保険資格取得の確認依頼',
       ),
       build(
         'APL-20250130-002',

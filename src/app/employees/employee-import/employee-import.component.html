@@ -227,10 +227,9 @@
             <div class="approval-form">
                 <label class="field">
                     <span>承認ルート</span>
-                    <select [(ngModel)]="approvalRoute">
-                        <option>標準ルート</option>
-                        <option>管理部長承認</option>
-                        <option>簡易承認</option>
+                    <select [(ngModel)]="selectedFlowId">
+                        <option [ngValue]="null" disabled>承認ルートを選択</option>
+                        <option *ngFor="let flow of approvalFlows" [ngValue]="flow.id">{{ flow.name }}</option>
                     </select>
                 </label>
                 <label class="field">
@@ -242,8 +241,8 @@
 
         <div class="navigation">
             <button type="button" class="ghost" (click)="prevStep()">戻る</button>
-            <button type="button" class="primary">承認依頼を送信</button>
-            <button type="button" class="secondary" (click)="updateData()" [disabled]="isLoading || selectedCount === 0">データ更新</button>
+            <button type="button" class="primary" (click)="submitForApproval()" [disabled]="isLoading || selectedCount === 0 || !selectedFlowId">承認依頼を送信</button>
+            <button type="button" class="secondary" (click)="updateData()" [disabled]="isLoading || selectedCount === 0 || !canApplyImmediately">データ更新</button>
         </div>
     </section>
 </section>

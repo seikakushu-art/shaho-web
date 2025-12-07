@@ -1,8 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, OnInit } from '@angular/core';
+import { Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subscription, take } from 'rxjs';
+import { AuthService } from '../../auth/auth.service';
+import { ApprovalNotificationService } from '../../approvals/approval-notification.service';
+import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
+import { ApprovalFlow, ApprovalNotification, ApprovalRequest } from '../../models/approvals';
+import { RoleKey } from '../../models/roles';
 import { PayrollData, ShahoEmployee, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import {
     ChangeField,
@@ -43,9 +48,20 @@ type DifferenceRow = {
   templateUrl: './employee-import.component.html',
   styleUrl: './employee-import.component.scss',
 })
-export class EmployeeImportComponent implements OnInit {
+export class EmployeeImportComponent implements OnInit, OnDestroy {
   private employeesService = inject(ShahoEmployeesService);
+  private workflowService = inject(ApprovalWorkflowService);
+  private notificationService = inject(ApprovalNotificationService);
+  private authService = inject(AuthService);
   private existingEmployees: ExistingEmployee[] = [];
+  private applicantId = 'demo-applicant';
+  private applicantName = 'デモ申請者';
+  private approvalSubscription?: Subscription;
+  private activeApprovalRequestId?: string;
+  private userCanDirectApply = false;
+
+  approvalFlows: ApprovalFlow[] = [];
+  selectedFlowId: string | null = null;
 
   steps = [
     { number: 1, title: 'テンプレートダウンロード' },
@@ -64,7 +80,6 @@ export class EmployeeImportComponent implements OnInit {
   templateType: TemplateType = 'unknown';
   parsedRows: ParsedRow[] = [];
   requestComment = '';
-  approvalRoute = '標準ルート';
 
   summary = {
     totalRecords: 0,
@@ -81,8 +96,12 @@ export class EmployeeImportComponent implements OnInit {
   selectedChangeId: number | null = null;
 
   async ngOnInit(): Promise<void> {
-    // 既存社員データを取得（差分計算に必要なすべてのフィールドを含める）
-    const employees = await firstValueFrom(this.employeesService.getEmployees());
+    const [employees, flows, user, canDirectApply] = await Promise.all([
+      firstValueFrom(this.employeesService.getEmployees()),
+      firstValueFrom(this.workflowService.flows$.pipe(take(1))),
+      firstValueFrom(this.authService.user$.pipe(take(1))),
+      firstValueFrom(this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver])),
+    ]);
     this.existingEmployees = employees.map((emp) => ({
       id: emp.id,
       employeeNo: emp.employeeNo,
@@ -110,6 +129,13 @@ export class EmployeeImportComponent implements OnInit {
       maternityLeaveEnd: emp.maternityLeaveEnd,
       exemption: emp.exemption,
     }));
+    this.approvalFlows = flows;
+    this.selectedFlowId = flows[0]?.id ?? null;
+    this.userCanDirectApply = canDirectApply;
+    if (user?.email) {
+      this.applicantId = user.email;
+      this.applicantName = user.displayName ?? user.email;
+    }
   }
 
   async onFileSelect(event: Event): Promise<void> {
@@ -304,6 +330,14 @@ private readFileAsText(file: File): Promise<string> {
     return this.differences.filter((row) => row.status === 'ok').length;
   }
 
+  get selectedFlow(): ApprovalFlow | undefined {
+    return this.approvalFlows.find((flow) => flow.id === this.selectedFlowId);
+  }
+
+  get canApplyImmediately(): boolean {
+    return !!this.selectedFlow && (this.selectedFlow.allowDirectApply ?? false) && this.userCanDirectApply;
+  }
+
   get approvalSummary(): string {
     return `${this.selectedCount}件の社員に対する更新を申請します。`;
   }
@@ -327,14 +361,144 @@ private readFileAsText(file: File): Promise<string> {
     return this.differences.find((row) => row.id === id) ?? null;
   }
 
-  async updateData(): Promise<void> {
+  async submitForApproval(): Promise<void> {
     const selectedRows = this.selectedDifferences;
     if (selectedRows.length === 0) {
       alert('更新対象を選択してください。');
       return;
     }
 
-    if (!confirm(`${selectedRows.length}件の社員データを更新しますか？`)) {
+    if (!this.selectedFlowId || !this.selectedFlow) {
+      alert('承認ルートを選択してください。');
+      return;
+    }
+
+    this.isLoading = true;
+
+    try {
+      const request = this.buildApprovalRequest(this.selectedFlow);
+      const saved = await this.workflowService.saveRequest(request);
+      this.activeApprovalRequestId = saved.id;
+      this.subscribeApprovalResult(saved.id!);
+      this.pushApprovalNotifications(saved);
+      alert('承認依頼を送信しました。承認完了後に反映します。');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '承認依頼の送信に失敗しました。';
+      console.error(message, error);
+      alert(message);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  private buildApprovalRequest(flow: ApprovalFlow): ApprovalRequest {
+    const firstStepOrder = flow.steps[0]?.order;
+    return {
+      title: `社員インポート（${this.selectedCount}件）`,
+      category: '一括更新',
+      targetCount: this.selectedCount,
+      applicantId: this.applicantId,
+      applicantName: this.applicantName,
+      flowId: flow.id ?? 'default-flow',
+      flowSnapshot: flow,
+      status: 'pending',
+      currentStep: firstStepOrder,
+      comment: this.requestComment || undefined,
+      diffSummary: this.createDifferenceSummary(),
+      steps: flow.steps.map((step) => ({ stepOrder: step.order, status: 'waiting' })),
+    };
+  }
+
+  private createDifferenceSummary(): string {
+    const newCount = this.selectedDifferences.filter((row) => row.isNew).length;
+    const updateCount = this.selectedDifferences.length - newCount;
+    const warningCount = this.warningCount;
+    return `新規${newCount}件／更新${updateCount}件（警告${warningCount}件、エラー除外${this.summary.errorCount}件）`;
+  }
+
+  private subscribeApprovalResult(requestId: string): void {
+    this.approvalSubscription?.unsubscribe();
+    this.activeApprovalRequestId = requestId;
+    this.approvalSubscription = this.workflowService.requests$.subscribe((requests) => {
+      const matched = requests.find((req) => req.id === requestId);
+      if (!matched || this.activeApprovalRequestId !== requestId) return;
+
+      if (matched.status === 'approved') {
+        this.updateData(true);
+        this.pushApprovalResultNotification(matched, 'success');
+        this.activeApprovalRequestId = undefined;
+        this.approvalSubscription?.unsubscribe();
+      }
+
+      if (matched.status === 'remanded' || matched.status === 'expired') {
+        this.pushApprovalResultNotification(matched, 'warning');
+        this.activeApprovalRequestId = undefined;
+        this.approvalSubscription?.unsubscribe();
+      }
+    });
+  }
+
+  private pushApprovalNotifications(request: ApprovalRequest): void {
+    const notifications: ApprovalNotification[] = [];
+
+    const applicantNotification = {
+      id: this.generateNotificationId(),
+      requestId: request.id ?? request.title,
+      recipientId: request.applicantId,
+      message: `${request.title} を起票しました（${request.targetCount}件）。`,
+      unread: true,
+      createdAt: new Date(),
+      type: 'info' as const,
+    };
+    notifications.push(applicantNotification);
+
+    const currentStep = request.steps.find((step) => step.stepOrder === request.currentStep);
+    const candidates = currentStep
+      ? request.flowSnapshot?.steps.find((step) => step.order === currentStep.stepOrder)?.candidates ?? []
+      : [];
+
+    candidates.forEach((candidate) => {
+      notifications.push({
+        id: this.generateNotificationId(),
+        requestId: request.id ?? request.title,
+        recipientId: candidate.id,
+        message: `${request.title} の承認依頼が届いています。`,
+        unread: true,
+        createdAt: new Date(),
+        type: 'info' as const,
+      });
+    });
+
+    if (notifications.length) {
+      this.notificationService.pushBatch(notifications);
+    }
+  }
+
+  private pushApprovalResultNotification(request: ApprovalRequest, type: 'success' | 'warning'): void {
+    const statusLabel = type === 'success' ? '承認' : '差戻し/失効';
+    this.notificationService.push({
+      id: this.generateNotificationId(),
+      requestId: request.id ?? request.title,
+      recipientId: request.applicantId,
+      message: `${request.title} が${statusLabel}されました。`,
+      unread: true,
+      createdAt: new Date(),
+      type,
+    });
+  }
+
+  private generateNotificationId(): string {
+    return `ntf-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  async updateData(skipConfirmation = false): Promise<void> {
+    const selectedRows = this.selectedDifferences;
+    if (selectedRows.length === 0) {
+      alert('更新対象を選択してください。');
+      return;
+    }
+
+    if (!skipConfirmation && !confirm(`${selectedRows.length}件の社員データを更新しますか？`)) {
       return;
     }
 
@@ -893,6 +1057,9 @@ private readFileAsText(file: File): Promise<string> {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  }
+  ngOnDestroy(): void {
+    this.approvalSubscription?.unsubscribe();
   }
 
 }

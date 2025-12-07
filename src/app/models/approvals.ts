@@ -28,6 +28,7 @@ export interface ApprovalFlow {
   name: string;
   steps: ApprovalFlowStep[];
   maxSteps?: number;
+  allowDirectApply?: boolean;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -53,6 +54,7 @@ export interface ApprovalRequest {
   status: ApprovalRequestStatus;
   currentStep?: number;
   comment?: string;
+  diffSummary?: string;
   dueDate?: Timestamp;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
