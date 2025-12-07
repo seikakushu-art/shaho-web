@@ -2,11 +2,19 @@ import { CommonModule } from '@angular/common';
 import { Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { Timestamp } from '@angular/fire/firestore';
 import { firstValueFrom, Subscription, take } from 'rxjs';
 import { AuthService } from '../../auth/auth.service';
+import { ApprovalAttachmentService } from '../../approvals/approval-attachment.service';
 import { ApprovalNotificationService } from '../../approvals/approval-notification.service';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
-import { ApprovalFlow, ApprovalNotification, ApprovalRequest } from '../../models/approvals';
+import {
+  ApprovalAttachmentMetadata,
+  ApprovalFlow,
+  ApprovalHistory,
+  ApprovalNotification,
+  ApprovalRequest,
+} from '../../models/approvals';
 import { RoleKey } from '../../models/roles';
 import { PayrollData, ShahoEmployee, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import {
@@ -54,6 +62,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
   private workflowService = inject(ApprovalWorkflowService);
   private notificationService = inject(ApprovalNotificationService);
   private authService = inject(AuthService);
+  readonly attachmentService = inject(ApprovalAttachmentService);
   private existingEmployees: ExistingEmployee[] = [];
   private applicantId = 'demo-applicant';
   private applicantName = 'デモ申請者';
@@ -82,6 +91,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
   templateType: TemplateType = 'unknown';
   parsedRows: ParsedRow[] = [];
   requestComment = '';
+  selectedFiles: File[] = [];
+  validationErrors: string[] = [];
 
   summary = {
     totalRecords: 0,
@@ -329,6 +340,48 @@ private readFileAsText(file: File): Promise<string> {
     return this.differences.filter((row) => row.status === 'warning').length;
   }
 
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    if (!files.length) {
+      input.value = '';
+      return;
+    }
+
+    const merged = [...this.selectedFiles, ...files];
+    const validation = this.attachmentService.validateFiles(merged);
+    this.validationErrors = validation.errors;
+    this.selectedFiles = validation.files;
+
+    if (!validation.valid) {
+      alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+    }
+
+    input.value = '';
+  }
+
+  removeFile(index: number): void {
+    this.selectedFiles.splice(index, 1);
+    this.selectedFiles = [...this.selectedFiles];
+    const validation = this.attachmentService.validateFiles(this.selectedFiles);
+    this.validationErrors = validation.errors;
+  }
+
+  totalSelectedSize(): number {
+    return this.selectedFiles.reduce((sum, file) => sum + file.size, 0);
+  }
+
+  formatFileSize(size: number): string {
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    if (size >= 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+    return `${size} B`;
+  }
+
+
   get okCount(): number {
     return this.differences.filter((row) => row.status === 'ok').length;
   }
@@ -385,15 +438,53 @@ private readFileAsText(file: File): Promise<string> {
       return;
     }
 
+    const validation = this.attachmentService.validateFiles(this.selectedFiles);
+    this.validationErrors = validation.errors;
+
+    if (!validation.valid && this.selectedFiles.length) {
+      alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+      return;
+    }
+
     this.isLoading = true;
 
     try {
       const request = this.buildApprovalRequest(this.selectedFlow);
-      const saved = await this.workflowService.saveRequest(request);
+      const savedBase = await this.workflowService.saveRequest(request);
+
+      let uploaded: ApprovalAttachmentMetadata[] = [];
+
+      if (validation.files.length && savedBase.id) {
+        uploaded = await this.attachmentService.upload(
+          savedBase.id,
+          validation.files,
+          this.applicantId,
+          this.applicantName,
+        );
+      }
+
+      const applyHistory: ApprovalHistory = {
+        id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        statusAfter: 'pending',
+        action: 'apply',
+        actorId: this.applicantId,
+        actorName: this.applicantName,
+        comment: this.requestComment || undefined,
+        attachments: uploaded,
+        createdAt: Timestamp.fromDate(new Date()),
+      };
+
+      const saved = await this.workflowService.saveRequest({
+        ...savedBase,
+        attachments: uploaded,
+        histories: [applyHistory],
+      });
       this.activeApprovalRequestId = saved.id;
       this.subscribeApprovalResult(saved.id!);
       this.pushApprovalNotifications(saved);
       alert('承認依頼を送信しました。承認完了後に反映します。');
+      this.selectedFiles = [];
+      this.validationErrors = [];
     } catch (error) {
       const message = error instanceof Error ? error.message : '承認依頼の送信に失敗しました。';
       console.error(message, error);

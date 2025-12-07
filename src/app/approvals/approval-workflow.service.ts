@@ -1,15 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import {
-  addDoc,
-  collection,
-  collectionData,
-  doc,
-  deleteDoc,
-  Firestore,
-  serverTimestamp,
-  setDoc,
-  Timestamp,
-} from '@angular/fire/firestore';
+import { collection, collectionData, doc, deleteDoc, addDoc, Firestore, serverTimestamp, setDoc, Timestamp } from '@angular/fire/firestore';
 import { BehaviorSubject, combineLatest, map, Observable, of, tap } from 'rxjs';
 import {
   ApprovalFlow,
@@ -123,8 +113,9 @@ export class ApprovalWorkflowService {
       return payload;
     }
 
-    const ref = await addDoc(this.requestsRef, payload);
+    const ref = doc(this.requestsRef);
     const created: ApprovalRequest = { ...payload, id: ref.id };
+    await setDoc(ref, created, { merge: true });
     this.refreshLocal(created);
     return created;
   }
