@@ -17,7 +17,7 @@
         <p class="hint">クリックで申請詳細へ。差戻しはコメントを確認してください。</p>
       </header>
   
-      <div class="table-wrapper">
+      <div class="table-wrapper" *ngIf="approvals$ | async as approvals">
         <table>
           <thead>
             <tr>
@@ -26,7 +26,7 @@
               <th>対象社員件数</th>
               <th>申請者</th>
               <th>申請日時</th>
-              <th>自分の承認ステップ番号</th>
+              <th>現在の承認ステップ</th>
               <th>ステータス</th>
             </tr>
           </thead>
@@ -37,11 +37,11 @@
                 <span class="badge" [class]="categoryClass(approval.category)">{{ approval.category }}</span>
               </td>
               <td class="numeric">{{ approval.targetCount }} 件</td>
-              <td>{{ approval.applicant }}</td>
-              <td>{{ approval.appliedAt | date: 'yyyy/MM/dd HH:mm' }}</td>
-              <td class="numeric">{{ approval.step }}</td>
+              <td>{{ approval.applicantName }}</td>
+              <td>{{ approval.createdAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }}</td>
+              <td class="numeric">{{ approval.currentStep || '-' }}</td>
               <td>
-                <span class="status" [class]="statusClass(approval.status)">{{ approval.status }}</span>
+                <span class="status" [class]="statusClass(approval.status)">{{ statusLabel(approval.status) }}</span>
               </td>
             </tr>
           </tbody>

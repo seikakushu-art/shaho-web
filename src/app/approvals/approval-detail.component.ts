@@ -1,35 +1,26 @@
 import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, OnDestroy, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
+import { Subscription, firstValueFrom, interval, map, switchMap, tap } from 'rxjs';
+import { AuthService } from '../auth/auth.service';
+import {
+  ApprovalNotification,
+  ApprovalRequest,
+  ApprovalStepState,
+  ApprovalStepStatus,
+  ApprovalRequestStatus,
+} from '../models/approvals';
+import { ApprovalNotificationService } from './approval-notification.service';
+import { ApprovalWorkflowService } from './approval-workflow.service';
 
 type EmployeeStatus = 'OK' | '警告';
 
-type ApprovalCategory = '新規' | '個別更新' | '一括更新';
-
-type ApprovalStatus = '未承認' | '承認済' | '差戻し';
-
-interface ApprovalDetail {
-  id: string;
-  category: ApprovalCategory;
-  targetCount: number;
-  applicant: string;
-  appliedAt: string;
-  comment: string;
-  status: ApprovalStatus;
-}
-
-interface EmployeeDiff {
-  field: string;
-  oldValue: string;
-  newValue: string;
-}
-
-interface ApprovalEmployee {
+interface ApprovalDetailEmployee {
   employeeNo: string;
   name: string;
   status: EmployeeStatus;
-  diffs: EmployeeDiff[];
+  diffs: { field: string; oldValue: string; newValue: string }[];
 }
 
 @Component({
@@ -39,48 +30,16 @@ interface ApprovalEmployee {
   templateUrl: './approval-detail.component.html',
   styleUrl: './approval-detail.component.scss',
 })
-export class ApprovalDetailComponent {
-  approvals: ApprovalDetail[] = [
-    {
-      id: 'APL-20250201-001',
-      category: '新規',
-      targetCount: 3,
-      applicant: '佐藤 花子',
-      appliedAt: '2025-02-01T09:30:00',
-      comment: '新入社員3名の一括登録です。標準報酬月額と健康保険区分を確認してください。',
-      status: '未承認',
-    },
-    {
-      id: 'APL-20250130-002',
-      category: '個別更新',
-      targetCount: 1,
-      applicant: '田中 一郎',
-      appliedAt: '2025-01-30T15:20:00',
-      comment: '扶養情報の更新のみです。',
-      status: '承認済',
-    },
-    {
-      id: 'APL-20250128-003',
-      category: '一括更新',
-      targetCount: 18,
-      applicant: '管理部 担当',
-      appliedAt: '2025-01-28T11:05:00',
-      comment: '住所変更の一括反映。差戻し理由は修正済みです。',
-      status: '差戻し',
-    },
-    {
-      id: 'APL-20250125-004',
-      category: '個別更新',
-      targetCount: 2,
-      applicant: '山本 美咲',
-      appliedAt: '2025-01-25T17:15:00',
-      comment: '標準報酬月額のみ見直し。',
-      status: '未承認',
-    },
-  ];
+export class ApprovalDetailComponent implements OnDestroy {
+  private workflowService = inject(ApprovalWorkflowService);
+  private notificationService = inject(ApprovalNotificationService);
+  private route = inject(ActivatedRoute);
+  private authService = inject(AuthService);
 
-  approval?: ApprovalDetail;
-  employees: ApprovalEmployee[] = [
+  approval?: ApprovalRequest;
+  private subscription: Subscription;
+
+  employees: ApprovalDetailEmployee[] = [
     {
       employeeNo: 'E202501',
       name: '佐藤 花子',
@@ -110,29 +69,78 @@ export class ApprovalDetailComponent {
     },
   ];
 
-  selectedEmployee?: ApprovalEmployee;
+  selectedEmployee?: ApprovalDetailEmployee;
   showDiffModal = false;
   approvalComment = '';
 
   toasts: { message: string; type: 'info' | 'success' | 'warning' }[] = [];
 
-  constructor(route: ActivatedRoute) {
-    const id = route.snapshot.paramMap.get('id');
-    this.approval = this.approvals.find((item) => item.id === id) ?? this.approvals[0];
+  readonly approval$ = this.route.paramMap.pipe(
+    map((params) => params.get('id')),
+    switchMap((id) => this.workflowService.getRequest(id)),
+    tap((approval) => {
+      this.approval = approval;
+    }),
+  );
+
+  private expiryWatcher = interval(30_000)
+    .pipe(
+      tap(() => {
+        if (this.approval && this.isOverdue(this.approval)) {
+          this.workflowService.expire(this.approval);
+        }
+      }),
+    )
+    .subscribe();
+
+  constructor() {
+    this.subscription = this.approval$.subscribe();
   }
 
-  statusClass(status: ApprovalStatus) {
+  ngOnDestroy(): void {
+    this.subscription.unsubscribe();
+    this.expiryWatcher.unsubscribe();
+  }
+
+  statusClass(status: ApprovalStepStatus) {
     switch (status) {
-      case '承認済':
+      case 'approved':
         return 'status-approved';
-      case '差戻し':
+      case 'remanded':
         return 'status-rejected';
       default:
         return 'status-pending';
     }
   }
 
-  openDiffModal(employee: ApprovalEmployee) {
+  requestStatusClass(status: ApprovalRequestStatus) {
+    switch (status) {
+      case 'approved':
+        return 'status-approved';
+      case 'remanded':
+      case 'expired':
+        return 'status-rejected';
+      default:
+        return 'status-pending';
+    }
+  }
+
+  requestStatusLabel(status: ApprovalRequestStatus) {
+    switch (status) {
+      case 'approved':
+        return '承認済';
+      case 'remanded':
+        return '差戻し';
+      case 'expired':
+        return '失効';
+      case 'draft':
+        return '下書き';
+      default:
+        return '承認待ち';
+    }
+  }
+
+  openDiffModal(employee: ApprovalDetailEmployee) {
     this.selectedEmployee = employee;
     this.showDiffModal = true;
   }
@@ -153,8 +161,73 @@ export class ApprovalDetailComponent {
     }, 3800);
   }
 
-  saveApproval(action: 'approve' | 'remand') {
+  isOverdue(approval: ApprovalRequest): boolean {
+    if (!approval.dueDate) return false;
+    return approval.status === 'pending' && approval.dueDate.toDate().getTime() < Date.now();
+  }
+
+  stepLabel(step: ApprovalStepState): string {
+    switch (step.status) {
+      case 'approved':
+        return '承認済';
+      case 'remanded':
+        return '差戻し';
+      case 'skipped':
+        return '自動スキップ';
+      default:
+        return '承認待ち';
+    }
+  }
+
+  candidateNames(stepOrder: number): string {
+    const candidateStep = this.approval?.flowSnapshot?.steps.find((s) => s.order === stepOrder);
+    if (!candidateStep) return '未設定';
+    return candidateStep.candidates.map((candidate) => candidate.displayName).join(' / ');
+  }
+
+  async saveApproval(action: 'approve' | 'remand') {
+    if (!this.approval?.id || !this.approval.currentStep) return;
+
+    const user = await firstValueFrom(this.authService.user$);
+    const approverId = user?.email ?? 'demo-approver';
+    const approverName = user?.displayName ?? user?.email ?? 'デモ承認者';
+
+    const result =
+      action === 'approve'
+        ? await this.workflowService.approve(this.approval.id, approverId, approverName, this.approvalComment)
+        : await this.workflowService.remand(this.approval.id, approverId, approverName, this.approvalComment);
+
+    if (!result) return;
     const actionText = action === 'approve' ? '承認しました' : '差戻しました';
     this.addToast(`申請を${actionText}（コメント: ${this.approvalComment || 'なし'}）`, 'success');
+    this.approvalComment = '';
+
+    const applicantNotification: ApprovalNotification = {
+      id: `ntf-${Date.now()}`,
+      requestId: result.request.id!,
+      recipientId: this.approval.applicantId,
+      message:
+        action === 'approve'
+          ? `${result.request.id} が承認ステップ ${this.approval.currentStep} を通過しました`
+          : `${result.request.id} が差戻しされました`,
+      unread: true,
+      createdAt: new Date(),
+      type: action === 'approve' ? 'success' : 'warning',
+    };
+
+    const nextStepNotifications: ApprovalNotification[] = result.nextAssignees.map((assignee) => ({
+      id: `ntf-${Date.now()}-${assignee}`,
+      requestId: result.request.id!,
+      recipientId: assignee,
+      message:
+        action === 'approve'
+          ? `${result.request.id} のステップ${result.request.currentStep}を承認してください`
+          : `${result.request.id} が差戻しされました。申請者と調整してください。`,
+      unread: true,
+      createdAt: new Date(),
+      type: action === 'approve' ? 'info' : 'warning',
+    }));
+
+    this.notificationService.pushBatch([applicantNotification, ...nextStepNotifications]);
   }
 }

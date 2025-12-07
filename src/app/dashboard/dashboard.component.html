@@ -30,6 +30,29 @@
         </div>
       </div>
     </section>
+
+    <section class="card" *ngIf="(notifications$ | async) as notifications">
+      <header class="section-header">
+        <div>
+          <p class="eyebrow">承認通知</p>
+          <h2>未読バッジ・トースト</h2>
+          <p class="hint">承認／差戻し時に申請者と次ステップ承認者へ通知します。</p>
+        </div>
+        <div class="badge">未読 {{ unreadCount$ | async }} 件</div>
+      </header>
+
+      <ul class="notifications">
+        <li *ngFor="let notification of notifications">
+          <div>
+            <p class="eyebrow">{{ notification.createdAt | date: 'MM/dd HH:mm' }}</p>
+            <p class="hint">{{ notification.message }}</p>
+          </div>
+          <span class="status" [class]="notification.unread ? 'status-pending' : 'status-approved'">
+            {{ notification.unread ? '未読' : '既読' }}
+          </span>
+        </li>
+      </ul>
+    </section>
   
     <section class="card">
       <p class="eyebrow">ロール一覧（システム管理者向け）</p>
