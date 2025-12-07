@@ -1,0 +1,16 @@
+<div class="flow-selector">
+    <label>{{ label }}</label>
+  
+    <ng-container *ngIf="flows.length; else noFlows">
+      <select [ngModel]="selectedFlowId" (ngModelChange)="onFlowChange($event)">
+        <option *ngFor="let flow of flows" [ngValue]="flow.id">
+          {{ flow.name }}（ステップ{{ flow.steps.length }}）
+        </option>
+      </select>
+      <p class="hint">最大5ステップ。候補者と順序はフロー管理画面から設定します。</p>
+    </ng-container>
+  
+    <ng-template #noFlows>
+      <div class="no-flows">承認フローが未設定です。SystemAdminが先に登録してください。</div>
+    </ng-template>
+  </div>

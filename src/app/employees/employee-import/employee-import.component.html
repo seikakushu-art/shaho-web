@@ -225,13 +225,12 @@
                 <p class="hint">{{ approvalSummary }}</p>
             </div>
             <div class="approval-form">
-                <label class="field">
-                    <span>承認ルート</span>
-                    <select [(ngModel)]="selectedFlowId">
-                        <option [ngValue]="null" disabled>承認ルートを選択</option>
-                        <option *ngFor="let flow of approvalFlows" [ngValue]="flow.id">{{ flow.name }}</option>
-                    </select>
-                </label>
+                <app-flow-selector
+                  [label]="'承認ルート'"
+                  [selectedFlowId]="selectedFlowId"
+                  (flowSelected)="onFlowSelected($event)"
+                  (flowsUpdated)="onFlowsUpdated($event)"
+                />
                 <label class="field">
                     <span>申請コメント</span>
                     <textarea rows="4" [(ngModel)]="requestComment" placeholder="例：給与改定に伴う更新です。"></textarea>

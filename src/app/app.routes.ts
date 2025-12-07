@@ -17,6 +17,7 @@ import { CalculationResultComponent } from './calculations/calculation-result/ca
 import { CsvExportComponent } from './employees/emloyee-export/csv-export.component';
 import { UserManagementComponent } from './user-management/user-management.component';
 import { RoleKey } from './models/roles';
+import { FlowManagementComponent } from './approvals/flow-management/flow-management.component';
 
 const adminOnly = [RoleKey.SystemAdmin];
 const operators = [RoleKey.SystemAdmin, RoleKey.Operator];
@@ -82,6 +83,12 @@ export const routes: Routes = [
     component: ApprovalDetailComponent,
     canActivate: [authGuard, roleGuard(approvalParticipants)],
     title: '承認詳細',
+  },
+  {
+    path: 'approval-flows',
+    component: FlowManagementComponent,
+    canActivate: [authGuard, roleGuard(adminOnly)],
+    title: '承認フロー管理',
   },
   {
     path: 'corporate-info',

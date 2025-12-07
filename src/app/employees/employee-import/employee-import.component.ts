@@ -27,6 +27,7 @@ import {
     parseCSV,
     validateAllRows,
   } from './csv-import.utils';
+  import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
 
 type DifferenceRow = {
   id: number;
@@ -44,7 +45,7 @@ type DifferenceRow = {
 @Component({
   selector: 'app-employee-import',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, FlowSelectorComponent],
   templateUrl: './employee-import.component.html',
   styleUrl: './employee-import.component.scss',
 })
@@ -61,6 +62,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
   private userCanDirectApply = false;
 
   approvalFlows: ApprovalFlow[] = [];
+  selectedFlow?: ApprovalFlow;
   selectedFlowId: string | null = null;
 
   steps = [
@@ -131,6 +133,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     }));
     this.approvalFlows = flows;
     this.selectedFlowId = flows[0]?.id ?? null;
+    this.selectedFlow = flows.find((flow) => flow.id === this.selectedFlowId);
     this.userCanDirectApply = canDirectApply;
     if (user?.email) {
       this.applicantId = user.email;
@@ -330,8 +333,17 @@ private readFileAsText(file: File): Promise<string> {
     return this.differences.filter((row) => row.status === 'ok').length;
   }
 
-  get selectedFlow(): ApprovalFlow | undefined {
-    return this.approvalFlows.find((flow) => flow.id === this.selectedFlowId);
+  onFlowSelected(flow: ApprovalFlow | undefined) {
+    this.selectedFlow = flow ?? undefined;
+    this.selectedFlowId = flow?.id ?? null;
+  }
+
+  onFlowsUpdated(flows: ApprovalFlow[]) {
+    this.approvalFlows = flows;
+    if (!this.selectedFlowId && flows[0]?.id) {
+      this.selectedFlowId = flows[0].id;
+    }
+    this.selectedFlow = flows.find((f) => f.id === this.selectedFlowId);
   }
 
   get canApplyImmediately(): boolean {

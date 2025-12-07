@@ -1,0 +1,125 @@
+<div class="flow-management" *ngIf="!loading; else loadingTpl">
+    <section class="list">
+      <header>
+        <div>
+          <h2>承認フロー一覧</h2>
+          <p class="hint">最大{{ maxSteps }}ステップまで登録可能。候補者・自動進行もここで管理します。</p>
+        </div>
+        <button type="button" class="secondary" (click)="resetForm()">新規作成</button>
+      </header>
+  
+      <div *ngIf="flows.length; else noFlow">
+        <table>
+          <thead>
+            <tr>
+              <th>フロー名</th>
+              <th>ステップ</th>
+              <th>直申許可</th>
+              <th>最終更新</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let flow of flows" [class.active]="flow.id === editing?.id">
+              <td>
+                <div class="flow-name">{{ flow.name }}</div>
+                <div class="steps">{{ flow.steps.length }}ステップ / {{ flowStepNames(flow) }}</div>
+              </td>
+              <td>{{ flow.steps.length }}</td>
+              <td>
+                <span class="pill" [class.enabled]="flow.allowDirectApply">{{ flow.allowDirectApply ? '有効' : '無効' }}</span>
+              </td>
+              <td>
+                <span *ngIf="flow.updatedAt as updated">{{ updated.toDate() | date: 'yyyy/MM/dd HH:mm' }}</span>
+                <span *ngIf="!flow.updatedAt" class="muted">未設定</span>
+              </td>
+              <td class="actions">
+                <button type="button" (click)="selectFlow(flow)">編集</button>
+                <button type="button" class="danger" (click)="deleteFlow(flow)">削除</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <ng-template #noFlow>
+        <p class="hint">承認フローがありません。右側のフォームから作成してください。</p>
+      </ng-template>
+    </section>
+  
+    <section class="editor">
+      <header>
+        <div>
+          <h2>{{ editing ? '承認フロー編集' : '承認フロー新規作成' }}</h2>
+          <p class="hint">候補者は社員マスタから選択。自動進行(autoAdvance)で候補者未指定の場合はスキップ扱い。</p>
+        </div>
+        <button type="button" class="secondary" (click)="resetForm()">クリア</button>
+      </header>
+  
+      <form (ngSubmit)="saveFlow()">
+        <label class="field">
+          <span>フロー名</span>
+          <input type="text" [(ngModel)]="draft.name" name="name" placeholder="例: 給与・社保承認フロー" required />
+        </label>
+  
+        <label class="checkbox">
+          <input type="checkbox" [(ngModel)]="draft.allowDirectApply" name="allowDirectApply" />
+          <span>オペレーター/承認者による即時反映（直申）を許可する</span>
+        </label>
+  
+        <div class="steps-block">
+          <div class="block-header">
+            <h3>ステップ（最大{{ maxSteps }}）</h3>
+            <button type="button" (click)="addStep()" [disabled]="draft.steps.length >= maxSteps">ステップ追加</button>
+          </div>
+  
+          <article class="step" *ngFor="let step of draft.steps; let i = index">
+            <header>
+              <div class="title">{{ step.order }}. {{ step.name || 'ステップ' + step.order }}</div>
+              <div class="controls">
+                <button type="button" (click)="moveStep(i, 'up')" [disabled]="i === 0">▲</button>
+                <button type="button" (click)="moveStep(i, 'down')" [disabled]="i === draft.steps.length - 1">▼</button>
+                <button type="button" class="danger" (click)="removeStep(i)" [disabled]="draft.steps.length === 1">削除</button>
+              </div>
+            </header>
+  
+            <label class="field inline">
+              <span>ステップ名</span>
+              <input type="text" [(ngModel)]="step.name" name="step-name-{{ i }}" />
+            </label>
+  
+            <div class="field inline candidates">
+              <span>候補者</span>
+              <div class="candidate-input">
+                <select [(ngModel)]="candidateInputs[step.order]" name="candidate-{{ i }}">
+                  <option [ngValue]="''">社員を選択</option>
+                  <option *ngFor="let emp of employees" [ngValue]="emp.id">{{ emp.displayName }}</option>
+                </select>
+                <button type="button" (click)="addCandidate(step, candidateInputs[step.order])" [disabled]="!candidateInputs[step.order]">追加</button>
+              </div>
+              <div class="chips">
+                <span class="chip" *ngFor="let candidate of step.candidates">
+                  {{ candidate.displayName }}
+                  <button type="button" (click)="removeCandidate(step, candidate)">×</button>
+                </span>
+                <span class="muted" *ngIf="!step.candidates.length">候補者未設定</span>
+              </div>
+            </div>
+  
+            <label class="checkbox">
+              <input type="checkbox" [(ngModel)]="step.autoAdvance" name="auto-{{ i }}" />
+              <span>autoAdvance（承認者が1人の場合は自動進行）</span>
+            </label>
+          </article>
+        </div>
+  
+        <div class="actions">
+          <button type="submit" [disabled]="loading">{{ editing ? '更新' : '作成' }}</button>
+          <span class="notice" *ngIf="notice">{{ notice }}</span>
+        </div>
+      </form>
+    </section>
+  </div>
+  
+  <ng-template #loadingTpl>
+    <p>読込中...</p>
+  </ng-template>

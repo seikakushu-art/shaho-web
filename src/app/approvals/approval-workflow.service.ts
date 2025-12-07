@@ -4,6 +4,7 @@ import {
   collection,
   collectionData,
   doc,
+  deleteDoc,
   Firestore,
   serverTimestamp,
   setDoc,
@@ -32,10 +33,8 @@ export class ApprovalWorkflowService {
   private flowsRef = collection(this.firestore, 'approval_flows');
   private requestsRef = collection(this.firestore, 'approval_requests');
 
-  private flowsSubject = new BehaviorSubject<ApprovalFlow[]>(this.createFallbackFlows());
-  private requestsSubject = new BehaviorSubject<ApprovalRequest[]>(
-    this.createFallbackRequests(this.flowsSubject.value[0]),
-  );
+  private flowsSubject = new BehaviorSubject<ApprovalFlow[]>([]);
+  private requestsSubject = new BehaviorSubject<ApprovalRequest[]>([]);
 
   readonly flows$ = this.flowsSubject.asObservable();
   readonly requests$ = this.requestsSubject.asObservable();
@@ -50,11 +49,7 @@ export class ApprovalWorkflowService {
     collectionData(this.flowsRef, { idField: 'id' })
       .pipe(
         map((rows) => rows as ApprovalFlow[]),
-        tap((flows) => {
-          if (flows.length) {
-            this.flowsSubject.next(flows);
-          }
-        }),
+        tap((flows) => this.flowsSubject.next(flows)),
       )
       .subscribe();
   }
@@ -68,12 +63,10 @@ export class ApprovalWorkflowService {
     ])
       .pipe(
         tap(([requests, flows]) => {
-          if (requests.length) {
             const normalized = requests.map((req) =>
-              req.flowSnapshot ? req : { ...req, flowSnapshot: flows.find((f) => f.id === req.flowId) },
-            );
-            this.requestsSubject.next(normalized);
-          }
+                req.flowSnapshot ? req : { ...req, flowSnapshot: flows.find((f) => f.id === req.flowId) },
+              );
+              this.requestsSubject.next(normalized);
         }),
       )
       .subscribe();
@@ -104,6 +97,11 @@ export class ApprovalWorkflowService {
     }
 
     await addDoc(this.flowsRef, payload);
+  }
+
+  async deleteFlow(id: string): Promise<void> {
+    const ref = doc(this.flowsRef, id);
+    await deleteDoc(ref);
   }
 
   async saveRequest(request: ApprovalRequest): Promise<ApprovalRequest> {
@@ -268,132 +266,6 @@ export class ApprovalWorkflowService {
       current.unshift(request);
     }
     this.requestsSubject.next([...current]);
-  }
-
-  private createFallbackFlows(): ApprovalFlow[] {
-    return [
-      {
-        id: 'default-flow',
-        name: '給与・社保承認フロー',
-        maxSteps: 5,
-        allowDirectApply: true,
-        steps: [
-          {
-            order: 1,
-            name: '一次承認',
-            candidates: [
-              { id: 'approver-tanaka', displayName: '田中 一郎' },
-              { id: 'approver-sato', displayName: '佐藤 花子' },
-            ],
-          },
-          {
-            order: 2,
-            name: '部門長承認',
-            candidates: [{ id: 'manager-yamamoto', displayName: '山本 美咲' }],
-          },
-          {
-            order: 3,
-            name: '人事最終承認',
-            candidates: [{ id: 'hr-final', displayName: '管理部 担当' }],
-            autoAdvance: true,
-          },
-        ],
-      },
-    ];
-  }
-
-  private createFallbackRequests(flow: ApprovalFlow): ApprovalRequest[] {
-    const build = (
-      id: string,
-      category: ApprovalRequest['category'],
-      status: ApprovalRequestStatus,
-      currentStep: number | undefined,
-      dueDate: Date,
-      applicantId: string,
-      applicantName: string,
-      targetCount: number,
-      comment: string,
-      diffSummary?: string,
-    ): ApprovalRequest => {
-        const histories = this.createDemoHistories(id, status, applicantId, applicantName);
-        const attachments = this.collectAttachments(histories);
-  
-        return {
-          id,
-          title: `${category}申請 ${id}`,
-          category,
-          flowId: flow.id!,
-          flowSnapshot: flow,
-          status,
-          targetCount,
-          applicantId,
-          applicantName,
-          currentStep,
-          comment,
-          diffSummary,
-          createdAt: Timestamp.fromDate(new Date('2025-01-25T09:00:00Z')),
-          dueDate: Timestamp.fromDate(dueDate),
-          steps: flow.steps.map((step) => ({
-            stepOrder: step.order,
-            status:
-              status === 'remanded' && step.order === currentStep
-                ? 'remanded'
-                : status === 'approved' || (status === 'pending' && step.order < (currentStep ?? 1))
-                  ? 'approved'
-                  : 'waiting',
-          })),
-          attachments,
-          histories,
-        };
-      };
-
-    return [
-      build(
-        'APL-20250201-001',
-        '新規',
-        'pending',
-        1,
-        new Date('2025-02-05T00:00:00'),
-        'applicant-sato',
-        '佐藤 花子',
-        3,
-        '新入社員3名の一括登録です。標準報酬月額と健康保険区分を確認してください。',
-        '雇用契約に基づく初期登録・社会保険資格取得の確認依頼',
-      ),
-      build(
-        'APL-20250130-002',
-        '個別更新',
-        'approved',
-        undefined,
-        new Date('2025-02-02T00:00:00'),
-        'applicant-tanaka',
-        '田中 一郎',
-        1,
-        '扶養情報の更新のみです。',
-      ),
-      build(
-        'APL-20250128-003',
-        '一括更新',
-        'remanded',
-        1,
-        new Date('2025-02-01T00:00:00'),
-        'applicant-kanri',
-        '管理部 担当',
-        18,
-        '住所変更の一括反映。差戻し理由は修正済みです。',
-      ),
-      build(
-        'APL-20250125-004',
-        '個別更新',
-        'pending',
-        3,
-        new Date('2025-01-29T00:00:00'),
-        'applicant-yamamoto',
-        '山本 美咲',
-        2,
-        '標準報酬月額のみ見直し。',
-      ),
-    ];
   }
 
   private createDemoHistories(
