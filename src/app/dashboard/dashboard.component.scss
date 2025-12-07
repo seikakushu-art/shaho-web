@@ -42,6 +42,17 @@
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.06);
     border: 1px solid #e5e7eb;
   }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .section-header .status-chips {
+    justify-content: flex-end;
+  }
   
   .columns {
     display: grid;
@@ -118,6 +129,12 @@
     box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
   }
 
+  .badge.subtle {
+    background: #e0e7ff;
+    color: #1d4ed8;
+    box-shadow: none;
+  }
+
   .notifications {
     list-style: none;
     padding: 0;
@@ -137,6 +154,30 @@
     background: #f9fafb;
   }
 
+  .status-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .status-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    font-weight: 700;
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #e5e7eb;
+  }
+
+  .status-chip.total {
+    background: #111827;
+    color: #fff;
+    border-color: #111827;
+  }
+
+
   .status {
     display: inline-flex;
     align-items: center;
@@ -155,4 +196,110 @@
     background: #ecfdf3;
     color: #15803d;
     border: 1px solid #bbf7d0;
+  }
+
+  .status-rejected {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+  }
+
+  .approval-compact {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .approval-compact li {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .approval-compact li:last-child {
+    border-bottom: none;
+  }
+
+  .right-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+    min-width: 120px;
+  }
+
+  .quick-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+    min-width: 240px;
+  }
+
+  .action-buttons {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  button.primary,
+  button.ghost {
+    border-radius: 8px;
+    padding: 0.45rem 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+
+  button.primary {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+  }
+
+  button.primary:hover {
+    background: #1d4ed8;
+  }
+
+  button.ghost {
+    background: #fff;
+    color: #111827;
+    border-color: #e5e7eb;
+  }
+
+  button.ghost:hover {
+    background: #f3f4f6;
+  }
+
+  .action-message {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.9rem;
+  }
+
+  .shortcut-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  .shortcut-card {
+    border: 1px solid #e5e7eb;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    text-decoration: none;
+    color: #111827;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+
+  .shortcut-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
   }

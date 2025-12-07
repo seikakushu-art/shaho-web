@@ -4,7 +4,7 @@
         <p class="eyebrow">ログイン情報</p>
         <h1>ロール別ダッシュボード</h1>
         <p class="hint">
-          ログインユーザーのロールに応じた業務範囲を可視化します。新規ログインは左上メニューから行えます。
+          ログインユーザーのロールに応じた業務範囲を可視化し、承認フローの状況を素早く把握できます。
         </p>
       </div>
       <a routerLink="/login" class="text-link">ログイン画面へ戻る</a>
@@ -31,11 +31,85 @@
       </div>
     </section>
 
+    <section class="card" *ngIf="(myRequestSummary$ | async) as summary">
+      <header class="section-header">
+        <div>
+          <p class="eyebrow">自分が起票した承認依頼</p>
+          <h2>申請ステータスの内訳</h2>
+          <p class="hint">ApprovalWorkflowService.requests$ を自分の起票分でフィルタし、ステータス別に集計しています。</p>
+        </div>
+        <div class="status-chips">
+          <span class="status-chip" *ngFor="let item of summary" [ngClass]="statusClass(item.status)">
+            {{ item.label }} {{ item.count }} 件
+          </span>
+          <span class="status-chip total">合計 {{ totalCount(summary) }} 件</span>
+        </div>
+      </header>
+
+      <div *ngIf="(myRequests$ | async) as myRequests; else noMyRequests">
+        <ul class="approval-compact">
+          <li *ngFor="let request of myRequests | slice:0:5">
+            <div>
+              <p class="eyebrow">{{ request.id }}</p>
+              <h3>{{ request.title }}</h3>
+              <p class="hint">{{ request.createdAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }} に起票 / 対象 {{ request.targetCount }} 件</p>
+            </div>
+            <div class="right-meta">
+              <span class="status" [ngClass]="statusClass(request.status)">{{ statusLabel(request.status) }}</span>
+              <span class="badge subtle">{{ request.category }}</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <ng-template #noMyRequests>
+        <p class="hint">起票した承認依頼がまだありません。計算やマスタ更新から申請を起票するとここに表示されます。</p>
+      </ng-template>
+    </section>
+
+    <section class="card" *ngIf="(isApprover$ | async)">
+      <header class="section-header">
+        <div>
+          <p class="eyebrow">自分が担当する承認待ち</p>
+          <h2>担当者ビューでの簡易操作</h2>
+          <p class="hint">現在ステップの候補者・担当者として割り当てられた申請を抽出しています。</p>
+        </div>
+        <div *ngIf="(myAssignmentSummary$ | async) as summary" class="status-chips">
+          <span class="status-chip" *ngFor="let item of summary" [ngClass]="statusClass(item.status)">
+            {{ item.label }} {{ item.count }} 件
+          </span>
+          <span class="status-chip total">合計 {{ totalCount(summary) }} 件</span>
+        </div>
+      </header>
+
+      <div *ngIf="(myAssignments$ | async) as assignments; else noAssignments">
+        <ul class="approval-compact">
+          <li *ngFor="let request of assignments | slice:0:5">
+            <div>
+              <p class="eyebrow">{{ request.id }} / Step {{ request.currentStep }}</p>
+              <h3>{{ request.title }}</h3>
+              <p class="hint">申請者: {{ request.applicantName }} / 期限: {{ request.dueDate?.toDate() | date: 'yyyy/MM/dd HH:mm' }}</p>
+            </div>
+            <div class="quick-actions">
+              <div class="action-buttons">
+                <button class="ghost" (click)="quickAction(request, 'remand')">差戻し</button>
+                <button class="primary" (click)="quickAction(request, 'approve')">承認する</button>
+              </div>
+              <p class="action-message" *ngIf="actionMessageFor(request.id)">{{ actionMessageFor(request.id) }}</p>
+              <span class="status" [ngClass]="statusClass(request.status)">{{ statusLabel(request.status) }}</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <ng-template #noAssignments>
+        <p class="hint">担当する承認待ちはありません。新しい依頼が割り当てられるとここに表示されます。</p>
+      </ng-template>
+    </section>
+
     <section class="card" *ngIf="(notifications$ | async) as notifications">
       <header class="section-header">
         <div>
-          <p class="eyebrow">承認通知</p>
-          <h2>未読バッジ・トースト</h2>
+          <p class="eyebrow">通知履歴</p>
+          <h2>未読・既読のトーストサンプル</h2>
           <p class="hint">承認／差戻し時に申請者と次ステップ承認者へ通知します。</p>
         </div>
         <div class="badge">未読 {{ unreadCount$ | async }} 件</div>
@@ -47,12 +121,33 @@
             <p class="eyebrow">{{ notification.createdAt | date: 'MM/dd HH:mm' }}</p>
             <p class="hint">{{ notification.message }}</p>
           </div>
-          <span class="status" [class]="notification.unread ? 'status-pending' : 'status-approved'">
+          <span class="status" [ngClass]="notification.unread ? 'status-pending' : 'status-approved'">
             {{ notification.unread ? '未読' : '既読' }}
           </span>
         </li>
       </ul>
     </section>
+
+    <section class="card" *ngIf="(isSystemAdmin$ | async)">
+      <p class="eyebrow">管理ショートカット</p>
+      <h2>ユーザー管理 / 法人情報 / 保険料率</h2>
+      <p class="hint">システム管理者向けのメンテナンス導線です。ロールに応じて表示を切り替えています。</p>
+      <div class="shortcut-grid">
+        <a routerLink="/user-management" class="shortcut-card">
+          <h3>ユーザー管理</h3>
+          <p class="hint">ロール付与・凍結などアカウント管理</p>
+        </a>
+        <a routerLink="/corporate-info" class="shortcut-card">
+          <h3>法人情報</h3>
+          <p class="hint">事業所情報・適用事業所をメンテナンス</p>
+        </a>
+        <a routerLink="/insurance-rates" class="shortcut-card">
+          <h3>保険料率</h3>
+          <p class="hint">健保・厚年の料率設定を更新</p>
+        </a>
+      </div>
+    </section>
+
   
     <section class="card">
       <p class="eyebrow">ロール一覧（システム管理者向け）</p>
@@ -96,10 +191,6 @@
       </ul>
       <div class="actions-row">
         <a routerLink="/employees/E202501" class="text-link">社員詳細画面を開く（デモ）</a>
-        <a routerLink="/approvals" class="text-link">承認一覧画面を開く（デモ）</a>
-        <a routerLink="/corporate-info" class="text-link">法人情報設定を開く</a>
-        <a routerLink="/insurance-rates" class="text-link">保険料率設定を開く</a>
-        <a routerLink="/user-management" class="text-link" *appHasRole="RoleKey.SystemAdmin">ユーザー管理</a>
       </div>
     </section>
   </section>
