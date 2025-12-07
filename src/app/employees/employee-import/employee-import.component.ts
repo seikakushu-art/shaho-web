@@ -406,6 +406,8 @@ private readFileAsText(file: File): Promise<string> {
       comment: this.requestComment || undefined,
       diffSummary: this.createDifferenceSummary(),
       steps: flow.steps.map((step) => ({ stepOrder: step.order, status: 'waiting' })),
+      attachments: [],
+      histories: [],
     };
   }
 

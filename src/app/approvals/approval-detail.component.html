@@ -128,6 +128,63 @@
     </div>
   </section>
 
+  <section class="card attachment-card">
+    <header class="section-header">
+      <div>
+        <p class="eyebrow">添付ファイル</p>
+        <h2>承認の根拠をアップロード</h2>
+      </div>
+      <p class="hint">PDF／Office／画像のみ。1件10MB以内・最大5件・合計30MBまでアップロードできます。</p>
+    </header>
+
+    <div class="upload-grid">
+      <div class="upload-box">
+        <p class="hint">危険拡張子（exe/js/sh 等）は拒否されます。拡張子と容量を確認してから添付してください。</p>
+        <label class="upload-button">
+          <input
+            type="file"
+            multiple
+            (change)="onFileSelected($event)"
+            [accept]="attachmentService.acceptExtensions"
+            [disabled]="current.status !== 'pending' || uploading"
+          />
+          ファイルを選択
+        </label>
+        <p class="hint">合計サイズ: {{ formatFileSize(totalSelectedSize()) }}</p>
+        <p class="hint warning" *ngIf="validationErrors.length">{{ validationErrors[0] }}</p>
+      </div>
+
+      <div class="selected-files" *ngIf="selectedFiles.length">
+        <h3>アップロード予定 ({{ selectedFiles.length }}件)</h3>
+        <ul>
+          <li *ngFor="let file of selectedFiles; let i = index">
+            <div>
+              <p class="file-name">{{ file.name }}</p>
+              <p class="hint">{{ formatFileSize(file.size) }}</p>
+            </div>
+            <button type="button" class="ghost" (click)="removeFile(i)">削除</button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="selected-files" *ngIf="current.attachments?.length">
+        <h3>登録済みファイル ({{ current.attachments?.length || 0 }}件)</h3>
+        <ul>
+          <li *ngFor="let attachment of current.attachments ?? []">
+            <div>
+              <a class="file-name" [href]="attachment.downloadUrl" target="_blank" rel="noreferrer">{{ attachment.name }}</a>
+              <p class="hint">
+                {{ attachment.uploaderName || attachment.uploaderId }} /
+                {{ attachment.uploadedAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }} /
+                {{ formatFileSize(attachment.size) }}
+              </p>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <section class="card action-card">
     <header class="section-header">
       <div>
@@ -141,7 +198,7 @@
       [(ngModel)]="approvalComment"
       rows="4"
       placeholder="確認内容や差戻し理由を入力してください"
-      [disabled]="current.status !== 'pending'"
+      [disabled]="current.status !== 'pending' || uploading"
     ></textarea>
 
     <div class="action-buttons">
@@ -149,7 +206,7 @@
         type="button"
         class="ghost"
         (click)="saveApproval('remand')"
-        [disabled]="current.status !== 'pending'"
+        [disabled]="current.status !== 'pending' || uploading"
       >
         差戻し
       </button>
@@ -157,11 +214,45 @@
         type="button"
         class="primary"
         (click)="saveApproval('approve')"
-        [disabled]="current.status !== 'pending'"
+        [disabled]="current.status !== 'pending' || uploading"
       >
         承認
       </button>
     </div>
+  </section>
+  <section class="card" *ngIf="current.histories?.length">
+    <header class="section-header">
+      <div>
+        <p class="eyebrow">履歴と添付</p>
+        <h2>どの資料を見て判断したかを可視化</h2>
+      </div>
+      <p class="hint">ステータス遷移ごとにアップロードされたファイルを保持し、後から根拠を確認できます。</p>
+    </header>
+
+    <ul class="history-list">
+      <li *ngFor="let history of historyItems(current)">
+        <div class="history-header">
+          <div>
+            <p class="eyebrow">{{ history.action | uppercase }} → {{ requestStatusLabel(history.statusAfter) }}</p>
+            <h3>{{ history.actorName }}</h3>
+            <p class="hint">{{ history.createdAt.toDate() | date: 'yyyy/MM/dd HH:mm' }}</p>
+          </div>
+          <span class="status" [class]="requestStatusClass(history.statusAfter)">{{ requestStatusLabel(history.statusAfter) }}</span>
+        </div>
+        <p class="hint">コメント: {{ history.comment || 'なし' }}</p>
+        <div class="attachment-pill-row" *ngIf="history.attachments?.length">
+          <a
+            *ngFor="let attachment of history.attachments"
+            class="pill attachment-pill"
+            [href]="attachment.downloadUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {{ attachment.name }} ({{ formatFileSize(attachment.size) }})
+          </a>
+        </div>
+      </li>
+    </ul>
   </section>
 </section>
 

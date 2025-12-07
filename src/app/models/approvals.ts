@@ -11,6 +11,30 @@ export type ApprovalRequestStatus =
 
 export type ApprovalStepStatus = 'waiting' | 'approved' | 'remanded' | 'skipped';
 
+export interface ApprovalAttachmentMetadata {
+    id: string;
+    name: string;
+    size: number;
+    contentType: string;
+    downloadUrl: string;
+    extension?: string;
+    uploadedAt?: Timestamp;
+    uploaderId?: string;
+    uploaderName?: string;
+    storagePath?: string;
+  }
+  
+  export interface ApprovalHistory {
+    id: string;
+    statusAfter: ApprovalRequestStatus;
+    action: 'apply' | 'approve' | 'remand' | 'expired';
+    actorId: string;
+    actorName: string;
+    comment?: string;
+    attachments: ApprovalAttachmentMetadata[];
+    createdAt: Timestamp;
+  }
+
 export interface ApprovalCandidate {
   id: string;
   displayName: string;
@@ -59,6 +83,8 @@ export interface ApprovalRequest {
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   steps: ApprovalStepState[];
+  attachments?: ApprovalAttachmentMetadata[];
+  histories?: ApprovalHistory[];
 }
 
 export interface ApprovalNotification {

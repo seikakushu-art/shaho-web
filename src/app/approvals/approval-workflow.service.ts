@@ -15,6 +15,8 @@ import {
   ApprovalNotification,
   ApprovalRequest,
   ApprovalRequestStatus,
+  ApprovalHistory,
+  ApprovalAttachmentMetadata,
   ApprovalStepState,
   ApprovalStepStatus,
 } from '../models/approvals';
@@ -129,13 +131,39 @@ export class ApprovalWorkflowService {
     return created;
   }
 
-  async approve(id: string, approverId: string, approverName: string, comment?: string) {
-    const result = await this.applyAction(id, approverId, approverName, 'approve', comment);
+  async approve(
+    id: string,
+    approverId: string,
+    approverName: string,
+    comment?: string,
+    attachments: ApprovalAttachmentMetadata[] = [],
+  ) {
+    const result = await this.applyAction(
+      id,
+      approverId,
+      approverName,
+      'approve',
+      comment,
+      attachments,
+    );
     return result;
   }
 
-  async remand(id: string, approverId: string, approverName: string, comment?: string) {
-    const result = await this.applyAction(id, approverId, approverName, 'remand', comment);
+  async remand(
+    id: string,
+    approverId: string,
+    approverName: string,
+    comment?: string,
+    attachments: ApprovalAttachmentMetadata[] = [],
+  ) {
+    const result = await this.applyAction(
+      id,
+      approverId,
+      approverName,
+      'remand',
+      comment,
+      attachments,
+    );
     return result;
   }
 
@@ -144,6 +172,10 @@ export class ApprovalWorkflowService {
       ...request,
       status: 'expired',
       currentStep: undefined,
+      histories: [
+        ...(request.histories ?? []),
+        this.buildHistoryEntry('expired', 'system', '期限切れ', '期限超過で自動失効', [], 'expired'),
+      ],
     };
     await this.saveRequest(expired);
   }
@@ -154,6 +186,7 @@ export class ApprovalWorkflowService {
     approverName: string,
     action: 'approve' | 'remand',
     comment?: string,
+    attachments: ApprovalAttachmentMetadata[] = [],
   ): Promise<ApprovalActionResult | undefined> {
     const request = this.requestsSubject.value.find((item) => item.id === id);
     if (!request || !request.flowSnapshot) return;
@@ -179,25 +212,51 @@ export class ApprovalWorkflowService {
     const status: ApprovalRequestStatus =
       action === 'remand' ? 'remanded' : isFinalStep ? 'approved' : 'pending';
 
+    const histories: ApprovalHistory[] = [
+      ...(request.histories ?? []),
+      this.buildHistoryEntry(action, approverId, approverName, comment, attachments, status),
+    ];
+
     const updatedRequest: ApprovalRequest = {
       ...request,
       steps,
       status,
       currentStep: status === 'pending' ? nextStep.stepOrder : undefined,
       updatedAt: Timestamp.fromDate(new Date()),
+      attachments: [...(request.attachments ?? []), ...attachments],
+      histories,
     };
 
     const saved = await this.saveRequest(updatedRequest);
 
     const nextAssignees =
       status === 'pending'
-        ? nextStep
-            .approverId
-            ? [nextStep.approverId]
-            : request.flowSnapshot.steps[currentIndex + 1]?.candidates.map((c) => c.id) ?? []
+        ? nextStep?.approverId
+          ? [nextStep.approverId]
+          : request.flowSnapshot.steps[currentIndex + 1]?.candidates.map((c) => c.id) ?? []
         : [];
 
-        return { request: saved, nextAssignees };
+    return { request: saved, nextAssignees };
+  }
+
+  private buildHistoryEntry(
+    action: ApprovalHistory['action'],
+    actorId: string,
+    actorName: string,
+    comment: string | undefined,
+    attachments: ApprovalAttachmentMetadata[],
+    statusAfter?: ApprovalRequestStatus,
+  ): ApprovalHistory {
+    return {
+      id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      statusAfter: statusAfter ?? 'pending',
+      action,
+      actorId,
+      actorName,
+      comment,
+      attachments,
+      createdAt: Timestamp.fromDate(new Date()),
+    };
   }
 
   private refreshLocal(request: ApprovalRequest) {
@@ -255,31 +314,38 @@ export class ApprovalWorkflowService {
       targetCount: number,
       comment: string,
       diffSummary?: string,
-    ): ApprovalRequest => ({
-      id,
-      title: `${category}申請 ${id}`,
-      category,
-      flowId: flow.id!,
-      flowSnapshot: flow,
-      status,
-      targetCount,
-      applicantId,
-      applicantName,
-      currentStep,
-      comment,
-      diffSummary,
-      createdAt: Timestamp.fromDate(new Date('2025-01-25T09:00:00Z')),
-      dueDate: Timestamp.fromDate(dueDate),
-      steps: flow.steps.map((step) => ({
-        stepOrder: step.order,
-        status:
-          status === 'remanded' && step.order === currentStep
-            ? 'remanded'
-            : status === 'approved' || (status === 'pending' && step.order < (currentStep ?? 1))
-              ? 'approved'
-              : 'waiting',
-      })),
-    });
+    ): ApprovalRequest => {
+        const histories = this.createDemoHistories(id, status, applicantId, applicantName);
+        const attachments = this.collectAttachments(histories);
+  
+        return {
+          id,
+          title: `${category}申請 ${id}`,
+          category,
+          flowId: flow.id!,
+          flowSnapshot: flow,
+          status,
+          targetCount,
+          applicantId,
+          applicantName,
+          currentStep,
+          comment,
+          diffSummary,
+          createdAt: Timestamp.fromDate(new Date('2025-01-25T09:00:00Z')),
+          dueDate: Timestamp.fromDate(dueDate),
+          steps: flow.steps.map((step) => ({
+            stepOrder: step.order,
+            status:
+              status === 'remanded' && step.order === currentStep
+                ? 'remanded'
+                : status === 'approved' || (status === 'pending' && step.order < (currentStep ?? 1))
+                  ? 'approved'
+                  : 'waiting',
+          })),
+          attachments,
+          histories,
+        };
+      };
 
     return [
       build(
@@ -329,6 +395,136 @@ export class ApprovalWorkflowService {
       ),
     ];
   }
+
+  private createDemoHistories(
+    requestId: string,
+    status: ApprovalRequestStatus,
+    applicantId: string,
+    applicantName: string,
+  ): ApprovalHistory[] {
+    const applyAttachments = this.createDemoAttachments(requestId, applicantId, applicantName);
+    const histories: ApprovalHistory[] = [
+      {
+        id: `hist-${requestId}-apply`,
+        statusAfter: 'pending',
+        action: 'apply',
+        actorId: applicantId,
+        actorName: applicantName,
+        comment: '申請時に差分一覧と証跡を添付しています。',
+        attachments: applyAttachments,
+        createdAt: Timestamp.fromDate(new Date('2025-01-25T12:00:00Z')),
+      },
+    ];
+
+    if (status === 'approved') {
+      const approvalAttachment = this.createDemoAttachmentMeta(
+        requestId,
+        '承認チェックリスト.pdf',
+        'application/pdf',
+        48_234,
+        'approver-sato',
+        '佐藤 花子',
+        '2025-01-30T03:15:00Z',
+      );
+      histories.push({
+        id: `hist-${requestId}-approve`,
+        statusAfter: 'approved',
+        action: 'approve',
+        actorId: 'approver-sato',
+        actorName: '佐藤 花子',
+        comment: '確認済み。承認チェックリストを添付しました。',
+        attachments: [approvalAttachment],
+        createdAt: Timestamp.fromDate(new Date('2025-01-30T03:20:00Z')),
+      });
+    }
+
+    if (status === 'remanded') {
+      const remandAttachment = this.createDemoAttachmentMeta(
+        requestId,
+        '差戻し指摘一覧.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        34_122,
+        'manager-yamamoto',
+        '山本 美咲',
+        '2025-01-28T06:00:00Z',
+      );
+      histories.push({
+        id: `hist-${requestId}-remand`,
+        statusAfter: 'remanded',
+        action: 'remand',
+        actorId: 'manager-yamamoto',
+        actorName: '山本 美咲',
+        comment: '差戻し理由を添付しています。',
+        attachments: [remandAttachment],
+        createdAt: Timestamp.fromDate(new Date('2025-01-28T06:05:00Z')),
+      });
+    }
+
+    return histories;
+  }
+
+  private createDemoAttachments(
+    requestId: string,
+    uploaderId: string,
+    uploaderName: string,
+  ): ApprovalAttachmentMetadata[] {
+    return [
+      this.createDemoAttachmentMeta(
+        requestId,
+        '差分一覧.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        22_034,
+        uploaderId,
+        uploaderName,
+        '2025-01-25T12:00:00Z',
+      ),
+      this.createDemoAttachmentMeta(
+        requestId,
+        '証跡.pdf',
+        'application/pdf',
+        125_678,
+        uploaderId,
+        uploaderName,
+        '2025-01-25T12:05:00Z',
+      ),
+    ];
+  }
+
+  private createDemoAttachmentMeta(
+    requestId: string,
+    name: string,
+    contentType: string,
+    size: number,
+    uploaderId: string,
+    uploaderName: string,
+    uploadedAt: string,
+  ): ApprovalAttachmentMetadata {
+    const extension = name.split('.').pop()?.toLowerCase() ?? '';
+    const encodedName = encodeURIComponent(name);
+    return {
+      id: `att-${requestId}-${encodedName}`,
+      name,
+      size,
+      contentType,
+      extension,
+      downloadUrl: `https://storage.googleapis.com/demo/${requestId}/${encodedName}`,
+      uploadedAt: Timestamp.fromDate(new Date(uploadedAt)),
+      uploaderId,
+      uploaderName,
+      storagePath: `demo/${requestId}/${name}`,
+    };
+  }
+
+  private collectAttachments(histories: ApprovalHistory[]): ApprovalAttachmentMetadata[] {
+    const map = new Map<string, ApprovalAttachmentMetadata>();
+    histories.forEach((history) => {
+      history.attachments.forEach((attachment) => {
+        map.set(attachment.id, attachment);
+      });
+    });
+    return Array.from(map.values());
+  }
+
 
   private createNotificationsSnapshot(recipientId: string): ApprovalNotification[] {
     const now = new Date();

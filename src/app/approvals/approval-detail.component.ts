@@ -10,9 +10,12 @@ import {
   ApprovalStepState,
   ApprovalStepStatus,
   ApprovalRequestStatus,
+  ApprovalAttachmentMetadata,
+  ApprovalHistory,
 } from '../models/approvals';
 import { ApprovalNotificationService } from './approval-notification.service';
 import { ApprovalWorkflowService } from './approval-workflow.service';
+import { ApprovalAttachmentService } from './approval-attachment.service';
 
 type EmployeeStatus = 'OK' | '警告';
 
@@ -35,6 +38,7 @@ export class ApprovalDetailComponent implements OnDestroy {
   private notificationService = inject(ApprovalNotificationService);
   private route = inject(ActivatedRoute);
   private authService = inject(AuthService);
+  readonly attachmentService = inject(ApprovalAttachmentService);
 
   approval?: ApprovalRequest;
   private subscription: Subscription;
@@ -72,6 +76,9 @@ export class ApprovalDetailComponent implements OnDestroy {
   selectedEmployee?: ApprovalDetailEmployee;
   showDiffModal = false;
   approvalComment = '';
+  selectedFiles: File[] = [];
+  validationErrors: string[] = [];
+  uploading = false;
 
   toasts: { message: string; type: 'info' | 'success' | 'warning' }[] = [];
 
@@ -150,6 +157,30 @@ export class ApprovalDetailComponent implements OnDestroy {
     this.selectedEmployee = undefined;
   }
 
+  onFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    if (!files.length) {
+      input.value = '';
+      return;
+    }
+    const merged = [...this.selectedFiles, ...files];
+    const validation = this.attachmentService.validateFiles(merged);
+    this.validationErrors = validation.errors;
+
+    if (!validation.valid) {
+      validation.errors.forEach((error) => this.addToast(error, 'warning'));
+    }
+
+    this.selectedFiles = validation.files;
+    input.value = '';
+  }
+
+  removeFile(index: number) {
+    this.selectedFiles.splice(index, 1);
+    this.selectedFiles = [...this.selectedFiles];
+  }
+
   addToast(message: string, type: 'info' | 'success' | 'warning' = 'info') {
     const toast = { message, type };
     this.toasts.push(toast);
@@ -165,6 +196,27 @@ export class ApprovalDetailComponent implements OnDestroy {
     if (!approval.dueDate) return false;
     return approval.status === 'pending' && approval.dueDate.toDate().getTime() < Date.now();
   }
+
+  historyItems(current: ApprovalRequest): ApprovalHistory[] {
+    return [...(current.histories ?? [])].sort(
+      (a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime(),
+    );
+  }
+
+  formatFileSize(size: number): string {
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    if (size >= 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+    return `${size} B`;
+  }
+
+  totalSelectedSize(): number {
+    return this.selectedFiles.reduce((sum, file) => sum + file.size, 0);
+  }
+
 
   stepLabel(step: ApprovalStepState): string {
     switch (step.status) {
@@ -192,42 +244,83 @@ export class ApprovalDetailComponent implements OnDestroy {
     const approverId = user?.email ?? 'demo-approver';
     const approverName = user?.displayName ?? user?.email ?? 'デモ承認者';
 
-    const result =
-      action === 'approve'
-        ? await this.workflowService.approve(this.approval.id, approverId, approverName, this.approvalComment)
-        : await this.workflowService.remand(this.approval.id, approverId, approverName, this.approvalComment);
+    this.uploading = true;
+    try {
+      let uploaded: ApprovalAttachmentMetadata[] = [];
+      if (this.selectedFiles.length) {
+        const validation = this.attachmentService.validateFiles(this.selectedFiles);
+        this.validationErrors = validation.errors;
+        if (!validation.valid) {
+          validation.errors.forEach((error) => this.addToast(error, 'warning'));
+          return;
+        }
+        uploaded = await this.attachmentService.upload(
+          this.approval.id,
+          validation.files,
+          approverId,
+          approverName,
+        );
+      }
 
-    if (!result) return;
-    const actionText = action === 'approve' ? '承認しました' : '差戻しました';
-    this.addToast(`申請を${actionText}（コメント: ${this.approvalComment || 'なし'}）`, 'success');
-    this.approvalComment = '';
-
-    const applicantNotification: ApprovalNotification = {
-      id: `ntf-${Date.now()}`,
-      requestId: result.request.id!,
-      recipientId: this.approval.applicantId,
-      message:
+      const result =
         action === 'approve'
-          ? `${result.request.id} が承認ステップ ${this.approval.currentStep} を通過しました`
-          : `${result.request.id} が差戻しされました`,
-      unread: true,
-      createdAt: new Date(),
-      type: action === 'approve' ? 'success' : 'warning',
-    };
+          ? await this.workflowService.approve(
+              this.approval.id,
+              approverId,
+              approverName,
+              this.approvalComment,
+              uploaded,
+            )
+          : await this.workflowService.remand(
+              this.approval.id,
+              approverId,
+              approverName,
+              this.approvalComment,
+              uploaded,
+            );
 
-    const nextStepNotifications: ApprovalNotification[] = result.nextAssignees.map((assignee) => ({
-      id: `ntf-${Date.now()}-${assignee}`,
-      requestId: result.request.id!,
-      recipientId: assignee,
-      message:
-        action === 'approve'
-          ? `${result.request.id} のステップ${result.request.currentStep}を承認してください`
-          : `${result.request.id} が差戻しされました。申請者と調整してください。`,
-      unread: true,
-      createdAt: new Date(),
-      type: action === 'approve' ? 'info' : 'warning',
-    }));
+      if (!result) return;
+      const actionText = action === 'approve' ? '承認しました' : '差戻しました';
+      this.addToast(`申請を${actionText}（コメント: ${this.approvalComment || 'なし'}）`, 'success');
+      if (uploaded.length) {
+        this.addToast(`添付 ${uploaded.length} 件を履歴に保存しました。`, 'info');
+      }
+      this.approvalComment = '';
+      this.selectedFiles = [];
+      this.validationErrors = [];
 
-    this.notificationService.pushBatch([applicantNotification, ...nextStepNotifications]);
+      const applicantNotification: ApprovalNotification = {
+        id: `ntf-${Date.now()}`,
+        requestId: result.request.id!,
+        recipientId: this.approval.applicantId,
+        message:
+          action === 'approve'
+            ? `${result.request.id} が承認ステップ ${this.approval.currentStep} を通過しました`
+            : `${result.request.id} が差戻しされました`,
+        unread: true,
+        createdAt: new Date(),
+        type: action === 'approve' ? 'success' : 'warning',
+      };
+
+      const nextStepNotifications: ApprovalNotification[] = result.nextAssignees.map((assignee) => ({
+        id: `ntf-${Date.now()}-${assignee}`,
+        requestId: result.request.id!,
+        recipientId: assignee,
+        message:
+          action === 'approve'
+            ? `${result.request.id} のステップ${result.request.currentStep}を承認してください`
+            : `${result.request.id} が差戻しされました。申請者と調整してください。`,
+        unread: true,
+        createdAt: new Date(),
+        type: action === 'approve' ? 'info' : 'warning',
+      }));
+
+      this.notificationService.pushBatch([applicantNotification, ...nextStepNotifications]);
+    } catch (error) {
+      console.error('approval action failed', error);
+      this.addToast('承認処理中にエラーが発生しました。', 'warning');
+    } finally {
+      this.uploading = false;
+    }
   }
 }
