@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subject, takeUntil, firstValueFrom } from 'rxjs';
+import { Subject, takeUntil, firstValueFrom, Subscription } from 'rxjs';
 import {
   CalculationType,
   StandardCalculationMethod,
@@ -15,6 +15,12 @@ import {
 } from '../calculation-data.service';
 import { InsuranceKey } from '../calculation-utils';
 import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
+import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
+import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest } from '../../models/approvals';
+import { Timestamp } from '@angular/fire/firestore';
+import { AuthService } from '../../auth/auth.service';
+import { RoleKey } from '../../models/roles';
 
 
 type ColumnKey =
@@ -64,16 +70,24 @@ interface ColumnSetting {
 @Component({
   selector: 'app-calculation-result',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, FlowSelectorComponent],
   templateUrl: './calculation-result.component.html',
   styleUrl: './calculation-result.component.scss',
 })
 export class CalculationResultComponent implements OnInit, OnDestroy {
   private calculationDataService = inject(CalculationDataService);
   private employeesService = inject(ShahoEmployeesService);
+  private approvalWorkflowService = inject(ApprovalWorkflowService);
+  private authService = inject(AuthService);
   private destroy$ = new Subject<void>();
+  private approvalSubscription?: Subscription;
 
   saving = false;
+  approvalMessage = '';
+  selectedFlowId: string | null = null;
+  selectedFlow?: ApprovalFlow;
+  applicantId = '';
+  applicantName = '';
 
   calculationType: CalculationType = 'standard';
   targetMonth = '';
@@ -372,6 +386,10 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.authService.user$.pipe(takeUntil(this.destroy$)).subscribe((user) => {
+      this.applicantId = user?.email ?? 'requester';
+      this.applicantName = user?.displayName ?? user?.email ?? '担当者';
+    });
     const params = this.route.snapshot.queryParamMap;
     const type = params.get('type') as CalculationType | null;
     this.calculationType = type ?? 'standard';
@@ -401,6 +419,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
+    this.approvalSubscription?.unsubscribe();
   }
 
   get visibleColumns() {
@@ -906,6 +925,18 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     });
   }
 
+  onFlowSelected(flow?: ApprovalFlow): void {
+    this.selectedFlow = flow ?? undefined;
+    this.selectedFlowId = flow?.id ?? null;
+  }
+
+  onFlowsUpdated(flows: ApprovalFlow[]): void {
+    if (!this.selectedFlow && flows[0]) {
+      this.selectedFlow = flows[0];
+      this.selectedFlowId = flows[0].id ?? null;
+    }
+  }
+
   async onSelectHistory(historyId: string) {
     const history = await this.calculationDataService.getHistoryById(historyId);
     if (!history) return;
@@ -946,19 +977,112 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   }
 
   async saveResults() {
-    if (this.saving || this.rows.length === 0) return;
+    if (this.rows.length === 0) return;
+
+    const validRows = this.rows.filter((row) => !row.error);
+    if (validRows.length === 0) {
+      alert('保存できるデータがありません。');
+      return;
+    }
+
+    const roles = await firstValueFrom(this.authService.userRoles$);
+    const canApply = roles.some((role) =>
+      [RoleKey.Operator, RoleKey.Approver, RoleKey.SystemAdmin].includes(role),
+    );
+
+    if (!canApply) {
+      this.approvalMessage =
+        '承認依頼の起票権限がありません。担当者/承認者/システム管理者のみ保存を申請できます。';
+      return;
+    }
+
+    if (!this.selectedFlow) {
+      this.approvalMessage = '承認フローを選択してください。';
+      return;
+    }
 
     this.saving = true;
+    this.approvalMessage = '';
     const query = this.buildQueryParams();
     try {
-      // エラーがある行はスキップ
-      const validRows = this.rows.filter((row) => !row.error);
-      if (validRows.length === 0) {
-        alert('保存できるデータがありません。');
-        return;
-      }
+      const steps = this.selectedFlow.steps.map((step) => ({
+        stepOrder: step.order,
+        status: 'waiting' as const,
+      }));
+      const history: ApprovalHistory = {
+        id: `hist-${Date.now()}`,
+        statusAfter: 'pending',
+        action: 'apply',
+        actorId: this.applicantId,
+        actorName: this.applicantName,
+        comment: `${this.calculationTypeLabel}の保存を申請します。`,
+        attachments: [],
+        createdAt: Timestamp.fromDate(new Date()),
+      };
 
-      // 社員データを取得して、employeeNoからidをマッピング
+      const request: ApprovalRequest = {
+        title: `計算結果保存（${validRows.length}件）`,
+        category: '一括更新',
+        targetCount: validRows.length,
+        applicantId: this.applicantId,
+        applicantName: this.applicantName,
+        flowId: this.selectedFlow.id ?? 'calculation-save-flow',
+        flowSnapshot: this.selectedFlow,
+        status: 'pending',
+        currentStep: this.selectedFlow.steps[0]?.order,
+        comment: `${this.targetMonth}の${this.calculationTypeLabel}を保存します。`,
+        steps,
+        histories: [history],
+        attachments: [],
+        createdAt: Timestamp.fromDate(new Date()),
+      };
+
+      const saved = await this.approvalWorkflowService.saveRequest(request);
+      if (!saved.id) {
+        throw new Error('承認依頼IDの取得に失敗しました。');
+      }
+      this.approvalMessage = '承認依頼を送信しました。承認完了後に保存を実行します。';
+      this.watchApproval(saved.id, validRows, query);
+    } catch (error) {
+      console.error('承認依頼エラー:', error);
+      this.approvalMessage = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
+    } finally {
+      this.saving = false;
+    }
+  }
+
+     
+  private watchApproval(
+    requestId: string,
+    validRows: CalculationRow[],
+    query: CalculationQueryParams,
+  ): void {
+    this.approvalSubscription?.unsubscribe();
+    this.approvalSubscription = this.approvalWorkflowService.requests$.subscribe(
+      (requests) => {
+        const matched = requests.find((req) => req.id === requestId);
+        if (!matched) return;
+
+        if (matched.status === 'approved') {
+          this.approvalMessage = '承認完了。保存を実行しています…';
+          this.approvalSubscription?.unsubscribe();
+          void this.persistResults(validRows, query);
+        }
+
+        if (matched.status === 'remanded' || matched.status === 'expired') {
+          this.approvalMessage = '承認が完了しなかったため、保存は実行されません。';
+          this.approvalSubscription?.unsubscribe();
+        }
+      },
+    );
+  }
+
+  private async persistResults(
+    validRows: CalculationRow[],
+    query: CalculationQueryParams,
+  ): Promise<void> {
+    this.saving = true;
+    try {
       const employees = await firstValueFrom(
         this.employeesService.getEmployeesWithPayrolls(),
       );
@@ -969,7 +1093,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         }
       });
 
-      // 各計算結果を保存
       const savePromises = validRows.map(async (row) => {
         const employeeId = employeeMap.get(row.employeeNo);
         if (!employeeId) {
@@ -977,8 +1100,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           return;
         }
 
-        // 給与データとして保存
-        // PayrollDataのフィールドに合わせて、合計値を計算
+        
         const healthMonthlyTotal =
           (row.healthEmployeeMonthly || 0) + (row.healthEmployerMonthly || 0);
         const careMonthlyTotal =
@@ -999,7 +1121,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           bonusTotal: row.bonusTotalPay || undefined,
           standardBonus:
             row.standardHealthBonus || row.standardWelfareBonus || undefined,
-          // 保険料データ（合計値）
+          
           healthInsuranceMonthly:
             healthMonthlyTotal > 0 ? healthMonthlyTotal : undefined,
           careInsuranceMonthly:
@@ -1012,7 +1134,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           pensionBonus: pensionBonusTotal > 0 ? pensionBonusTotal : undefined,
         };
 
-        // undefinedのフィールドを削除
+        
         Object.keys(payrollData).forEach((key) => {
           if (payrollData[key] === undefined) {
             delete payrollData[key];
@@ -1025,7 +1147,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           payrollData,
         );
 
-        // 標準報酬月額を社員のメインデキュメントに保存
+        
         if (row.standardMonthly && row.standardMonthly > 0) {
           await this.employeesService.updateEmployee(employeeId, {
             standardMonthly: row.standardMonthly,

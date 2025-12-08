@@ -2,13 +2,19 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { FormsModule, NgForm } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
-import { Subject, switchMap, takeUntil, of } from 'rxjs';
+import { Subject, switchMap, takeUntil, of, firstValueFrom } from 'rxjs';
 import { ShahoEmployee, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
+import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest } from '../../models/approvals';
+import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
+import { Timestamp } from '@angular/fire/firestore';
+import { AuthService } from '../../auth/auth.service';
+import { RoleKey } from '../../models/roles';
 
 @Component({
   selector: 'app-employee-create',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule],
+  imports: [CommonModule, RouterLink, FormsModule, FlowSelectorComponent],
   templateUrl: './employee-create.component.html',
   styleUrl: './employee-create.component.scss',
 })
@@ -17,6 +23,8 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     private router = inject(Router);
     private employeesService = inject(ShahoEmployeesService);
     private cdr = inject(ChangeDetectorRef);
+    private approvalWorkflowService = inject(ApprovalWorkflowService);
+    private authService = inject(AuthService);
     private destroy$ = new Subject<void>();
 
     editMode = true;
@@ -24,6 +32,12 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     isEditMode = false;
     employeeId: string | null = null;
     isLoading = false;
+    sendingApproval = false;
+    approvalMessage = '';
+    selectedFlowId: string | null = null;
+    selectedFlow?: ApprovalFlow;
+    applicantId = '';
+    applicantName = '';
   
     basicInfo = {
       employeeNo: '',
@@ -80,6 +94,12 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             this.loadEmployeeData(employee);
             this.cdr.detectChanges();
           }
+        });
+        this.authService.user$
+        .pipe(takeUntil(this.destroy$))
+        .subscribe((user) => {
+          this.applicantId = user?.email ?? 'requester';
+          this.applicantName = user?.displayName ?? user?.email ?? '担当者';
         });
     }
 
@@ -169,6 +189,83 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     handleProceedApproval(form: NgForm) {
       this.submitAttempted = true;
       if (form.invalid) return;
-      alert('承認依頼画面へ遷移します（ダミー動作）');
+      void this.sendApprovalRequest();
+    }
+
+    private async sendApprovalRequest(): Promise<void> {
+      const roles = await firstValueFrom(this.authService.userRoles$);
+      const canApply = roles.some((role) =>
+        [RoleKey.Operator, RoleKey.Approver, RoleKey.SystemAdmin].includes(role),
+      );
+
+      if (!canApply) {
+        this.approvalMessage = '承認依頼の起票権限がありません。担当者/承認者/システム管理者のみ起票できます。';
+        return;
+      }
+
+      if (!this.selectedFlow) {
+        this.approvalMessage = '承認フローを選択してください。';
+        return;
+      }
+
+      this.sendingApproval = true;
+      this.approvalMessage = '';
+
+      try {
+        const steps = this.selectedFlow.steps.map((step) => ({
+          stepOrder: step.order,
+          status: 'waiting' as const,
+        }));
+
+        const history: ApprovalHistory = {
+          id: `hist-${Date.now()}`,
+          statusAfter: 'pending',
+          action: 'apply',
+          actorId: this.applicantId,
+          actorName: this.applicantName,
+          comment: '社員新規登録の承認を依頼します。',
+          attachments: [],
+          createdAt: Timestamp.fromDate(new Date()),
+        };
+
+        const displayName = this.basicInfo.name || this.basicInfo.employeeNo || '新規社員';
+
+        const request: ApprovalRequest = {
+          title: `社員新規登録（${displayName}）`,
+          category: '新規',
+          targetCount: 1,
+          applicantId: this.applicantId,
+          applicantName: this.applicantName,
+          flowId: this.selectedFlow.id ?? 'employee-create-flow',
+          flowSnapshot: this.selectedFlow,
+          status: 'pending',
+          currentStep: this.selectedFlow.steps[0]?.order,
+          comment: '入力内容を承認後に登録します。',
+          steps,
+          histories: [history],
+          attachments: [],
+          createdAt: Timestamp.fromDate(new Date()),
+        };
+
+        await this.approvalWorkflowService.saveRequest(request);
+        this.approvalMessage = '承認依頼を送信しました。承認完了までお待ちください。';
+      } catch (error) {
+        console.error(error);
+        this.approvalMessage = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
+      } finally {
+        this.sendingApproval = false;
+      }
+    }
+
+    onFlowSelected(flow?: ApprovalFlow): void {
+      this.selectedFlow = flow ?? undefined;
+      this.selectedFlowId = flow?.id ?? null;
+    }
+
+    onFlowsUpdated(flows: ApprovalFlow[]): void {
+      if (!this.selectedFlow && flows[0]) {
+        this.selectedFlow = flows[0];
+        this.selectedFlowId = flows[0].id ?? null;
+      }
     }
   }

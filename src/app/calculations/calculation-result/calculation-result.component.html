@@ -27,6 +27,15 @@
         承認フローに進む
       </button>
     </div>
+    <div class="notice">
+      <app-flow-selector
+        [label]="'保存前に承認フローを選択'"
+        [selectedFlowId]="selectedFlowId"
+        (flowSelected)="onFlowSelected($event)"
+        (flowsUpdated)="onFlowsUpdated($event)"
+      ></app-flow-selector>
+      <p class="hint">承認完了後に計算結果を保存します。</p>
+    </div>
     <div class="column-selector">
       <div class="checkboxes">
         <label *ngFor="let column of columns">
@@ -36,6 +45,8 @@
       </div>
     </div>
   </div>
+
+  <p class="message" *ngIf="approvalMessage">{{ approvalMessage }}</p>
 
   <div class="card">
     <div class="table-wrapper">

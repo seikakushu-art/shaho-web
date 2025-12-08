@@ -246,6 +246,17 @@
           </div>
         </div>
       </article>
+
+      <div class="notice">
+        <app-flow-selector
+          [label]="'承認フロー選択（担当者/承認者/システム管理者のみ起票可）'"
+          [selectedFlowId]="selectedFlowId"
+          (flowSelected)="onFlowSelected($event)"
+          (flowsUpdated)="onFlowsUpdated($event)"
+        ></app-flow-selector>
+        <p class="message" *ngIf="approvalMessage">{{ approvalMessage }}</p>
+        <p class="hint" *ngIf="!approvalMessage">承認完了後に登録されます。</p>
+      </div>
   
       <div class="action-bar">
         <button type="button" class="secondary" (click)="handleSaveDraft(employeeForm)">一時保存</button>

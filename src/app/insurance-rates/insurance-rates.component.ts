@@ -21,11 +21,17 @@ import {
   PrefectureRate,
   StandardCompensationGrade,
 } from '../app/services/insurance-rates.service';
+import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
+import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.component';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest } from '../models/approvals';
+import { Timestamp } from '@angular/fire/firestore';
+import { AuthService } from '../auth/auth.service';
+import { RoleKey } from '../models/roles';
 
 @Component({
   selector: 'app-insurance-rates',
   standalone: true,
-  imports: [DatePipe, NgFor, NgIf, ReactiveFormsModule],
+  imports: [DatePipe, NgFor, NgIf, ReactiveFormsModule, FlowSelectorComponent],
   templateUrl: './insurance-rates.component.html',
   styleUrl: './insurance-rates.component.scss',
 })
@@ -33,6 +39,8 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
   private fb = inject(FormBuilder);
   private insuranceRatesService = inject(InsuranceRatesService);
   private corporateInfoService = inject(CorporateInfoService);
+  private approvalWorkflowService = inject(ApprovalWorkflowService);
+  private authService = inject(AuthService);
 
   readonly healthTypes: HealthInsuranceType[] = ['協会けんぽ', '組合健保'];
   message = '';
@@ -42,6 +50,10 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
   latestRecord?: InsuranceRateRecord;
   viewingRecord?: InsuranceRateRecord;
   historyRecords: InsuranceRateRecord[] = [];
+  selectedFlow?: ApprovalFlow;
+  selectedFlowId: string | null = null;
+  applicantId = '';
+  applicantName = '';
 
   private historySub?: Subscription;
 
@@ -65,6 +77,10 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadHealthTypeFromCorporateInfo();
+    void firstValueFrom(this.authService.user$).then((user) => {
+      this.applicantId = user?.email ?? 'system-admin';
+      this.applicantName = user?.displayName ?? user?.email ?? 'システム管理者';
+    });
   }
 
   ngOnDestroy(): void {
@@ -522,6 +538,18 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
   removeBonusCap(index: number): void {
     this.bonusCaps.removeAt(index);
   }
+  onFlowSelected(flow?: ApprovalFlow): void {
+    this.selectedFlow = flow ?? undefined;
+    this.selectedFlowId = flow?.id ?? null;
+  }
+
+  onFlowsUpdated(flows: ApprovalFlow[]): void {
+    if (!this.selectedFlow && flows[0]) {
+      this.selectedFlow = flows[0];
+      this.selectedFlowId = flows[0].id ?? null;
+    }
+  }
+
 
   startNewRecord(): void {
     this.viewingRecord = undefined;
@@ -610,6 +638,17 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const roles = await firstValueFrom(this.authService.userRoles$);
+    if (!roles.includes(RoleKey.SystemAdmin)) {
+      this.message = 'システム管理者のみ保険料率の承認依頼を起票できます。';
+      return;
+    }
+
+    if (!this.selectedFlow) {
+      this.message = '承認フローを選択してください。';
+      return;
+    }
+
     this.saving = true;
     this.message = '';
 
@@ -690,13 +729,52 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
     };
 
     try {
-      await this.insuranceRatesService.saveRates(payload);
-      this.message = '保険料率を保存しました。履歴が更新されました。';
+      const history: ApprovalHistory = {
+        id: `hist-${Date.now()}`,
+        statusAfter: 'pending',
+        action: 'apply',
+        actorId: this.applicantId,
+        actorName: this.applicantName,
+        comment: `${payload.healthType} の保険料率を更新します。`,
+        attachments: [],
+        createdAt: Timestamp.fromDate(new Date()),
+      };
+      const steps = this.selectedFlow.steps.map((step) => ({
+        stepOrder: step.order,
+        status: 'waiting' as const,
+      }));
+      const targetCount =
+        payload.healthInsuranceRates.length +
+        payload.nursingCareRates.length +
+        payload.standardCompensations.length +
+        payload.bonusCaps.length +
+        1; // 年金料率含む
+
+      const request: ApprovalRequest = {
+        title: `保険料率更新（${payload.healthType}）`,
+        category: '個別更新',
+        targetCount: targetCount || 1,
+        applicantId: this.applicantId,
+        applicantName: this.applicantName,
+        flowId: this.selectedFlow.id ?? 'insurance-rates-flow',
+        flowSnapshot: this.selectedFlow,
+        status: 'pending',
+        currentStep: this.selectedFlow.steps[0]?.order,
+        comment: payload.insurerName
+          ? `${payload.insurerName} の料率更新` 
+          : '保険料率更新の承認を依頼します。',
+        steps,
+        histories: [history],
+        attachments: [],
+        createdAt: Timestamp.fromDate(new Date()),
+      };
+
+      await this.approvalWorkflowService.saveRequest(request);
+      this.message = '承認依頼を送信しました。承認完了後に適用されます。';
       this.editMode = false;
-      this.loadHistory();
     } catch (error) {
       console.error(error);
-      this.message = '保存に失敗しました。時間をおいて再度お試しください。';
+      this.message = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
     } finally {
       this.saving = false;
     }

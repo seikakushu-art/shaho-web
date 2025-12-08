@@ -15,6 +15,15 @@
     </header>
   
     <p class="message" *ngIf="message">{{ message }}</p>
+    <div class="notice" *ngIf="editMode">
+      <app-flow-selector
+        [label]="'承認フロー（システム管理者のみ起票可）'"
+        [selectedFlowId]="selectedFlowId"
+        (flowSelected)="onFlowSelected($event)"
+        (flowsUpdated)="onFlowsUpdated($event)"
+      ></app-flow-selector>
+      <p class="hint">更新内容は承認完了後に反映されます。</p>
+    </div>
   
     <form class="cards" [formGroup]="form" (ngSubmit)="save()">
       <article class="card">
