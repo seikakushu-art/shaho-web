@@ -10,7 +10,13 @@
         </ng-container>
         <ng-container *ngIf="editMode">
           <button type="button" class="secondary" (click)="cancelEdit()">キャンセル</button>
-          <button type="button" (click)="save()" [disabled]="saving">保存</button>
+          <button
+            type="button"
+            (click)="save()"
+            [disabled]="saving || !isSystemAdmin || awaitingApproval"
+          >
+            保存
+          </button>
         </ng-container>
       </div>
     </header>

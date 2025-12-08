@@ -54,8 +54,14 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
   selectedFlowId: string | null = null;
   applicantId = '';
   applicantName = '';
+  approvalRequestId: string | null = null;
+  awaitingApproval = false;
+  applyingApprovedRates = false;
+  isSystemAdmin = false;
+  private pendingPayload?: InsuranceRatePayload;
 
   private historySub?: Subscription;
+  private approvalRequestSub?: Subscription;
 
   form = this.fb.group({
     id: [''],
@@ -81,10 +87,46 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       this.applicantId = user?.email ?? 'system-admin';
       this.applicantName = user?.displayName ?? user?.email ?? 'システム管理者';
     });
+
+    void firstValueFrom(this.authService.userRoles$).then((roles) => {
+      this.isSystemAdmin = roles.includes(RoleKey.SystemAdmin);
+    });
+    this.approvalRequestSub = this.approvalWorkflowService.requests$.subscribe(
+      (requests) => {
+        if (!this.approvalRequestId || !this.pendingPayload) return;
+        const request = requests.find((item) => item.id === this.approvalRequestId);
+        if (!request) return;
+
+        if (request.status === 'pending') {
+          this.awaitingApproval = true;
+          this.message = '承認中です。完了するまでお待ちください。';
+          return;
+        }
+
+        if (request.status === 'remanded') {
+          this.message = '承認が却下されました。内容を見直してください。';
+          this.awaitingApproval = false;
+          this.pendingPayload = undefined;
+          this.approvalRequestId = null;
+          this.applyingApprovedRates = false;
+          return;
+        }
+
+        if (
+          request.status === 'approved' &&
+          this.awaitingApproval &&
+          !this.applyingApprovedRates
+        ) {
+          this.applyingApprovedRates = true;
+          void this.applyApprovedRates();
+        }
+      },
+    );
   }
 
   ngOnDestroy(): void {
     this.historySub?.unsubscribe();
+    this.approvalRequestSub?.unsubscribe();
   }
 
   get healthInsuranceRates(): FormArray<FormGroup<RateFormGroup>> {
@@ -588,6 +630,10 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
   }
 
   async save(): Promise<void> {
+    if (this.awaitingApproval) {
+      this.message = '承認結果待ちのため新しい承認依頼を送信できません。';
+      return;
+    }
     // 都道府県が入力されている行のみを有効な行として扱う
     const healthInsuranceRatesValue = this.form.get('healthInsuranceRates')?.value || [];
     const validHealthInsuranceRates = healthInsuranceRatesValue.filter((r: any) => r.prefecture && r.prefecture.trim() !== '');
@@ -769,7 +815,10 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
         createdAt: Timestamp.fromDate(new Date()),
       };
 
-      await this.approvalWorkflowService.saveRequest(request);
+      const savedRequest = await this.approvalWorkflowService.saveRequest(request);
+      this.approvalRequestId = savedRequest.id ?? null;
+      this.pendingPayload = payload;
+      this.awaitingApproval = true;
       this.message = '承認依頼を送信しました。承認完了後に適用されます。';
       this.editMode = false;
     } catch (error) {
@@ -777,6 +826,24 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       this.message = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
     } finally {
       this.saving = false;
+    }
+  }
+  private async applyApprovedRates(): Promise<void> {
+    if (!this.pendingPayload) return;
+    this.saving = true;
+    try {
+      await this.insuranceRatesService.saveRates(this.pendingPayload);
+      this.message = '承認が完了したため保険料率を保存しました。';
+      this.awaitingApproval = false;
+      this.approvalRequestId = null;
+      this.pendingPayload = undefined;
+      this.loadHistory();
+    } catch (error) {
+      console.error(error);
+      this.message = '承認後の保存に失敗しました。再試行してください。';
+    } finally {
+      this.saving = false;
+      this.applyingApprovedRates = false;
     }
   }
 }
