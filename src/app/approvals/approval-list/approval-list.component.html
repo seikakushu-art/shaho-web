@@ -3,7 +3,7 @@
       <div>
         <h1>承認/申請一覧</h1>
       </div>
-      <p class="hint">最新の申請から表示しています。</p>
+      <p class="hint">最新の申請から表示しています。あなたの承認ステップに該当する行にはラベルと左枠が付きます。</p>
     </header>
   
     <section class="card filter-card">
@@ -49,8 +49,11 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let approval of approvals" (click)="onRowClick(approval)">
-              <td class="id-cell">{{ approval.flowSnapshot?.name || '-' }}</td>
+            <tr *ngFor="let approval of approvals" (click)="onRowClick(approval)" [class.my-task]="approval.isMyTask">
+              <td class="id-cell">
+                {{ approval.flowSnapshot?.name || '-' }}
+                <span *ngIf="approval.isMyTask" class="my-task-badge">あなたの承認ステップ</span>
+              </td>
               <td>
                 <span class="badge" [class]="categoryClass(approval.category)">{{ approval.category }}</span>
               </td>

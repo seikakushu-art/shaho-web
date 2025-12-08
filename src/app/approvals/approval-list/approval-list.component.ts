@@ -7,6 +7,8 @@ import { BehaviorSubject, combineLatest, map, Observable, of } from 'rxjs';
 import { ApprovalRequest, ApprovalRequestStatus } from '../../models/approvals';
 import { ApprovalWorkflowService } from '../approval-workflow.service';
 import { UserDirectoryService } from '../../auth/user-directory.service';
+import { AuthService } from '../../auth/auth.service';
+import { RoleKey } from '../../models/roles';
 
 @Component({
   selector: 'app-approval-list',
@@ -19,6 +21,7 @@ export class ApprovalListComponent {
   private router = inject(Router);
   private workflowService = inject(ApprovalWorkflowService);
   private userDirectory = inject(UserDirectoryService);
+  private authService = inject(AuthService);
 
   private selectedFlowId$ = new BehaviorSubject<string | null>(null);
   private selectedCategory$ = new BehaviorSubject<string | null>(null);
@@ -87,20 +90,29 @@ export class ApprovalListComponent {
     this.selectedFlowId$,
     this.selectedCategory$,
     this.selectedApplicantId$,
+    this.authService.user$,
+    this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver]),
   ]).pipe(
-    map(([approvals, flowId, category, applicantId]) => {
-      return approvals.filter(approval => {
-        if (flowId && approval.flowId !== flowId) {
-          return false;
-        }
-        if (category && approval.category !== category) {
-          return false;
-        }
-        if (applicantId && approval.applicantId.toLowerCase() !== applicantId.toLowerCase()) {
-          return false;
-        }
-        return true;
-      });
+    map(([approvals, flowId, category, applicantId, user, roleAllowed]) => {
+      const email = user?.email?.toLowerCase();
+
+      return approvals
+        .map(approval => ({
+          ...approval,
+          isMyTask: this.isMyTask(approval, email, roleAllowed),
+        }))
+        .filter(approval => {
+          if (flowId && approval.flowId !== flowId) {
+            return false;
+          }
+          if (category && approval.category !== category) {
+            return false;
+          }
+          if (applicantId && approval.applicantId.toLowerCase() !== applicantId.toLowerCase()) {
+            return false;
+          }
+          return true;
+        });
     }),
   );
 
@@ -170,5 +182,19 @@ export class ApprovalListComponent {
     this.selectedFlowId$.next(null);
     this.selectedCategory$.next(null);
     this.selectedApplicantId$.next(null);
+  }
+  private isMyTask(
+    approval: ApprovalRequest,
+    email: string | undefined,
+    roleAllowed: boolean,
+  ): boolean {
+    if (!roleAllowed || !email || !approval.currentStep) return false;
+
+    const flowStep = approval.flowSnapshot?.steps.find((s) => s.order === approval.currentStep);
+    const candidateIds = flowStep?.candidates?.map((c) => c.id.toLowerCase()) ?? [];
+    const currentStepState = approval.steps.find((s) => s.stepOrder === approval.currentStep);
+    const assignedApprover = currentStepState?.approverId?.toLowerCase();
+
+    return candidateIds.includes(email) || assignedApprover === email;
   }
 }
