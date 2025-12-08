@@ -26,6 +26,7 @@ export class ApprovalListComponent {
   private selectedFlowId$ = new BehaviorSubject<string | null>(null);
   private selectedCategory$ = new BehaviorSubject<string | null>(null);
   private selectedApplicantId$ = new BehaviorSubject<string | null>(null);
+  private showOnlyMyTasks$ = new BehaviorSubject<boolean>(false);
 
   get selectedFlowId(): string | null {
     return this.selectedFlowId$.value;
@@ -46,6 +47,12 @@ export class ApprovalListComponent {
   }
   set selectedApplicantId(value: string | null) {
     this.selectedApplicantId$.next(value);
+  }
+  get showOnlyMyTasks(): boolean {
+    return this.showOnlyMyTasks$.value;
+  }
+  set showOnlyMyTasks(value: boolean) {
+    this.showOnlyMyTasks$.next(value);
   }
 
   private getTimestampMillis(timestamp: Timestamp | undefined): number {
@@ -90,10 +97,11 @@ export class ApprovalListComponent {
     this.selectedFlowId$,
     this.selectedCategory$,
     this.selectedApplicantId$,
+    this.showOnlyMyTasks$,
     this.authService.user$,
     this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver]),
   ]).pipe(
-    map(([approvals, flowId, category, applicantId, user, roleAllowed]) => {
+    map(([approvals, flowId, category, applicantId, showOnlyMine, user, roleAllowed]) => {
       const email = user?.email?.toLowerCase();
 
       return approvals
@@ -111,7 +119,16 @@ export class ApprovalListComponent {
           if (applicantId && approval.applicantId.toLowerCase() !== applicantId.toLowerCase()) {
             return false;
           }
+          if (showOnlyMine && !approval.isMyTask) {
+            return false;
+          }
           return true;
+        })
+        .sort((a, b) => {
+          if (a.isMyTask !== b.isMyTask) {
+            return a.isMyTask ? -1 : 1;
+          }
+          return this.getTimestampMillis(b.createdAt) - this.getTimestampMillis(a.createdAt);
         });
     }),
   );
@@ -182,6 +199,7 @@ export class ApprovalListComponent {
     this.selectedFlowId$.next(null);
     this.selectedCategory$.next(null);
     this.selectedApplicantId$.next(null);
+    this.showOnlyMyTasks$.next(false);
   }
   private isMyTask(
     approval: ApprovalRequest,

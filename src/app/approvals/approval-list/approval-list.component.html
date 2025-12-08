@@ -29,6 +29,17 @@
             <option *ngFor="let applicant of applicants$ | async" [ngValue]="applicant.id">{{ applicant.displayName }}</option>
           </select>
         </div>
+        <div class="filter-group filter-toggle">
+          <label for="my-task-only">候補に入っているものだけ</label>
+          <label class="checkbox-label">
+            <input
+              id="my-task-only"
+              type="checkbox"
+              [(ngModel)]="showOnlyMyTasks"
+            />
+            <span>自分の承認待ちのみ表示</span>
+          </label>
+        </div>
         <button type="button" class="clear-filters-btn" (click)="clearFilters()">フィルターをクリア</button>
       </div>
     </section>
@@ -51,7 +62,10 @@
           <tbody>
             <tr *ngFor="let approval of approvals" (click)="onRowClick(approval)" [class.my-task]="approval.isMyTask">
               <td class="id-cell">
-                {{ approval.flowSnapshot?.name || '-' }}
+                <div class="id-cell__label">
+                  <span *ngIf="approval.isMyTask" class="my-task-icon" aria-hidden="true">★</span>
+                  <span class="flow-name">{{ approval.flowSnapshot?.name || '-' }}</span>
+                </div>
                 <span *ngIf="approval.isMyTask" class="my-task-badge">あなたの承認ステップ</span>
               </td>
               <td>
