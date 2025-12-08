@@ -1,5 +1,5 @@
 import { AsyncPipe, DatePipe, NgIf } from '@angular/common';
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../auth/auth.service';
@@ -10,7 +10,7 @@ import {
   CorporateInfoService,
   HealthInsuranceType,
 } from '../app/services/corporate-info.service';
-import { firstValueFrom, tap } from 'rxjs';
+import {  Subscription, firstValueFrom, map, tap } from 'rxjs';
 import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.component';
 import { ApprovalFlow, ApprovalHistory, ApprovalRequest } from '../models/approvals';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
@@ -30,7 +30,7 @@ import { Timestamp } from '@angular/fire/firestore';
   templateUrl: './corporate-info.component.html',
   styleUrl: './corporate-info.component.scss',
 })
-export class CorporateInfoComponent implements OnInit {
+export class CorporateInfoComponent implements OnInit, OnDestroy  {
   private fb = inject(FormBuilder);
   private corporateInfoService = inject(CorporateInfoService);
   private authService = inject(AuthService);
@@ -46,6 +46,9 @@ export class CorporateInfoComponent implements OnInit {
   flows: ApprovalFlow[] = [];
   applicantId = '';
   applicantName = '';
+  pendingPayload?: CorporateInfoPayload;
+  pendingRequestId?: string;
+  approvalSubscription?: Subscription;
 
   readonly form = this.fb.group({
     officeName: ['', [Validators.required]],
@@ -61,6 +64,14 @@ export class CorporateInfoComponent implements OnInit {
   });
 
   readonly role$ = this.authService.role$;
+  readonly isSystemAdmin$ = this.authService.userRoles$.pipe(
+    tap((roles) => {
+      if (!roles.includes(RoleKey.SystemAdmin)) {
+        this.editMode = false;
+      }
+    }),
+    map((roles) => roles.includes(RoleKey.SystemAdmin)),
+  );
 
   readonly corporateInfo$ = this.corporateInfoService.getCorporateInfo().pipe(
     tap((info) => {
@@ -92,7 +103,12 @@ export class CorporateInfoComponent implements OnInit {
 
   async toggleEdit(): Promise<void> {
     this.message = '';
-    // 一時的にすべてのユーザーに編集を許可
+    const roles = await firstValueFrom(this.authService.userRoles$);
+    if (!roles.includes(RoleKey.SystemAdmin)) {
+      this.message = 'システム管理者のみ編集できます。';
+      return;
+    }
+
     this.editMode = true;
   }
 
@@ -200,7 +216,10 @@ export class CorporateInfoComponent implements OnInit {
         createdAt: Timestamp.fromDate(new Date()),
       };
 
-      await this.approvalWorkflowService.saveRequest(request);
+      const savedRequest = await this.approvalWorkflowService.saveRequest(request);
+      this.pendingPayload = payload;
+      this.pendingRequestId = savedRequest.id;
+      this.subscribeApprovalCompletion();
       this.message = '承認依頼を送信しました。承認完了後に反映されます。';
       this.editMode = false;
     } catch (error) {
@@ -209,5 +228,45 @@ export class CorporateInfoComponent implements OnInit {
     } finally {
       this.isSaving = false;
     }
+  }
+  ngOnDestroy(): void {
+    this.approvalSubscription?.unsubscribe();
+  }
+
+  private subscribeApprovalCompletion(): void {
+    if (!this.pendingRequestId) {
+      return;
+    }
+
+    this.approvalSubscription?.unsubscribe();
+    this.approvalSubscription = this.approvalWorkflowService
+      .getRequest(this.pendingRequestId)
+      .subscribe(async (request) => {
+        if (!request || !this.pendingPayload) {
+          return;
+        }
+
+        if (request.status === 'approved') {
+          this.isSaving = true;
+          try {
+            await this.corporateInfoService.saveCorporateInfo(this.pendingPayload);
+            this.message = '承認が完了しました。法人情報を更新しました。';
+            this.editMode = false;
+          } catch (error) {
+            console.error(error);
+            this.message = '承認後の更新に失敗しました。時間をおいて再度お試しください。';
+          } finally {
+            this.isSaving = false;
+            this.pendingPayload = undefined;
+            this.pendingRequestId = undefined;
+            this.approvalSubscription?.unsubscribe();
+          }
+        } else if (request.status === 'remanded' || request.status === 'expired') {
+          this.message = '承認が完了しませんでした。内容を確認してください。';
+          this.pendingPayload = undefined;
+          this.pendingRequestId = undefined;
+          this.approvalSubscription?.unsubscribe();
+        }
+      });
   }
 }

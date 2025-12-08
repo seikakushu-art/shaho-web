@@ -3,7 +3,7 @@
       <div>
         <h1>法人情報</h1>
       </div>
-      <div class="actions">
+      <div class="actions" *ngIf="isSystemAdmin$ | async">
         <ng-container *ngIf="!editMode; else editButtons">
           <button type="button" (click)="toggleEdit()">編集</button>
         </ng-container>
@@ -15,7 +15,7 @@
     </header>
   
     <p class="message" *ngIf="message">{{ message }}</p>
-    <div class="notice" *ngIf="editMode">
+    <div class="notice" *ngIf="(isSystemAdmin$ | async) && editMode">
       <app-flow-selector
         [label]="'承認フロー（システム管理者のみ起票可）'"
         [selectedFlowId]="selectedFlowId"
