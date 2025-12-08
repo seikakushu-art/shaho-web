@@ -2,8 +2,9 @@ import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Subscription, firstValueFrom, take } from 'rxjs';
-import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
+import { UserDirectoryService } from '../../auth/user-directory.service';
 import { ApprovalCandidate, ApprovalFlow, ApprovalFlowStep } from '../../models/approvals';
+import { RoleKey } from '../../models/roles';
 import { ApprovalWorkflowService } from '../approval-workflow.service';
 
 type StepCandidate = ApprovalCandidate & { email?: string };
@@ -16,12 +17,12 @@ type StepCandidate = ApprovalCandidate & { email?: string };
   styleUrl: './flow-management.component.scss',
 })
 export class FlowManagementComponent implements OnInit, OnDestroy {
-  private employeesService = inject(ShahoEmployeesService);
+  private userDirectoryService = inject(UserDirectoryService);
   private workflowService = inject(ApprovalWorkflowService);
   private flowSubscription?: Subscription;
 
   flows: ApprovalFlow[] = [];
-  employees: StepCandidate[] = [];
+  users: StepCandidate[] = [];
   loading = false;
   editing?: ApprovalFlow;
   draft: ApprovalFlow = this.createEmptyFlow();
@@ -32,15 +33,18 @@ export class FlowManagementComponent implements OnInit, OnDestroy {
 
   async ngOnInit() {
     this.loading = true;
-    const [employees] = await Promise.all([
-      firstValueFrom(this.employeesService.getEmployees().pipe(take(1))),
+    const [users] = await Promise.all([
+      firstValueFrom(this.userDirectoryService.getUsers().pipe(take(1))),
       firstValueFrom(this.workflowService.flows$.pipe(take(1))),
     ]);
-    this.employees = employees.map((emp) => ({
-      id: emp.id ?? emp.employeeNo,
-      displayName: emp.name,
-      email: emp.id,
-    }));
+    const approverRoles = [RoleKey.SystemAdmin, RoleKey.Approver];
+    this.users = users
+      .filter((user) => user.roles?.some((role) => approverRoles.includes(role)))
+      .map((user) => ({
+        id: user.id ?? user.email,
+        displayName: user.displayName || user.email,
+        email: user.email,
+      }));
     this.loading = false;
 
     this.flowSubscription = this.workflowService.flows$.subscribe((flows) => {
@@ -77,7 +81,7 @@ export class FlowManagementComponent implements OnInit, OnDestroy {
     const nextOrder = this.draft.steps.length + 1;
     this.draft.steps = [
       ...this.draft.steps,
-      { order: nextOrder, name: `ステップ${nextOrder}`, candidates: [], autoAdvance: false },
+      { order: nextOrder, name: '', candidates: [] },
     ];
   }
 
@@ -96,13 +100,13 @@ export class FlowManagementComponent implements OnInit, OnDestroy {
     this.draft.steps = this.draft.steps.map((step, idx) => ({ ...step, order: idx + 1 }));
   }
 
-  addCandidate(step: ApprovalFlowStep, employeeId: string) {
-    const employee = this.employees.find((emp) => emp.id === employeeId);
-    if (!employee) return;
+  addCandidate(step: ApprovalFlowStep, userId: string) {
+    const user = this.users.find((u) => u.id === userId);
+    if (!user) return;
 
-    const exists = step.candidates.some((candidate) => candidate.id === employee.id);
+    const exists = step.candidates.some((candidate) => candidate.id === user.id);
     if (!exists) {
-      step.candidates = [...step.candidates, { id: employee.id, displayName: employee.displayName }];
+      step.candidates = [...step.candidates, { id: user.id, displayName: user.displayName }];
     }
     this.candidateInputs = { ...this.candidateInputs, [step.order]: '' };
   }
@@ -117,20 +121,25 @@ export class FlowManagementComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const stepsWithoutCandidates = this.draft.steps.filter((step) => step.candidates.length === 0);
+    if (stepsWithoutCandidates.length > 0) {
+      const stepNumbers = stepsWithoutCandidates.map((step) => step.order).join('、');
+      this.notice = `ステップ${stepNumbers}の候補者を少なくとも一人選択してください。`;
+      return;
+    }
+
     const normalizedSteps = this.draft.steps
       .slice(0, this.maxSteps)
       .map((step, idx) => ({
         order: idx + 1,
         name: step.name.trim() || `ステップ${idx + 1}`,
         candidates: step.candidates,
-        autoAdvance: step.autoAdvance ?? false,
       }));
 
     const payload: ApprovalFlow = {
       ...this.draft,
       name: this.draft.name.trim(),
       steps: normalizedSteps,
-      allowDirectApply: this.draft.allowDirectApply ?? false,
       maxSteps: this.maxSteps,
     };
 
@@ -179,13 +188,11 @@ export class FlowManagementComponent implements OnInit, OnDestroy {
   private createEmptyFlow(): ApprovalFlow {
     return {
       name: '新しい承認フロー',
-      allowDirectApply: false,
       steps: [
         {
           order: 1,
-          name: '一次承認',
+          name: '',
           candidates: [],
-          autoAdvance: false,
         },
       ],
     };

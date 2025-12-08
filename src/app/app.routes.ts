@@ -20,8 +20,9 @@ import { RoleKey } from './models/roles';
 import { FlowManagementComponent } from './approvals/flow-management/flow-management.component';
 
 const adminOnly = [RoleKey.SystemAdmin];
-const operators = [RoleKey.SystemAdmin, RoleKey.Operator];
-const approvalParticipants = [RoleKey.SystemAdmin, RoleKey.Approver, RoleKey.Operator];
+const operators = [RoleKey.SystemAdmin, RoleKey.Approver, RoleKey.Operator];
+const approvalParticipants = operators;
+const guestViewers = [RoleKey.SystemAdmin, RoleKey.Approver, RoleKey.Operator, RoleKey.Guest];
 
 export const routes: Routes = [
   {
@@ -39,7 +40,7 @@ export const routes: Routes = [
     path: 'employees',
     component: EmployeeListComponent,
     pathMatch: 'full',
-    canActivate: [authGuard, roleGuard(approvalParticipants)],
+    canActivate: [authGuard, roleGuard(guestViewers)],
     title: '社員一覧',
   },
   {
@@ -69,7 +70,7 @@ export const routes: Routes = [
   {
     path: 'employees/:id',
     component: EmployeeDetailComponent,
-    canActivate: [authGuard, roleGuard(approvalParticipants)],
+    canActivate: [authGuard, roleGuard(guestViewers)],
     title: '社員詳細',
   },
   {

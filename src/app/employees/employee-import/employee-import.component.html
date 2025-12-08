@@ -5,6 +5,7 @@
                 <h1>CSV一括アップロード</h1>
                 <a routerLink="/employees" class="ghost-link">社員一覧へ戻る</a>
             </div>
+            <p class="hint">承認者・システム管理者もこの画面から承認依頼を起票できます。</p>
         </div>
     </header>
 
@@ -208,7 +209,6 @@
             <div>
                 <p class="eyebrow">Step 5</p>
                 <h2>承認依頼</h2>
-                <p class="hint">承認経路とコメントを指定し、申請を送信します。</p>
             </div>
         </div>
 
@@ -216,13 +216,11 @@
             <div class="approval-summary">
                 <p class="label">対象社員件数</p>
                 <p class="value">{{ selectedCount }} 件</p>
-                <p class="label">変更内容の簡易まとめ</p>
                 <ul>
                     <li>OK：{{ okCount }} 件</li>
                     <li>警告あり：{{ warningCount }} 件</li>
                     <li>エラー除外：{{ summary.errorCount }} 件</li>
                 </ul>
-                <p class="hint">{{ approvalSummary }}</p>
             </div>
             <div class="approval-form">
                 <app-flow-selector
@@ -239,7 +237,7 @@
                     <div class="attachment-header">
                         <div>
                             <p class="label">申請時の添付</p>
-                            <p class="hint">CSVや差分一覧などの根拠資料を添付できます（1件10MB以内・最大5件・合計30MB）。</p>
+                            <p class="hint">1件10MB以内・最大5件・合計30MB</p>
                         </div>
                         <label class="upload-button">
                             <input
@@ -269,7 +267,6 @@
         <div class="navigation">
             <button type="button" class="ghost" (click)="prevStep()">戻る</button>
             <button type="button" class="primary" (click)="submitForApproval()" [disabled]="isLoading || selectedCount === 0 || !selectedFlowId">承認依頼を送信</button>
-            <button type="button" class="secondary" (click)="updateData()" [disabled]="isLoading || selectedCount === 0 || !canApplyImmediately">データ更新</button>
         </div>
     </section>
 </section>

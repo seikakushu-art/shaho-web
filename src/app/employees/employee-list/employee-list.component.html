@@ -9,17 +9,17 @@
         class="ghost"
         aria-label="外部データ連携を実行"
         (click)="syncExternalData()"
-        [disabled]="isSyncingExternal"
+        [disabled]="isSyncingExternal || !(canManage$ | async)"
       >
         {{ isSyncingExternal ? '外部データ連携中…' : '外部データ連携' }}
       </button>
-      <button type="button" class="ghost" aria-label="CSV一括出力画面へ" (click)="goToCsvExport()">
+      <button type="button" class="ghost" aria-label="CSV一括出力画面へ" (click)="goToCsvExport()" [disabled]="!(canManage$ | async)">
         社員情報CSV一括出力
       </button>
-        <button type="button" class="ghost" aria-label="CSVインポート画面へ" (click)="goToImport()">
+        <button type="button" class="ghost" aria-label="CSVインポート画面へ" (click)="goToImport()" [disabled]="!(canManage$ | async)">
           社員情報CSVインポート
         </button>
-        <button type="button" class="primary" aria-label="新規社員登録画面へ" (click)="goToCreate()">
+        <button type="button" class="primary" aria-label="新規社員登録画面へ" (click)="goToCreate()" [disabled]="!(canManage$ | async)">
           新規社員登録
         </button>
       </div>

@@ -68,7 +68,7 @@ export class ApprovalWorkflowService {
   }
 
   getNotificationsFor(recipientId: string): Observable<ApprovalNotification[]> {
-    return of(this.createNotificationsSnapshot(recipientId));
+    return of([]);
   }
 
   async saveFlow(flow: ApprovalFlow): Promise<void> {
@@ -94,6 +94,28 @@ export class ApprovalWorkflowService {
     await deleteDoc(ref);
   }
 
+  private removeUndefinedFields(obj: Record<string, unknown>): Record<string, unknown> {
+    const cleaned: Record<string, unknown> = {};
+    for (const key in obj) {
+      const value = obj[key];
+      if (value === undefined) {
+        continue;
+      }
+      if (Array.isArray(value)) {
+        cleaned[key] = value.map((item) =>
+          typeof item === 'object' && item !== null && !(item instanceof Timestamp)
+            ? this.removeUndefinedFields(item as Record<string, unknown>)
+            : item,
+        );
+      } else if (typeof value === 'object' && value !== null && !(value instanceof Timestamp)) {
+        cleaned[key] = this.removeUndefinedFields(value as Record<string, unknown>);
+      } else {
+        cleaned[key] = value;
+      }
+    }
+    return cleaned;
+  }
+
   async saveRequest(request: ApprovalRequest): Promise<ApprovalRequest> {
     const payload: ApprovalRequest = {
       ...request,
@@ -106,16 +128,19 @@ export class ApprovalWorkflowService {
       createdAt: request.createdAt ?? (serverTimestamp() as Timestamp),
     };
 
+    const cleanedPayload = this.removeUndefinedFields(payload as unknown as Record<string, unknown>);
+
     if (payload.id) {
       const ref = doc(this.requestsRef, payload.id);
-      await setDoc(ref, payload, { merge: true });
+      await setDoc(ref, cleanedPayload, { merge: true });
       this.refreshLocal(payload);
       return payload;
     }
 
     const ref = doc(this.requestsRef);
     const created: ApprovalRequest = { ...payload, id: ref.id };
-    await setDoc(ref, created, { merge: true });
+    const cleanedCreated = this.removeUndefinedFields(created as unknown as Record<string, unknown>);
+    await setDoc(ref, cleanedCreated, { merge: true });
     this.refreshLocal(created);
     return created;
   }
@@ -185,6 +210,15 @@ export class ApprovalWorkflowService {
     if (currentIndex === -1) return;
 
     const step = steps[currentIndex];
+    const approverIdLower = approverId.toLowerCase();
+    const currentFlowStep = request.flowSnapshot.steps.find((s) => s.order === request.currentStep);
+    const candidateIds = currentFlowStep?.candidates?.map((c) => c.id.toLowerCase()) ?? [];
+    const assignedApproverId = step.approverId?.toLowerCase();
+
+    if (!candidateIds.includes(approverIdLower) && assignedApproverId !== approverIdLower) {
+      throw new Error('承認候補者ではありません');
+    }
+
     const newStatus: ApprovalStepStatus = action === 'approve' ? 'approved' : 'remanded';
     steps[currentIndex] = {
       ...step,
@@ -259,125 +293,6 @@ export class ApprovalWorkflowService {
     this.requestsSubject.next([...current]);
   }
 
-  private createDemoHistories(
-    requestId: string,
-    status: ApprovalRequestStatus,
-    applicantId: string,
-    applicantName: string,
-  ): ApprovalHistory[] {
-    const applyAttachments = this.createDemoAttachments(requestId, applicantId, applicantName);
-    const histories: ApprovalHistory[] = [
-      {
-        id: `hist-${requestId}-apply`,
-        statusAfter: 'pending',
-        action: 'apply',
-        actorId: applicantId,
-        actorName: applicantName,
-        comment: '申請時に差分一覧と証跡を添付しています。',
-        attachments: applyAttachments,
-        createdAt: Timestamp.fromDate(new Date('2025-01-25T12:00:00Z')),
-      },
-    ];
-
-    if (status === 'approved') {
-      const approvalAttachment = this.createDemoAttachmentMeta(
-        requestId,
-        '承認チェックリスト.pdf',
-        'application/pdf',
-        48_234,
-        'approver-sato',
-        '佐藤 花子',
-        '2025-01-30T03:15:00Z',
-      );
-      histories.push({
-        id: `hist-${requestId}-approve`,
-        statusAfter: 'approved',
-        action: 'approve',
-        actorId: 'approver-sato',
-        actorName: '佐藤 花子',
-        comment: '確認済み。承認チェックリストを添付しました。',
-        attachments: [approvalAttachment],
-        createdAt: Timestamp.fromDate(new Date('2025-01-30T03:20:00Z')),
-      });
-    }
-
-    if (status === 'remanded') {
-      const remandAttachment = this.createDemoAttachmentMeta(
-        requestId,
-        '差戻し指摘一覧.xlsx',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        34_122,
-        'manager-yamamoto',
-        '山本 美咲',
-        '2025-01-28T06:00:00Z',
-      );
-      histories.push({
-        id: `hist-${requestId}-remand`,
-        statusAfter: 'remanded',
-        action: 'remand',
-        actorId: 'manager-yamamoto',
-        actorName: '山本 美咲',
-        comment: '差戻し理由を添付しています。',
-        attachments: [remandAttachment],
-        createdAt: Timestamp.fromDate(new Date('2025-01-28T06:05:00Z')),
-      });
-    }
-
-    return histories;
-  }
-
-  private createDemoAttachments(
-    requestId: string,
-    uploaderId: string,
-    uploaderName: string,
-  ): ApprovalAttachmentMetadata[] {
-    return [
-      this.createDemoAttachmentMeta(
-        requestId,
-        '差分一覧.xlsx',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        22_034,
-        uploaderId,
-        uploaderName,
-        '2025-01-25T12:00:00Z',
-      ),
-      this.createDemoAttachmentMeta(
-        requestId,
-        '証跡.pdf',
-        'application/pdf',
-        125_678,
-        uploaderId,
-        uploaderName,
-        '2025-01-25T12:05:00Z',
-      ),
-    ];
-  }
-
-  private createDemoAttachmentMeta(
-    requestId: string,
-    name: string,
-    contentType: string,
-    size: number,
-    uploaderId: string,
-    uploaderName: string,
-    uploadedAt: string,
-  ): ApprovalAttachmentMetadata {
-    const extension = name.split('.').pop()?.toLowerCase() ?? '';
-    const encodedName = encodeURIComponent(name);
-    return {
-      id: `att-${requestId}-${encodedName}`,
-      name,
-      size,
-      contentType,
-      extension,
-      downloadUrl: `https://storage.googleapis.com/demo/${requestId}/${encodedName}`,
-      uploadedAt: Timestamp.fromDate(new Date(uploadedAt)),
-      uploaderId,
-      uploaderName,
-      storagePath: `demo/${requestId}/${name}`,
-    };
-  }
-
   private collectAttachments(histories: ApprovalHistory[]): ApprovalAttachmentMetadata[] {
     const map = new Map<string, ApprovalAttachmentMetadata>();
     histories.forEach((history) => {
@@ -388,30 +303,6 @@ export class ApprovalWorkflowService {
     return Array.from(map.values());
   }
 
-
-  private createNotificationsSnapshot(recipientId: string): ApprovalNotification[] {
-    const now = new Date();
-    return [
-      {
-        id: 'ntf-1',
-        requestId: 'APL-20250201-001',
-        recipientId,
-        message: 'APL-20250201-001 の一次承認依頼が届いています',
-        unread: true,
-        createdAt: new Date(now.getTime() - 15 * 60 * 1000),
-        type: 'info',
-      },
-      {
-        id: 'ntf-2',
-        requestId: 'APL-20250130-002',
-        recipientId,
-        message: 'APL-20250130-002 が承認済みになりました',
-        unread: false,
-        createdAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
-        type: 'success',
-      },
-    ];
-  }
 
   private startExpirationWatcher() {
     setInterval(() => {

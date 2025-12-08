@@ -1,23 +1,23 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, AbstractControl } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ROLE_DEFINITIONS, RoleDefinition, RoleKey } from '../models/roles';
 import { UserDirectoryService, AppUser } from '../auth/user-directory.service';
-import { firstValueFrom, Observable } from 'rxjs';
-import { RouterLink } from '@angular/router';
+import { debounceTime, distinctUntilChanged, firstValueFrom, map, Observable, of, Subject, switchMap, takeUntil } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
 
 @Component({
   selector: 'app-user-management',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
+  imports: [CommonModule, ReactiveFormsModule],
   templateUrl: './user-management.component.html',
   styleUrl: './user-management.component.scss',
 })
-export class UserManagementComponent {
+export class UserManagementComponent implements OnDestroy {
   private fb = inject(FormBuilder);
   private userDirectory = inject(UserDirectoryService);
   private authService = inject(AuthService);
+  private destroy$ = new Subject<void>();
 
   readonly users$: Observable<AppUser[]> = this.userDirectory.getUsers();
   readonly roleDefinitions: RoleDefinition[] = ROLE_DEFINITIONS;
@@ -27,53 +27,54 @@ export class UserManagementComponent {
   form: FormGroup = this.fb.group({
     email: ['', [Validators.required, Validators.email]],
     displayName: ['', [Validators.required]],
-    roles: this.fb.control<RoleKey[]>([RoleKey.Guest], [this.requireAtLeastOneRole]),
+    role: this.fb.control<RoleKey>(RoleKey.Guest, [Validators.required]),
   });
 
   statusMessage = '';
-  selectedUser?: AppUser;
+  submitted = false;
 
-  private requireAtLeastOneRole(control: AbstractControl<RoleKey[] | null>) {
-    const roles = control.value ?? [];
-    return roles.length ? null : { roleRequired: true };
-  }
-
-  selectUser(user: AppUser) {
-    this.selectedUser = user;
-    this.form.setValue({
-      email: user.email,
-      displayName: user.displayName ?? '',
-      roles: user.roles?.length ? user.roles : [RoleKey.Guest],
-    });
-    this.statusMessage = `選択中: ${user.email}`;
+  constructor() {
+    this.setupEmailPrefill();
   }
 
   resetForm() {
-    this.selectedUser = undefined;
-    this.form.reset({ email: '', displayName: '', roles: [RoleKey.Guest] });
+    this.form.reset({ email: '', displayName: '', role: RoleKey.Guest });
+    this.submitted = false;
     this.statusMessage = '';
   }
 
   async saveUser() {
+    this.submitted = true;
     const canEdit = await firstValueFrom(this.canEdit$);
     if (!canEdit) {
       this.statusMessage = 'システム管理者のみユーザー情報を更新できます';
       return;
     }
 
-    if (this.form.invalid || !this.form.value.roles?.length) {
-      this.statusMessage = 'メール・表示名・ロールを正しく入力し、1件以上のロールを付与してください';
+    if (this.form.invalid || !this.form.value.role) {
+      this.statusMessage = 'メール・表示名を正しく入力してください';
       return;
     }
 
+    const email = this.form.value.email?.trim().toLowerCase();
+    const existingUser = await firstValueFrom(this.userDirectory.getUserByEmail(email));
+
     const payload: AppUser = {
       ...this.form.value,
-      roles: this.form.value.roles?.length ? this.form.value.roles : [RoleKey.Guest],
+      roles: [this.form.value.role ?? RoleKey.Guest],
     } as AppUser;
 
     await this.userDirectory.saveUser(payload);
-    this.statusMessage = `${payload.email} を保存しました`;
-    this.resetForm();
+    
+    if (existingUser) {
+      this.statusMessage = `${payload.email} を更新しました`;
+    } else {
+      this.statusMessage = `${payload.email} を新規登録しました`;
+    }
+    
+    // フォームのみリセット（メッセージは残す）
+    this.form.reset({ email: '', displayName: '', role: RoleKey.Guest });
+    this.submitted = false;
   }
 
   async deleteUser(user: AppUser) {
@@ -84,26 +85,33 @@ export class UserManagementComponent {
     }
     await this.userDirectory.deleteUser(user.email);
     this.statusMessage = `${user.email} を削除しました`;
-    if (this.selectedUser?.email === user.email) {
-      this.resetForm();
-    }
   }
 
-  isRoleSelected(role: RoleKey): boolean {
-    return this.form.value.roles?.includes(role) ?? false;
-  }
-
-  toggleRole(role: RoleKey) {
-    const roles: RoleKey[] = this.form.value.roles ?? [];
-    if (roles.includes(role)) {
-        if (roles.length === 1) {
-            this.statusMessage = '最低1つのロールを付与してください';
-            return;
-          }
-      this.form.patchValue({ roles: roles.filter((r) => r !== role) });
-    } else {
-      this.form.patchValue({ roles: [...roles, role] });
+  async deleteByEmailInput() {
+    const canEdit = await firstValueFrom(this.canEdit$);
+    if (!canEdit) {
+      this.statusMessage = 'システム管理者のみユーザー削除が可能です';
+      return;
     }
+
+    const emailControl = this.form.get('email');
+    const email = emailControl?.value?.trim().toLowerCase();
+
+    if (!email || emailControl?.invalid) {
+      this.statusMessage = '削除するメールアドレスを正しく入力してください';
+      return;
+    }
+
+    const existingUser = await firstValueFrom(this.userDirectory.getUserByEmail(email));
+    if (!existingUser) {
+      this.statusMessage = `${email} のアカウントは見つかりませんでした`;
+      return;
+    }
+
+    await this.userDirectory.deleteUser(email);
+    this.statusMessage = `${email} を削除しました`;
+    this.form.reset({ email: '', displayName: '', role: RoleKey.Guest });
+    this.submitted = false;
   }
 
   getRoleNames(roles: RoleKey[] | null | undefined): string {
@@ -115,5 +123,30 @@ export class UserManagementComponent {
 
   getRoleLabel(role: RoleKey): string {
     return this.roleDefinitions.find((r) => r.key === role)?.name ?? role;
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  private setupEmailPrefill() {
+    const emailControl = this.form.get('email');
+    const displayControl = this.form.get('displayName');
+    if (!emailControl || !displayControl) return;
+
+    emailControl.valueChanges
+      .pipe(
+        debounceTime(300),
+        map((value) => (value || '').trim().toLowerCase()),
+        distinctUntilChanged(),
+        switchMap((email) => (email ? this.userDirectory.getUserByEmail(email) : of(undefined))),
+        takeUntil(this.destroy$),
+      )
+      .subscribe((user) => {
+        if (user?.displayName && !displayControl.value) {
+          displayControl.setValue(user.displayName);
+        }
+      });
   }
 }

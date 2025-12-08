@@ -2,7 +2,7 @@ import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, OnDestroy, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subscription, firstValueFrom, interval, map, switchMap, tap } from 'rxjs';
+import { combineLatest, Subscription, firstValueFrom, interval, map, switchMap, tap } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
 import {
   ApprovalNotification,
@@ -15,10 +15,10 @@ import {
 } from '../models/approvals';
 import { ApprovalNotificationService } from './approval-notification.service';
 import { ApprovalWorkflowService } from './approval-workflow.service';
-import { ApprovalAttachmentService } from './approval-attachment.service';
 import { RoleKey } from '../models/roles';
+import { UserDirectoryService } from '../auth/user-directory.service';
 
-type EmployeeStatus = 'OK' | '警告';
+type EmployeeStatus = 'OK' | '警告' | 'エラー';
 
 interface ApprovalDetailEmployee {
   employeeNo: string;
@@ -39,59 +39,90 @@ export class ApprovalDetailComponent implements OnDestroy {
   private notificationService = inject(ApprovalNotificationService);
   private route = inject(ActivatedRoute);
   private authService = inject(AuthService);
-  readonly attachmentService = inject(ApprovalAttachmentService);
+  private userDirectory = inject(UserDirectoryService);
 
   approval?: ApprovalRequest;
   private subscription: Subscription;
 
-  employees: ApprovalDetailEmployee[] = [
-    {
-      employeeNo: 'E202501',
-      name: '佐藤 花子',
-      status: 'OK',
-      diffs: [
-        { field: '標準報酬月額', oldValue: '420,000円', newValue: '430,000円' },
-        { field: '健康保険区分', oldValue: '一般', newValue: '一般' },
-      ],
-    },
-    {
-      employeeNo: 'E202507',
-      name: '加藤 真由',
-      status: '警告',
-      diffs: [
-        { field: '住所', oldValue: '東京都渋谷区', newValue: '東京都渋谷区代々木' },
-        { field: '標準報酬月額', oldValue: '410,000円', newValue: '380,000円（要確認）' },
-      ],
-    },
-    {
-      employeeNo: 'E202512',
-      name: '渡辺 光',
-      status: 'OK',
-      diffs: [
-        { field: '生年月日', oldValue: '1984/04/03', newValue: '1984/04/03' },
-        { field: '扶養区分', oldValue: '配偶者あり', newValue: '配偶者あり' },
-      ],
-    },
-  ];
+  employees: ApprovalDetailEmployee[] = [];
 
   selectedEmployee?: ApprovalDetailEmployee;
   showDiffModal = false;
   approvalComment = '';
-  selectedFiles: File[] = [];
-  validationErrors: string[] = [];
-  uploading = false;
 
   toasts: { message: string; type: 'info' | 'success' | 'warning' }[] = [];
 
-  readonly approval$ = this.route.paramMap.pipe(
-    map((params) => params.get('id')),
-    switchMap((id) => this.workflowService.getRequest(id)),
+  readonly approval$ = combineLatest([
+    this.route.paramMap.pipe(
+      map((params) => params.get('id')),
+      switchMap((id) => this.workflowService.getRequest(id)),
+    ),
+    this.userDirectory.getUsers(),
+  ]).pipe(
+    map(([approval, users]) => {
+      if (!approval) return null;
+      const userMap = new Map(users.map(u => [u.email.toLowerCase(), u.displayName || u.email]));
+      return {
+        ...approval,
+        applicantDisplayName: userMap.get(approval.applicantId.toLowerCase()) || approval.applicantName || approval.applicantId,
+        stepsWithDisplayNames: approval.steps.map(step => ({
+          ...step,
+          approverDisplayName: step.approverId 
+            ? (userMap.get(step.approverId.toLowerCase()) || step.approverName || step.approverId)
+            : step.approverName,
+        })),
+        attachmentsWithDisplayNames: (approval.attachments || []).map(attachment => ({
+          ...attachment,
+          uploaderDisplayName: attachment.uploaderId
+            ? (userMap.get(attachment.uploaderId.toLowerCase()) || attachment.uploaderName || attachment.uploaderId)
+            : attachment.uploaderName || attachment.uploaderId,
+        })),
+        historiesWithDisplayNames: [...(approval.histories || [])]
+          .map(history => ({
+            ...history,
+            actorDisplayName: userMap.get(history.actorId.toLowerCase()) || history.actorName || history.actorId,
+          }))
+          .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()),
+      };
+    }),
     tap((approval) => {
-      this.approval = approval;
+      this.approval = approval || undefined;
+      if (approval?.employeeDiffs) {
+        this.employees = approval.employeeDiffs.map((diff) => ({
+          employeeNo: diff.employeeNo,
+          name: diff.name,
+          status: diff.status === 'warning' ? '警告' : diff.status === 'error' ? 'エラー' : 'OK',
+          diffs: diff.changes.map((change) => ({
+            field: change.field,
+            oldValue: change.oldValue ?? '',
+            newValue: change.newValue ?? '',
+          })),
+        }));
+      } else {
+        this.employees = [];
+      }
     }),
   );
 
-  readonly canApprove$ = this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver]);
+  readonly canApprove$ = combineLatest([
+    this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver]),
+    this.authService.user$,
+    this.approval$,
+  ]).pipe(
+    map(([roleAllowed, user, approval]) => {
+      if (!roleAllowed || !approval?.currentStep) return false;
+      const email = user?.email?.toLowerCase();
+      if (!email) return false;
+
+      const flowStep = approval.flowSnapshot?.steps.find((s) => s.order === approval.currentStep);
+      const candidateIds = flowStep?.candidates?.map((c) => c.id.toLowerCase()) ?? [];
+      const currentStepState = approval.steps.find((s) => s.stepOrder === approval.currentStep);
+      const assignedApprover = currentStepState?.approverId?.toLowerCase();
+
+      return candidateIds.includes(email) || assignedApprover === email;
+    }),
+  );
+  readonly isOperator$ = this.authService.hasAnyRole([RoleKey.Operator]);
 
   private expiryWatcher = interval(30_000)
     .pipe(
@@ -160,29 +191,6 @@ export class ApprovalDetailComponent implements OnDestroy {
     this.selectedEmployee = undefined;
   }
 
-  onFileSelected(event: Event) {
-    const input = event.target as HTMLInputElement;
-    const files = Array.from(input.files ?? []);
-    if (!files.length) {
-      input.value = '';
-      return;
-    }
-    const merged = [...this.selectedFiles, ...files];
-    const validation = this.attachmentService.validateFiles(merged);
-    this.validationErrors = validation.errors;
-
-    if (!validation.valid) {
-      validation.errors.forEach((error) => this.addToast(error, 'warning'));
-    }
-
-    this.selectedFiles = validation.files;
-    input.value = '';
-  }
-
-  removeFile(index: number) {
-    this.selectedFiles.splice(index, 1);
-    this.selectedFiles = [...this.selectedFiles];
-  }
 
   addToast(message: string, type: 'info' | 'success' | 'warning' = 'info') {
     const toast = { message, type };
@@ -195,15 +203,9 @@ export class ApprovalDetailComponent implements OnDestroy {
     }, 3800);
   }
 
-  isOverdue(approval: ApprovalRequest): boolean {
-    if (!approval.dueDate) return false;
+  isOverdue(approval: ApprovalRequest | undefined): boolean {
+    if (!approval?.dueDate) return false;
     return approval.status === 'pending' && approval.dueDate.toDate().getTime() < Date.now();
-  }
-
-  historyItems(current: ApprovalRequest): ApprovalHistory[] {
-    return [...(current.histories ?? [])].sort(
-      (a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime(),
-    );
   }
 
   formatFileSize(size: number): string {
@@ -216,9 +218,6 @@ export class ApprovalDetailComponent implements OnDestroy {
     return `${size} B`;
   }
 
-  totalSelectedSize(): number {
-    return this.selectedFiles.reduce((sum, file) => sum + file.size, 0);
-  }
 
 
   stepLabel(step: ApprovalStepState): string {
@@ -246,25 +245,13 @@ export class ApprovalDetailComponent implements OnDestroy {
     const user = await firstValueFrom(this.authService.user$);
     const approverId = user?.email ?? 'demo-approver';
     const approverName = user?.displayName ?? user?.email ?? 'デモ承認者';
+    const canApprove = await firstValueFrom(this.canApprove$);
+    if (!canApprove) {
+      this.addToast('承認候補者ではないため操作できません。', 'warning');
+      return;
+    }
 
-    this.uploading = true;
     try {
-      let uploaded: ApprovalAttachmentMetadata[] = [];
-      if (this.selectedFiles.length) {
-        const validation = this.attachmentService.validateFiles(this.selectedFiles);
-        this.validationErrors = validation.errors;
-        if (!validation.valid) {
-          validation.errors.forEach((error) => this.addToast(error, 'warning'));
-          return;
-        }
-        uploaded = await this.attachmentService.upload(
-          this.approval.id,
-          validation.files,
-          approverId,
-          approverName,
-        );
-      }
-
       const result =
         action === 'approve'
           ? await this.workflowService.approve(
@@ -272,25 +259,20 @@ export class ApprovalDetailComponent implements OnDestroy {
               approverId,
               approverName,
               this.approvalComment,
-              uploaded,
+              [],
             )
           : await this.workflowService.remand(
               this.approval.id,
               approverId,
               approverName,
               this.approvalComment,
-              uploaded,
+              [],
             );
 
       if (!result) return;
       const actionText = action === 'approve' ? '承認しました' : '差戻しました';
       this.addToast(`申請を${actionText}（コメント: ${this.approvalComment || 'なし'}）`, 'success');
-      if (uploaded.length) {
-        this.addToast(`添付 ${uploaded.length} 件を履歴に保存しました。`, 'info');
-      }
       this.approvalComment = '';
-      this.selectedFiles = [];
-      this.validationErrors = [];
 
       const applicantNotification: ApprovalNotification = {
         id: `ntf-${Date.now()}`,
@@ -322,8 +304,6 @@ export class ApprovalDetailComponent implements OnDestroy {
     } catch (error) {
       console.error('approval action failed', error);
       this.addToast('承認処理中にエラーが発生しました。', 'warning');
-    } finally {
-      this.uploading = false;
     }
   }
 }

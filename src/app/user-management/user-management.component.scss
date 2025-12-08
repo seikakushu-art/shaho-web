@@ -26,6 +26,24 @@
     gap: 12px;
   }
   
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title-with-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.edit-note {
+  color: #6b7280;
+  font-size: 13px;
+}
+
   .eyebrow {
     font-size: 12px;
     letter-spacing: 0.1em;
@@ -105,6 +123,7 @@
     padding: 10px 16px;
     border-radius: 8px;
     cursor: pointer;
+    white-space: nowrap;
   }
   
   button.ghost {
@@ -127,6 +146,12 @@
   .status {
     color: #047857;
     font-weight: 600;
+    padding: 8px 12px;
+    background: #ecfdf3;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    display: inline-block;
+    white-space: nowrap;
   }
   
   .user-list {
@@ -138,13 +163,17 @@
   .user {
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-    padding: 12px;
+  padding: 8px 12px;
     display: grid;
     grid-template-columns: 2fr 1fr auto;
-    gap: 12px;
+  gap: 8px;
     align-items: center;
   }
   
+.user h3 {
+  margin: 0;
+}
+
   .user:hover {
     background: #f9fafb;
   }

@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subject, of, switchMap, takeUntil, firstValueFrom } from 'rxjs';
 import { ShahoEmployee, ShahoEmployeesService, PayrollData } from '../app/services/shaho-employees.service';
+import { AuthService } from '../auth/auth.service';
+import { RoleKey } from '../models/roles';
 
 interface AuditInfo {
   registeredAt: string;
@@ -65,6 +67,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     private route = inject(ActivatedRoute);
     private router = inject(Router);
     private employeesService = inject(ShahoEmployeesService);
+    private authService = inject(AuthService);
     private destroy$ = new Subject<void>();
   tabs = [
     { key: 'basic', label: '基本情報' },
@@ -193,6 +196,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   ];
 
   groupedHistory: HistoryRecord[] = [];
+
+  readonly canManage$ = this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Operator]);
 
   ngOnInit(): void {
     this.refreshDisplayedMonths();

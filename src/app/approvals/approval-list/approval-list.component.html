@@ -1,27 +1,45 @@
 <section class="approval-list">
     <header class="page-header">
       <div>
-        <p class="eyebrow">承認ワークフロー</p>
-        <h1>承認一覧</h1>
-        <p class="hint">担当する申請のステータスと承認ステップを確認し、行クリックで詳細へ遷移できます。</p>
+        <h1>承認/申請一覧</h1>
       </div>
       <p class="hint">最新の申請から表示しています。</p>
     </header>
   
-    <section class="card table-card">
-      <header>
-        <div>
-          <p class="eyebrow">申請一覧</p>
-          <h2>承認待ち・履歴</h2>
+    <section class="card filter-card">
+      <div class="filter-row">
+        <div class="filter-group">
+          <label for="flow-filter">承認フロー</label>
+          <select id="flow-filter" [(ngModel)]="selectedFlowId" class="filter-select">
+            <option [ngValue]="null">すべて</option>
+            <option *ngFor="let flow of flows$ | async" [ngValue]="flow.id">{{ flow.name }}</option>
+          </select>
         </div>
-        <p class="hint">クリックで申請詳細へ。差戻しはコメントを確認してください。</p>
-      </header>
+        <div class="filter-group">
+          <label for="category-filter">区分</label>
+          <select id="category-filter" [(ngModel)]="selectedCategory" class="filter-select">
+            <option [ngValue]="null">すべて</option>
+            <option *ngFor="let category of categories" [ngValue]="category">{{ category }}</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="applicant-filter">申請者</label>
+          <select id="applicant-filter" [(ngModel)]="selectedApplicantId" class="filter-select">
+            <option [ngValue]="null">すべて</option>
+            <option *ngFor="let applicant of applicants$ | async" [ngValue]="applicant.id">{{ applicant.displayName }}</option>
+          </select>
+        </div>
+        <button type="button" class="clear-filters-btn" (click)="clearFilters()">フィルターをクリア</button>
+      </div>
+    </section>
+
+    <section class="card table-card">
   
       <div class="table-wrapper" *ngIf="approvals$ | async as approvals">
         <table>
           <thead>
             <tr>
-              <th>申請ID</th>
+              <th>承認フロー</th>
               <th>区分</th>
               <th>対象社員件数</th>
               <th>申請者</th>
@@ -32,12 +50,12 @@
           </thead>
           <tbody>
             <tr *ngFor="let approval of approvals" (click)="onRowClick(approval)">
-              <td class="id-cell">{{ approval.id }}</td>
+              <td class="id-cell">{{ approval.flowSnapshot?.name || '-' }}</td>
               <td>
                 <span class="badge" [class]="categoryClass(approval.category)">{{ approval.category }}</span>
               </td>
               <td class="numeric">{{ approval.targetCount }} 件</td>
-              <td>{{ approval.applicantName }}</td>
+              <td>{{ approval.applicantDisplayName }}</td>
               <td>{{ approval.createdAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }}</td>
               <td class="numeric">{{ approval.currentStep || '-' }}</td>
               <td>

@@ -5,7 +5,6 @@
           <h2>承認フロー一覧</h2>
           <p class="hint">最大{{ maxSteps }}ステップまで登録可能。候補者・自動進行もここで管理します。</p>
         </div>
-        <button type="button" class="secondary" (click)="resetForm()">新規作成</button>
       </header>
   
       <div *ngIf="flows.length; else noFlow">
@@ -14,7 +13,6 @@
             <tr>
               <th>フロー名</th>
               <th>ステップ</th>
-              <th>直申許可</th>
               <th>最終更新</th>
               <th></th>
             </tr>
@@ -26,9 +24,6 @@
                 <div class="steps">{{ flow.steps.length }}ステップ / {{ flowStepNames(flow) }}</div>
               </td>
               <td>{{ flow.steps.length }}</td>
-              <td>
-                <span class="pill" [class.enabled]="flow.allowDirectApply">{{ flow.allowDirectApply ? '有効' : '無効' }}</span>
-              </td>
               <td>
                 <span *ngIf="flow.updatedAt as updated">{{ updated.toDate() | date: 'yyyy/MM/dd HH:mm' }}</span>
                 <span *ngIf="!flow.updatedAt" class="muted">未設定</span>
@@ -50,7 +45,6 @@
       <header>
         <div>
           <h2>{{ editing ? '承認フロー編集' : '承認フロー新規作成' }}</h2>
-          <p class="hint">候補者は社員マスタから選択。自動進行(autoAdvance)で候補者未指定の場合はスキップ扱い。</p>
         </div>
         <button type="button" class="secondary" (click)="resetForm()">クリア</button>
       </header>
@@ -60,12 +54,7 @@
           <span>フロー名</span>
           <input type="text" [(ngModel)]="draft.name" name="name" placeholder="例: 給与・社保承認フロー" required />
         </label>
-  
-        <label class="checkbox">
-          <input type="checkbox" [(ngModel)]="draft.allowDirectApply" name="allowDirectApply" />
-          <span>オペレーター/承認者による即時反映（直申）を許可する</span>
-        </label>
-  
+
         <div class="steps-block">
           <div class="block-header">
             <h3>ステップ（最大{{ maxSteps }}）</h3>
@@ -91,8 +80,8 @@
               <span>候補者</span>
               <div class="candidate-input">
                 <select [(ngModel)]="candidateInputs[step.order]" name="candidate-{{ i }}">
-                  <option [ngValue]="''">社員を選択</option>
-                  <option *ngFor="let emp of employees" [ngValue]="emp.id">{{ emp.displayName }}</option>
+                  <option [ngValue]="''">ユーザーを選択</option>
+                  <option *ngFor="let user of users" [ngValue]="user.id">{{ user.displayName }}</option>
                 </select>
                 <button type="button" (click)="addCandidate(step, candidateInputs[step.order])" [disabled]="!candidateInputs[step.order]">追加</button>
               </div>
@@ -104,11 +93,6 @@
                 <span class="muted" *ngIf="!step.candidates.length">候補者未設定</span>
               </div>
             </div>
-  
-            <label class="checkbox">
-              <input type="checkbox" [(ngModel)]="step.autoAdvance" name="auto-{{ i }}" />
-              <span>autoAdvance（承認者が1人の場合は自動進行）</span>
-            </label>
           </article>
         </div>
   

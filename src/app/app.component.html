@@ -5,8 +5,15 @@
       <p class="title">社会保険管理</p>
     </div>
   </div>
+  <nav class="main-nav" *ngIf="guestNavigable$ | async">
+    <a routerLink="/dashboard">ダッシュボード</a>
+    <a routerLink="/approvals" *appHasRole="[RoleKey.SystemAdmin, RoleKey.Approver, RoleKey.Operator]">
+      承認一覧
+    </a>
+    <a routerLink="/employees">社員一覧</a>
+  </nav>
   <div class="actions" *ngIf="user$ | async as user">
-    <span>{{ getUserDisplayName(user) }}</span>
+    <span>{{ userDisplayName$ | async }}</span>
     <span class="separator">|</span>
     <span class="roles" *ngIf="roleDefinitions$ | async as roleDefinitions">
       {{ getRoleNames(roleDefinitions) }}

@@ -3,6 +3,8 @@ import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
+import { AuthService } from '../../auth/auth.service';
+import { RoleKey } from '../../models/roles';
 import {
   ShahoEmployee,
   ShahoEmployeesService,
@@ -35,7 +37,14 @@ interface SearchCondition {
 export class EmployeeListComponent implements OnInit, OnDestroy {
     private router = inject(Router);
     private employeesService = inject(ShahoEmployeesService);
+    private authService = inject(AuthService);
     private destroy$ = new Subject<void>();
+    // 承認者もCSV出力を実行できるよう許可対象に含める
+    readonly canManage$ = this.authService.hasAnyRole([
+      RoleKey.SystemAdmin,
+      RoleKey.Operator,
+      RoleKey.Approver,
+    ]);
 
   departments: string[] = [];
 

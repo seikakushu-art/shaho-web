@@ -5,7 +5,8 @@ import { routes } from './app.routes';
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { provideFirebaseApp } from '@angular/fire/app';
 
-import { getAuth, provideAuth } from '@angular/fire/auth';
+import { provideAuth } from '@angular/fire/auth';
+import { browserSessionPersistence, getAuth, initializeAuth } from 'firebase/auth';
 
 import { provideFirestore } from '@angular/fire/firestore';
 import { initializeFirestore } from 'firebase/firestore'; // ← v10 でOK
@@ -41,7 +42,16 @@ export const appConfig: ApplicationConfig = {
       }),
     ),
 
-    provideAuth(() => getAuth()),
+    // セッション単位（タブ単位）で認証状態を分離する
+    provideAuth(() => {
+      const app = getApp();
+      try {
+        return initializeAuth(app, { persistence: browserSessionPersistence });
+      } catch {
+        // 既に初期化済みの場合は既存インスタンスを利用
+        return getAuth(app);
+      }
+    }),
     // Storage をアプリ全体で利用できるように設定
     provideStorage(() => getStorage()),
   ],

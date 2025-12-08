@@ -1,9 +1,7 @@
 <section class="approval-detail" *ngIf="approval$ | async as current">
   <header class="page-header">
     <div>
-      <p class="eyebrow">承認ワークフロー</p>
       <h1>承認詳細</h1>
-      <p class="hint">新しい承認モデルで各ステップの状況と候補者を確認できます。</p>
     </div>
     <a class="text-link" routerLink="/approvals">一覧へ戻る</a>
   </header>
@@ -11,39 +9,44 @@
   <section class="card application-summary">
     <div class="summary-header">
       <div>
-        <p class="eyebrow">申請情報</p>
-        <h2>{{ current.id }}</h2>
-        <p class="hint">申請コメント: {{ current.comment }}</p>
+        <h2>{{ current.flowSnapshot?.name || '未設定' }}</h2>
       </div>
       <span class="status" [class]="requestStatusClass(current.status)">{{ requestStatusLabel(current.status) }}</span>
     </div>
+    <div class="comment-box" *ngIf="current.comment">
+      <p class="comment-label">申請コメント</p>
+      <p class="comment-text">{{ current.comment }}</p>
+    </div>
 
     <dl class="summary-grid">
-      <div>
+      <div class="summary-item-small">
         <dt>区分</dt>
         <dd>{{ current.category }}</dd>
       </div>
-      <div>
-        <dt>対象件数</dt>
-        <dd>{{ current.targetCount }} 件</dd>
-      </div>
-      <div>
+      <div class="summary-item-small">
         <dt>申請者</dt>
-        <dd>{{ current.applicantName }}</dd>
+        <dd>{{ current.applicantDisplayName }}</dd>
       </div>
-      <div>
+      <div class="summary-item-small">
         <dt>申請日時</dt>
         <dd>{{ current.createdAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }}</dd>
       </div>
-      <div>
-        <dt>期限</dt>
+      <div class="summary-item-large">
+        <dt>添付ファイル</dt>
         <dd>
-          <span [class.warning]="isOverdue(current)">{{ current.dueDate?.toDate() | date: 'yyyy/MM/dd' }}</span>
+          <div class="attachment-pill-row" *ngIf="current.attachmentsWithDisplayNames?.length; else noAttachments">
+            <a
+              *ngFor="let attachment of current.attachmentsWithDisplayNames"
+              class="pill attachment-pill"
+              [href]="attachment.downloadUrl"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {{ attachment.name }}
+            </a>
+          </div>
+          <ng-template #noAttachments>-</ng-template>
         </dd>
-      </div>
-      <div>
-        <dt>現在ステップ</dt>
-        <dd>{{ current.currentStep || '-' }}</dd>
       </div>
     </dl>
   </section>
@@ -72,38 +75,61 @@
   <section class="card">
     <header class="section-header">
       <div>
-        <p class="eyebrow">ステップ状況</p>
-        <h2>最大 5 ステップ、自動遷移対応</h2>
+        <h2>承認状況</h2>
       </div>
-      <p class="hint">同一ステップは 1 名承認で完了し、次ステップへ自動遷移します。</p>
+      <p class="hint">ステップは 1 名承認で完了し、次ステップへ自動遷移します。</p>
     </header>
 
-    <ul class="step-list">
-      <li *ngFor="let step of current.steps">
-        <div class="step-row">
-          <div>
-            <p class="eyebrow">ステップ {{ step.stepOrder }}</p>
-            <h3>{{ current?.flowSnapshot?.steps?.[step.stepOrder - 1]?.name || '未設定' }}</h3>
-            <p class="hint">候補者: {{ candidateNames(step.stepOrder) }}</p>
-          </div>
-          <span class="status" [class]="statusClass(step.status)">{{ stepLabel(step) }}</span>
-        </div>
-        <p class="hint" *ngIf="step.approverName">{{ step.approverName }}: {{ step.comment || 'コメントなし' }}</p>
-      </li>
-    </ul>
+    <div class="table-wrapper">
+      <table class="step-table">
+        <thead>
+          <tr>
+            <th>ステップ</th>
+            <th>ステップ名</th>
+            <th>承認候補者</th>
+            <th>承認者</th>
+            <th>コメント</th>
+            <th>ステータス</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let step of current.stepsWithDisplayNames">
+            <td>{{ step.stepOrder }}</td>
+            <td>{{ current?.flowSnapshot?.steps?.[step.stepOrder - 1]?.name || '未設定' }}</td>
+            <td>
+              <div class="candidate-cell">
+                <div class="candidate-list" *ngIf="current?.flowSnapshot?.steps?.[step.stepOrder - 1]?.candidates?.length; else noCandidates">
+                  <span
+                    class="candidate-pill"
+                    *ngFor="let candidate of current?.flowSnapshot?.steps?.[step.stepOrder - 1]?.candidates"
+                  >
+                    {{ candidate.displayName }}
+                  </span>
+                </div>
+                <ng-template #noCandidates>-</ng-template>
+              </div>
+            </td>
+            <td>{{ step.approverDisplayName || '-' }}</td>
+            <td>{{ step.comment || '-' }}</td>
+            <td>
+              <span class="status" [class]="statusClass(step.status)">{{ stepLabel(step) }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <section class="card">
     <header class="section-header">
       <div>
-        <p class="eyebrow">対象社員</p>
         <h2>差分一覧</h2>
       </div>
-      <p class="hint">社員行をクリックすると、差分モーダルで変更内容を強調表示します。</p>
+      <p class="hint">クリックして、変更内容を確認できます。</p>
     </header>
 
     <div class="table-wrapper">
-      <table>
+      <table class="step-table">
         <thead>
           <tr>
             <th>社員番号</th>
@@ -128,80 +154,18 @@
     </div>
   </section>
 
-  <section class="card attachment-card">
+  <section class="card action-card" *ngIf="!(isOperator$ | async)">
     <header class="section-header">
       <div>
-        <p class="eyebrow">添付ファイル</p>
-        <h2>承認の根拠をアップロード</h2>
+        <h2>承認/差戻しコメント</h2>
       </div>
-      <p class="hint">PDF／Office／画像のみ。1件10MB以内・最大5件・合計30MBまでアップロードできます。</p>
-    </header>
-
-    <div class="upload-grid">
-      <div class="upload-box">
-        <p class="hint">危険拡張子（exe/js/sh 等）は拒否されます。拡張子と容量を確認してから添付してください。</p>
-        <label class="upload-button">
-          <input
-            type="file"
-            multiple
-            (change)="onFileSelected($event)"
-            [accept]="attachmentService.acceptExtensions"
-            [disabled]="current.status !== 'pending' || uploading || !(canApprove$ | async)"
-          />
-          ファイルを選択
-        </label>
-        <p class="hint">合計サイズ: {{ formatFileSize(totalSelectedSize()) }}</p>
-        <p class="hint warning" *ngIf="validationErrors.length">{{ validationErrors[0] }}</p>
-      </div>
-
-      <div class="selected-files" *ngIf="selectedFiles.length">
-        <h3>アップロード予定 ({{ selectedFiles.length }}件)</h3>
-        <ul>
-          <li *ngFor="let file of selectedFiles; let i = index">
-            <div>
-              <p class="file-name">{{ file.name }}</p>
-              <p class="hint">{{ formatFileSize(file.size) }}</p>
-            </div>
-            <button type="button" class="ghost" (click)="removeFile(i)" [disabled]="!(canApprove$ | async)">
-              削除
-            </button>
-          </li>
-        </ul>
-      </div>
-
-      <div class="selected-files" *ngIf="current.attachments?.length">
-        <h3>登録済みファイル ({{ current.attachments?.length || 0 }}件)</h3>
-        <ul>
-          <li *ngFor="let attachment of current.attachments ?? []">
-            <div>
-              <a class="file-name" [href]="attachment.downloadUrl" target="_blank" rel="noreferrer">{{ attachment.name }}</a>
-              <p class="hint">
-                {{ attachment.uploaderName || attachment.uploaderId }} /
-                {{ attachment.uploadedAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }} /
-                {{ formatFileSize(attachment.size) }}
-              </p>
-            </div>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </section>
-
-  <section class="card action-card">
-    <header class="section-header">
-      <div>
-        <p class="eyebrow">承認アクション</p>
-        <h2>コメントを残して意思決定</h2>
-      </div>
-      <p class="hint">申請者と次ステップの承認者へバッジ／トーストで通知します。</p>
-      <p class="hint warning" *ngIf="!(canApprove$ | async)">承認・差戻しは承認者／システム管理者のみ実行できます。</p>
     </header>
 
     <textarea
       [(ngModel)]="approvalComment"
       rows="4"
       placeholder="確認内容や差戻し理由を入力してください"
-      [disabled]="current.status !== 'pending' || uploading || !(canApprove$ | async)"
+      [disabled]="current.status !== 'pending' || !(canApprove$ | async)"
     ></textarea>
 
     <div class="action-buttons">
@@ -209,7 +173,7 @@
         type="button"
         class="ghost"
         (click)="saveApproval('remand')"
-        [disabled]="current.status !== 'pending' || uploading || !(canApprove$ | async)"
+        [disabled]="current.status !== 'pending' || !(canApprove$ | async)"
       >
         差戻し
       </button>
@@ -217,45 +181,11 @@
         type="button"
         class="primary"
         (click)="saveApproval('approve')"
-        [disabled]="current.status !== 'pending' || uploading || !(canApprove$ | async)"
+        [disabled]="current.status !== 'pending' || !(canApprove$ | async)"
       >
         承認
       </button>
     </div>
-  </section>
-  <section class="card" *ngIf="current.histories?.length">
-    <header class="section-header">
-      <div>
-        <p class="eyebrow">履歴と添付</p>
-        <h2>どの資料を見て判断したかを可視化</h2>
-      </div>
-      <p class="hint">ステータス遷移ごとにアップロードされたファイルを保持し、後から根拠を確認できます。</p>
-    </header>
-
-    <ul class="history-list">
-      <li *ngFor="let history of historyItems(current)">
-        <div class="history-header">
-          <div>
-            <p class="eyebrow">{{ history.action | uppercase }} → {{ requestStatusLabel(history.statusAfter) }}</p>
-            <h3>{{ history.actorName }}</h3>
-            <p class="hint">{{ history.createdAt.toDate() | date: 'yyyy/MM/dd HH:mm' }}</p>
-          </div>
-          <span class="status" [class]="requestStatusClass(history.statusAfter)">{{ requestStatusLabel(history.statusAfter) }}</span>
-        </div>
-        <p class="hint">コメント: {{ history.comment || 'なし' }}</p>
-        <div class="attachment-pill-row" *ngIf="history.attachments?.length">
-          <a
-            *ngFor="let attachment of history.attachments"
-            class="pill attachment-pill"
-            [href]="attachment.downloadUrl"
-            target="_blank"
-            rel="noreferrer"
-          >
-            {{ attachment.name }} ({{ formatFileSize(attachment.size) }})
-          </a>
-        </div>
-      </li>
-    </ul>
   </section>
 </section>
 
@@ -263,12 +193,10 @@
   <div class="modal-content">
     <header>
       <div>
-        <p class="eyebrow">差分モーダル</p>
         <h3>{{ target.employeeNo }} {{ target.name }}</h3>
       </div>
       <button type="button" (click)="closeDiffModal()">閉じる</button>
     </header>
-    <p class="hint">旧値と新値を並べ、差分を強調表示しています。</p>
 
     <ul class="diff-list">
       <li *ngFor="let diff of target.diffs">

@@ -38,6 +38,8 @@ export class AuthService {
   ]).pipe(
     map(([role]) => this.getRoleDefinition(role) ?? this.getRoleDefinition(RoleKey.Guest)!),
   );
+  // 互換用エイリアス（古いコード向け）
+  readonly role$: Observable<RoleDefinition> = this.roleDefinition$;
   readonly roleDefinitions$: Observable<RoleDefinition[]> = this.userRoles$.pipe(
     map((roles) => (roles.length ? roles : [RoleKey.Guest])),
     map((roles) =>

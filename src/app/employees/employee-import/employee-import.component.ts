@@ -68,7 +68,6 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
   private applicantName = 'デモ申請者';
   private approvalSubscription?: Subscription;
   private activeApprovalRequestId?: string;
-  private userCanDirectApply = false;
 
   approvalFlows: ApprovalFlow[] = [];
   selectedFlow?: ApprovalFlow;
@@ -109,11 +108,10 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
   selectedChangeId: number | null = null;
 
   async ngOnInit(): Promise<void> {
-    const [employees, flows, user, canDirectApply] = await Promise.all([
+    const [employees, flows, user] = await Promise.all([
       firstValueFrom(this.employeesService.getEmployees()),
       firstValueFrom(this.workflowService.flows$.pipe(take(1))),
       firstValueFrom(this.authService.user$.pipe(take(1))),
-      firstValueFrom(this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver])),
     ]);
     this.existingEmployees = employees.map((emp) => ({
       id: emp.id,
@@ -145,7 +143,6 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     this.approvalFlows = flows;
     this.selectedFlowId = flows[0]?.id ?? null;
     this.selectedFlow = flows.find((flow) => flow.id === this.selectedFlowId);
-    this.userCanDirectApply = canDirectApply;
     if (user?.email) {
       this.applicantId = user.email;
       this.applicantName = user.displayName ?? user.email;
@@ -399,14 +396,6 @@ private readFileAsText(file: File): Promise<string> {
     this.selectedFlow = flows.find((f) => f.id === this.selectedFlowId);
   }
 
-  get canApplyImmediately(): boolean {
-    return !!this.selectedFlow && (this.selectedFlow.allowDirectApply ?? false) && this.userCanDirectApply;
-  }
-
-  get approvalSummary(): string {
-    return `${this.selectedCount}件の社員に対する更新を申請します。`;
-  }
-
   statusLabel(status: ImportStatus): string {
     switch (status) {
       case 'ok':
@@ -508,9 +497,22 @@ private readFileAsText(file: File): Promise<string> {
       currentStep: firstStepOrder,
       comment: this.requestComment || undefined,
       diffSummary: this.createDifferenceSummary(),
+      employeeDiffs: this.selectedDifferences.map((diff) => ({
+        employeeNo: diff.employeeNo,
+        name: diff.name,
+        status: diff.status,
+        changes: diff.changes.map((change) => ({
+          field: change.field,
+          oldValue: change.oldValue ?? null,
+          newValue: change.newValue ?? null,
+        })),
+        isNew: diff.isNew,
+        existingEmployeeId: diff.existingEmployeeId,
+      })),
       steps: flow.steps.map((step) => ({ stepOrder: step.order, status: 'waiting' })),
       attachments: [],
       histories: [],
+      createdAt: Timestamp.fromDate(new Date()),
     };
   }
 

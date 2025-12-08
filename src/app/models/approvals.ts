@@ -44,7 +44,6 @@ export interface ApprovalFlowStep {
   order: number;
   name: string;
   candidates: ApprovalCandidate[];
-  autoAdvance?: boolean;
 }
 
 export interface ApprovalFlow {
@@ -52,7 +51,6 @@ export interface ApprovalFlow {
   name: string;
   steps: ApprovalFlowStep[];
   maxSteps?: number;
-  allowDirectApply?: boolean;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -64,6 +62,19 @@ export interface ApprovalStepState {
   approverName?: string;
   comment?: string;
   approvedAt?: Timestamp;
+}
+
+export interface ApprovalEmployeeDiff {
+  employeeNo: string;
+  name: string;
+  status: 'ok' | 'warning' | 'error';
+  changes: {
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
+  }[];
+  isNew?: boolean;
+  existingEmployeeId?: string;
 }
 
 export interface ApprovalRequest {
@@ -79,6 +90,7 @@ export interface ApprovalRequest {
   currentStep?: number;
   comment?: string;
   diffSummary?: string;
+  employeeDiffs?: ApprovalEmployeeDiff[];
   dueDate?: Timestamp;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
