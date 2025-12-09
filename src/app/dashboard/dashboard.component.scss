@@ -172,6 +172,11 @@
     box-shadow: 0 10px 20px rgba(37, 99, 235, 0.3);
   }
 
+  .badge-inline {
+    align-self: center;
+    margin-top: 0.25rem;
+  }
+
   .badge.subtle {
     background: #e0e7ff;
     color: #1d4ed8;
@@ -188,20 +193,43 @@
   .notifications {
     list-style: none;
     padding: 0;
-    margin: 0;
+    margin: 0.25rem 0 0;
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 0.75rem;
   }
 
   .notifications li {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-    padding: 0.75rem 1rem;
+    padding: 0.85rem 1rem;
     background: #f9fafb;
+    gap: 0.75rem;
+  }
+
+  .notification-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .notification-body .hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .notification-unread {
+    border-color: #fb923c;
+    background: #fff7ed;
+  }
+
+  .unread-icon {
+    color: #ea580c;
+    font-weight: 700;
   }
 
   .status-chips {
@@ -252,6 +280,12 @@
     background: #fef2f2;
     color: #b91c1c;
     border: 1px solid #fecaca;
+  }
+
+  .status-unread {
+    background: #fffbeb;
+    color: #b45309;
+    border: 1px solid #fcd34d;
   }
 
   .approval-compact {

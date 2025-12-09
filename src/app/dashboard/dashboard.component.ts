@@ -42,7 +42,13 @@ export class DashboardComponent {
   ];
 
   private recipientId$ = this.authService.user$.pipe(map((user) => user?.email ?? 'demo-approver'));
-  readonly notifications$: Observable<ApprovalNotification[]> = this.notificationService.notifications$;
+  readonly notifications$: Observable<ApprovalNotification[]> = this.notificationService.notifications$.pipe(
+    map((notifications) =>
+      [...notifications]
+        .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
+        .slice(0, 10),
+    ),
+  );
   readonly unreadCount$ = this.recipientId$.pipe(
     switchMap((recipientId) => this.notificationService.unreadCountFor(recipientId)),
   );

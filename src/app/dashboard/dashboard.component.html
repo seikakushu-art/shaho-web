@@ -132,16 +132,19 @@
           <h2>未読・既読のトーストサンプル</h2>
           <p class="hint">承認／差戻し時に申請者と次ステップ承認者へ通知します。</p>
         </div>
-        <div class="badge">未読 {{ unreadCount$ | async }} 件</div>
+        <div class="badge badge-inline">未読 {{ unreadCount$ | async }} 件</div>
       </header>
 
       <ul class="notifications">
-        <li *ngFor="let notification of notifications">
-          <div>
+        <li *ngFor="let notification of notifications" [ngClass]="{ 'notification-unread': notification.unread }">
+          <div class="notification-body">
             <p class="eyebrow">{{ notification.createdAt | date: 'MM/dd HH:mm' }}</p>
-            <p class="hint">{{ notification.message }}</p>
+            <p class="hint">
+              <span *ngIf="notification.unread" class="unread-icon" aria-hidden="true">&#9888;</span>
+              {{ notification.message }}
+            </p>
           </div>
-          <span class="status" [ngClass]="notification.unread ? 'status-pending' : 'status-approved'">
+          <span class="status" [ngClass]="notification.unread ? 'status-unread' : 'status-approved'">
             {{ notification.unread ? '未読' : '既読' }}
           </span>
         </li>
