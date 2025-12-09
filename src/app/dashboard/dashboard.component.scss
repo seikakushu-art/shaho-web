@@ -56,6 +56,12 @@
     border: 1px solid #e5e7eb;
   }
 
+  .approval-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+  }
+
   .section-header {
     display: flex;
     justify-content: space-between;
@@ -65,6 +71,13 @@
 
   .section-header .status-chips {
     justify-content: flex-end;
+  }
+
+  .section-metrics {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
   }
   
   .columns {
@@ -163,6 +176,13 @@
     background: #e0e7ff;
     color: #1d4ed8;
     box-shadow: none;
+  }
+
+  .count-badge {
+    background: #111827;
+    color: #fff;
+    box-shadow: none;
+    margin-bottom: 0.15rem;
   }
 
   .notifications {
@@ -310,6 +330,12 @@
     margin: 0;
     color: #6b7280;
     font-size: 0.9rem;
+  }
+
+  .list-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.25rem;
   }
 
   .shortcut-grid {

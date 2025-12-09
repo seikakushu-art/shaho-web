@@ -35,79 +35,95 @@
       </div>
     </section>
 
-    <section class="card" *ngIf="(myRequestSummary$ | async) as summary">
-      <header class="section-header">
-        <div>
-          <p class="eyebrow">自分が起票した承認依頼</p>
-          <h2>申請ステータスの内訳</h2>
-          <p class="hint">ApprovalWorkflowService.requests$ を自分の起票分でフィルタし、ステータス別に集計しています。</p>
-        </div>
-        <div class="status-chips">
-          <span class="status-chip" *ngFor="let item of summary" [ngClass]="statusClass(item.status)">
-            {{ item.label }} {{ item.count }} 件
-          </span>
-          <span class="status-chip total">合計 {{ totalCount(summary) }} 件</span>
-        </div>
-      </header>
-
-      <div *ngIf="(myRequests$ | async) as myRequests; else noMyRequests">
-        <ul class="approval-compact">
-          <li *ngFor="let request of myRequests | slice:0:5">
-            <div>
-              <p class="eyebrow">{{ request.id }}</p>
-              <h3>{{ request.title }}</h3>
-              <p class="hint">{{ request.createdAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }} に起票 / 対象 {{ request.targetCount }} 件</p>
+    <div class="approval-grid">
+      <section class="card" *ngIf="(myRequestSummary$ | async) as summary">
+        <header class="section-header">
+          <div>
+            <p class="eyebrow">自分が起票した承認依頼</p>
+            <h2>申請ステータスの内訳</h2>
+            <p class="hint">ApprovalWorkflowService.requests$ を自分の起票分でフィルタし、ステータス別に集計しています。</p>
+          </div>
+          <div class="section-metrics">
+            <span class="badge count-badge">合計 {{ totalCount(summary) }} 件</span>
+            <div class="status-chips">
+              <span class="status-chip" *ngFor="let item of summary" [ngClass]="statusClass(item.status)">
+                {{ item.label }} {{ item.count }} 件
+              </span>
             </div>
-            <div class="right-meta">
-              <span class="status" [ngClass]="statusClass(request.status)">{{ statusLabel(request.status) }}</span>
-              <span class="badge subtle">{{ request.category }}</span>
-            </div>
-          </li>
-        </ul>
-      </div>
-      <ng-template #noMyRequests>
-        <p class="hint">起票した承認依頼がまだありません。計算やマスタ更新から申請を起票するとここに表示されます。</p>
-      </ng-template>
-    </section>
+          </div>
+        </header>
 
-    <section class="card" *ngIf="(isApprover$ | async)">
-      <header class="section-header">
-        <div>
-          <p class="eyebrow">自分が担当する承認待ち</p>
-          <h2>担当者ビューでの簡易操作</h2>
-          <p class="hint">現在ステップの候補者・担当者として割り当てられた申請を抽出しています。</p>
-        </div>
-        <div *ngIf="(myAssignmentSummary$ | async) as summary" class="status-chips">
-          <span class="status-chip" *ngFor="let item of summary" [ngClass]="statusClass(item.status)">
-            {{ item.label }} {{ item.count }} 件
-          </span>
-          <span class="status-chip total">合計 {{ totalCount(summary) }} 件</span>
-        </div>
-      </header>
-
-      <div *ngIf="(myAssignments$ | async) as assignments; else noAssignments">
-        <ul class="approval-compact">
-          <li *ngFor="let request of assignments | slice:0:5">
-            <div>
-              <p class="eyebrow">{{ request.id }} / Step {{ request.currentStep }}</p>
-              <h3>{{ request.title }}</h3>
-              <p class="hint">申請者: {{ request.applicantName }} / 期限: {{ request.dueDate?.toDate() | date: 'yyyy/MM/dd HH:mm' }}</p>
-            </div>
-            <div class="quick-actions">
-              <div class="action-buttons">
-                <button class="ghost" (click)="quickAction(request, 'remand')">差戻し</button>
-                <button class="primary" (click)="quickAction(request, 'approve')">承認する</button>
+        <div *ngIf="(myRequests$ | async) as myRequests; else noMyRequests">
+          <ul class="approval-compact">
+            <li *ngFor="let request of myRequests | slice:0:(myRequestsExpanded ? myRequests.length : initialDisplayCount)">
+              <div>
+                <p class="eyebrow">{{ request.id }}</p>
+                <h3>{{ request.title }}</h3>
+                <p class="hint">{{ request.createdAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }} に起票 / 対象 {{ request.targetCount }} 件</p>
               </div>
-              <p class="action-message" *ngIf="actionMessageFor(request.id)">{{ actionMessageFor(request.id) }}</p>
-              <span class="status" [ngClass]="statusClass(request.status)">{{ statusLabel(request.status) }}</span>
+              <div class="right-meta">
+                <span class="status" [ngClass]="statusClass(request.status)">{{ statusLabel(request.status) }}</span>
+                <span class="badge subtle">{{ request.category }}</span>
+              </div>
+            </li>
+          </ul>
+          <div class="list-actions" *ngIf="myRequests.length > initialDisplayCount">
+            <button class="text-link" (click)="myRequestsExpanded = !myRequestsExpanded">
+              {{ myRequestsExpanded ? '閉じる' : 'もっと見る' }}
+            </button>
+          </div>
+        </div>
+        <ng-template #noMyRequests>
+          <p class="hint">起票した承認依頼がまだありません。計算やマスタ更新から申請を起票するとここに表示されます。</p>
+        </ng-template>
+      </section>
+
+      <section class="card" *ngIf="(isApprover$ | async)">
+        <header class="section-header">
+          <div>
+            <p class="eyebrow">自分が担当する承認待ち</p>
+            <h2>担当者ビューでの簡易操作</h2>
+            <p class="hint">現在ステップの候補者・担当者として割り当てられた申請を抽出しています。</p>
+          </div>
+          <div *ngIf="(myAssignmentSummary$ | async) as summary" class="section-metrics">
+            <span class="badge count-badge">合計 {{ totalCount(summary) }} 件</span>
+            <div class="status-chips">
+              <span class="status-chip" *ngFor="let item of summary" [ngClass]="statusClass(item.status)">
+                {{ item.label }} {{ item.count }} 件
+              </span>
             </div>
-          </li>
-        </ul>
-      </div>
-      <ng-template #noAssignments>
-        <p class="hint">担当する承認待ちはありません。新しい依頼が割り当てられるとここに表示されます。</p>
-      </ng-template>
-    </section>
+          </div>
+        </header>
+
+        <div *ngIf="(myAssignments$ | async) as assignments; else noAssignments">
+          <ul class="approval-compact">
+            <li *ngFor="let request of assignments | slice:0:(myAssignmentsExpanded ? assignments.length : initialDisplayCount)">
+              <div>
+                <p class="eyebrow">{{ request.id }} / Step {{ request.currentStep }}</p>
+                <h3>{{ request.title }}</h3>
+                <p class="hint">申請者: {{ request.applicantName }} / 期限: {{ request.dueDate?.toDate() | date: 'yyyy/MM/dd HH:mm' }}</p>
+              </div>
+              <div class="quick-actions">
+                <div class="action-buttons">
+                  <button class="ghost" (click)="quickAction(request, 'remand')">差戻し</button>
+                  <button class="primary" (click)="quickAction(request, 'approve')">承認する</button>
+                </div>
+                <p class="action-message" *ngIf="actionMessageFor(request.id)">{{ actionMessageFor(request.id) }}</p>
+                <span class="status" [ngClass]="statusClass(request.status)">{{ statusLabel(request.status) }}</span>
+              </div>
+            </li>
+          </ul>
+          <div class="list-actions" *ngIf="assignments.length > initialDisplayCount">
+            <button class="text-link" (click)="myAssignmentsExpanded = !myAssignmentsExpanded">
+              {{ myAssignmentsExpanded ? '閉じる' : 'もっと見る' }}
+            </button>
+          </div>
+        </div>
+        <ng-template #noAssignments>
+          <p class="hint">担当する承認待ちはありません。新しい依頼が割り当てられるとここに表示されます。</p>
+        </ng-template>
+      </section>
+    </div>
 
     <section class="card" *ngIf="(notifications$ | async) as notifications">
       <header class="section-header">

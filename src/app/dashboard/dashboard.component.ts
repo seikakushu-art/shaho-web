@@ -78,6 +78,9 @@ export class DashboardComponent {
   );
 
   actionMessages: Record<string, string> = {};
+  readonly initialDisplayCount = 3;
+  myRequestsExpanded = false;
+  myAssignmentsExpanded = false;
 
   constructor() {
     this.recipientId$
