@@ -27,6 +27,13 @@ interface ApprovalDetailEmployee {
   diffs: { field: string; oldValue: string; newValue: string }[];
 }
 
+// 計算種別のマッピング
+const calculationTypeLabels: Record<string, string> = {
+  standard: '標準報酬月額',
+  bonus: '標準賞与額',
+  insurance: '社会保険料',
+};
+
 @Component({
   selector: 'app-approval-detail',
   standalone: true,
@@ -292,6 +299,9 @@ export class ApprovalDetailComponent implements OnDestroy {
       return;
     }
 
+    // 承認処理前に現在のステップ番号を保存
+    const approvedStep = this.approval.currentStep;
+
     try {
       const result =
         action === 'approve'
@@ -315,14 +325,36 @@ export class ApprovalDetailComponent implements OnDestroy {
       this.addToast(`申請を${actionText}（コメント: ${this.approvalComment || 'なし'}）`, 'success');
       this.approvalComment = '';
 
+      // 計算結果保存の場合は、計算種別を含めたタイトルを生成
+      let requestTitle = result.request.title || result.request.flowSnapshot?.name || result.request.id || '申請';
+      const category = result.request.category || this.approval?.category;
+      if (category === '計算結果保存') {
+        // this.approval を優先して計算種別を取得（最新のデータを持っている可能性が高い）
+        const calculationType = this.approval?.calculationQueryParams?.type || result.request.calculationQueryParams?.type;
+        if (calculationType && calculationTypeLabels[calculationType]) {
+          const calculationLabel = calculationTypeLabels[calculationType];
+          requestTitle = `${calculationLabel}の計算結果`;
+        } else {
+          // デバッグ用: 計算種別が取得できない場合
+          console.warn('計算種別が取得できませんでした', {
+            category,
+            calculationType,
+            resultRequestCategory: result.request.category,
+            approvalCategory: this.approval?.category,
+            resultRequestCalculationQueryParams: result.request.calculationQueryParams,
+            approvalCalculationQueryParams: this.approval?.calculationQueryParams,
+          });
+        }
+      }
+
       const applicantNotification: ApprovalNotification = {
         id: `ntf-${Date.now()}`,
         requestId: result.request.id!,
         recipientId: this.approval.applicantId,
         message:
           action === 'approve'
-            ? `${result.request.id} が承認ステップ ${this.approval.currentStep} を通過しました`
-            : `${result.request.id} が差戻しされました`,
+            ? `${requestTitle} が承認ステップ ${approvedStep} を通過しました`
+            : `${requestTitle} が差戻しされました`,
         unread: true,
         createdAt: new Date(),
         type: action === 'approve' ? 'success' : 'warning',
@@ -334,8 +366,8 @@ export class ApprovalDetailComponent implements OnDestroy {
         recipientId: assignee,
         message:
           action === 'approve'
-            ? `${result.request.id} のステップ${result.request.currentStep}を承認してください`
-            : `${result.request.id} が差戻しされました。申請者と調整してください。`,
+            ? `${requestTitle} のステップ${result.request.currentStep}を承認してください`
+            : `${requestTitle} が差戻しされました。申請者と調整してください。`,
         unread: true,
         createdAt: new Date(),
         type: action === 'approve' ? 'info' : 'warning',

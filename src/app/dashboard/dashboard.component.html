@@ -1,162 +1,74 @@
 <section class="dashboard">
     <header>
       <div>
-        <p class="eyebrow">ログイン情報</p>
-        <h1>ロール別ダッシュボード</h1>
-        <p class="greeting" *ngIf="(user$ | async) as user">こんにちは、{{ user.displayName || user.email }} さん</p>
-        <p class="hint">
-          ログインユーザーのロールに応じた業務範囲を可視化し、承認フローの状況を素早く把握できます。
-        </p>
+        <h1>社会保険管理システム</h1>
+        <p class="greeting" *ngIf="(appUser$ | async) as appUser">こんにちは、{{ appUser?.displayName }} さん</p>
       </div>
       <div class="header-actions">
-        <a routerLink="/calculations" class="primary-cta">新規申請</a>
-        <a routerLink="/login" class="text-link">ログイン画面へ戻る</a>
       </div>
     </header>
-  
-    <section class="card" *ngIf="(roleDefinitions$ | async) as roles">
-      <p class="eyebrow">現在のロール</p>
-      <h2>{{ roles[0]?.name }}</h2>
-      <p class="hint">割り当て: {{ getRoleNames(roles) }}</p>
 
-      <div class="columns" *ngIf="roles[0] as primaryRole">
-        <div>
-          <h3>担当範囲</h3>
-          <ul>
-            <li *ngFor="let task of primaryRole.responsibilities">{{ task }}</li>
-          </ul>
-        </div>
-        <div *ngIf="primaryRole.restrictions?.length">
-          <h3>制限事項</h3>
-          <ul>
-            <li *ngFor="let restriction of primaryRole.restrictions">{{ restriction }}</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <div class="approval-grid">
-      <section class="card" *ngIf="(myRequestSummary$ | async) as summary">
-        <header class="section-header">
-          <div>
-            <p class="eyebrow">自分が起票した承認依頼</p>
-            <h2>申請ステータスの内訳</h2>
-            <p class="hint">ApprovalWorkflowService.requests$ を自分の起票分でフィルタし、ステータス別に集計しています。</p>
-          </div>
-          <div class="section-metrics">
-            <span class="badge count-badge">合計 {{ totalCount(summary) }} 件</span>
-            <div class="status-chips">
-              <span class="status-chip" *ngFor="let item of summary" [ngClass]="statusClass(item.status)">
-                {{ item.label }} {{ item.count }} 件
-              </span>
-            </div>
-          </div>
-        </header>
-
-        <div *ngIf="(myRequests$ | async) as myRequests; else noMyRequests">
-          <ul class="approval-compact">
-            <li *ngFor="let request of myRequests | slice:0:(myRequestsExpanded ? myRequests.length : initialDisplayCount)">
-              <div>
-                <p class="eyebrow">{{ request.id }}</p>
-                <h3>{{ request.title }}</h3>
-                <p class="hint">{{ request.createdAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }} に起票 / 対象 {{ request.targetCount }} 件</p>
-              </div>
-              <div class="right-meta">
-                <span class="status" [ngClass]="statusClass(request.status)">{{ statusLabel(request.status) }}</span>
-                <span class="badge subtle">{{ request.category }}</span>
-              </div>
-            </li>
-          </ul>
-          <div class="list-actions" *ngIf="myRequests.length > initialDisplayCount">
-            <button class="text-link" (click)="myRequestsExpanded = !myRequestsExpanded">
-              {{ myRequestsExpanded ? '閉じる' : 'もっと見る' }}
-            </button>
-          </div>
-        </div>
-        <ng-template #noMyRequests>
-          <p class="hint">起票した承認依頼がまだありません。計算やマスタ更新から申請を起票するとここに表示されます。</p>
-        </ng-template>
-      </section>
-
-      <section class="card" *ngIf="(isApprover$ | async)">
-        <header class="section-header">
-          <div>
-            <p class="eyebrow">自分が担当する承認待ち</p>
-            <h2>担当者ビューでの簡易操作</h2>
-            <p class="hint">現在ステップの候補者・担当者として割り当てられた申請を抽出しています。</p>
-          </div>
-          <div *ngIf="(myAssignmentSummary$ | async) as summary" class="section-metrics">
-            <span class="badge count-badge">合計 {{ totalCount(summary) }} 件</span>
-            <div class="status-chips">
-              <span class="status-chip" *ngFor="let item of summary" [ngClass]="statusClass(item.status)">
-                {{ item.label }} {{ item.count }} 件
-              </span>
-            </div>
-          </div>
-        </header>
-
-        <div *ngIf="(myAssignments$ | async) as assignments; else noAssignments">
-          <ul class="approval-compact">
-            <li *ngFor="let request of assignments | slice:0:(myAssignmentsExpanded ? assignments.length : initialDisplayCount)">
-              <div>
-                <p class="eyebrow">{{ request.id }} / Step {{ request.currentStep }}</p>
-                <h3>{{ request.title }}</h3>
-                <p class="hint">申請者: {{ request.applicantName }} / 期限: {{ request.dueDate?.toDate() | date: 'yyyy/MM/dd HH:mm' }}</p>
-              </div>
-              <div class="quick-actions">
-                <div class="action-buttons">
-                  <button class="ghost" (click)="quickAction(request, 'remand')">差戻し</button>
-                  <button class="primary" (click)="quickAction(request, 'approve')">承認する</button>
-                </div>
-                <p class="action-message" *ngIf="actionMessageFor(request.id)">{{ actionMessageFor(request.id) }}</p>
-                <span class="status" [ngClass]="statusClass(request.status)">{{ statusLabel(request.status) }}</span>
-              </div>
-            </li>
-          </ul>
-          <div class="list-actions" *ngIf="assignments.length > initialDisplayCount">
-            <button class="text-link" (click)="myAssignmentsExpanded = !myAssignmentsExpanded">
-              {{ myAssignmentsExpanded ? '閉じる' : 'もっと見る' }}
-            </button>
-          </div>
-        </div>
-        <ng-template #noAssignments>
-          <p class="hint">担当する承認待ちはありません。新しい依頼が割り当てられるとここに表示されます。</p>
-        </ng-template>
-      </section>
-    </div>
-
-    <section class="card" *ngIf="(notifications$ | async) as notifications">
+    <section class="card" *ngIf="(allNotifications$ | async) as allNotifications">
       <header class="section-header">
         <div>
-          <p class="eyebrow">通知履歴</p>
-          <h2>未読・既読のトーストサンプル</h2>
-          <p class="hint">承認／差戻し時に申請者と次ステップ承認者へ通知します。</p>
+          <h2>通知</h2>
         </div>
-        <div class="badge badge-inline">未読 {{ unreadCount$ | async }} 件</div>
       </header>
 
       <ul class="notifications">
-        <li *ngFor="let notification of notifications" [ngClass]="{ 'notification-unread': notification.unread }">
-          <div class="notification-body">
+        <li 
+          *ngFor="let notification of (notificationsExpanded ? allNotifications : allNotifications.slice(0, 5)); trackBy: trackByNotificationId" 
+          [ngClass]="{ 'notification-unread': notification.unread, 'notification-clickable': notification.unread }"
+        >
+          <div class="notification-body" (click)="notification.unread && markNotificationAsRead(notification.id, $event)">
             <p class="eyebrow">{{ notification.createdAt | date: 'MM/dd HH:mm' }}</p>
             <p class="hint">
               <span *ngIf="notification.unread" class="unread-icon" aria-hidden="true">&#9888;</span>
               {{ notification.message }}
             </p>
           </div>
-          <span class="status" [ngClass]="notification.unread ? 'status-unread' : 'status-approved'">
-            {{ notification.unread ? '未読' : '既読' }}
-          </span>
+          <div class="notification-actions">
+            <a 
+              *ngIf="notification.requestId" 
+              [routerLink]="['/approvals', notification.requestId]" 
+              class="notification-link"
+              (click)="$event.stopPropagation()"
+            >
+              詳細
+            </a>
+            <button
+              *ngIf="notification.unread"
+              class="mark-read-button"
+              (click)="markNotificationAsRead(notification.id, $event)"
+              title="既読にする"
+            >
+              既読にする
+            </button>
+            <span class="status" [ngClass]="notification.unread ? 'status-unread' : 'status-approved'">
+              {{ notification.unread ? '未読' : '既読' }}
+            </span>
+          </div>
         </li>
       </ul>
+
+      <div class="notification-footer" *ngIf="allNotifications.length > 5">
+        <button 
+          class="text-link notification-toggle" 
+          (click)="toggleNotificationsExpanded()"
+        >
+          {{ notificationsExpanded ? '折りたたむ' : ('すべて表示（全' + allNotifications.length + '件）') }}
+        </button>
+      </div>
     </section>
 
-    <section class="card" *ngIf="(isSystemAdmin$ | async)">
-      <p class="eyebrow">管理ショートカット</p>
-      <h2>ユーザー管理 / 法人情報 / 保険料率</h2>
-      <p class="hint">システム管理者向けのメンテナンス導線です。ロールに応じて表示を切り替えています。</p>
+    <section class="card">
+      <h2>ワークスペース</h2>
       <div class="shortcut-grid">
-        <a routerLink="/user-management" class="shortcut-card">
+        <a routerLink="/approval-flows" class="shortcut-card" *ngIf="(isSystemAdmin$ | async)">
+          <h3>承認フロー管理</h3>
+          <p class="hint">承認フローの作成・編集・管理</p>
+        </a>
+        <a routerLink="/user-management" class="shortcut-card" *ngIf="(isSystemAdmin$ | async)">
           <h3>ユーザー管理</h3>
           <p class="hint">ロール付与・凍結などアカウント管理</p>
         </a>
@@ -168,52 +80,9 @@
           <h3>保険料率</h3>
           <p class="hint">健保・厚年の料率設定を更新</p>
         </a>
+        <a routerLink="/calculations" class="shortcut-card" *ngIf="!(isGuest$ | async)">
+          <h3>計算機能</h3>
+          <p class="hint">標準報酬月額、標準賞与額、社会保険料の計算を行います</p>
+        </a>
       </div>
     </section>
-
-  
-    <section class="card">
-      <p class="eyebrow">ロール一覧（システム管理者向け）</p>
-      <div class="role-grid">
-        <article class="role" *ngFor="let role of allRoles">
-          <header>
-            <h3>{{ role.name }}</h3>
-            <p class="hint">{{ role.summary }}</p>
-          </header>
-          <ul>
-            <li *ngFor="let task of role.responsibilities">{{ task }}</li>
-          </ul>
-          <p class="hint" *ngIf="role.restrictions?.length">
-            制限: {{ role.restrictions?.join(' / ') }}
-          </p>
-        </article>
-      </div>
-    </section>
-  
-    <section class="card">
-      <p class="eyebrow">計算機能</p>
-      <h2>標準報酬月額 / 標準賞与額 / 社会保険料計算</h2>
-      <p class="hint">
-        標準報酬月額、標準賞与額、社会保険料の計算を行います。計算対象の指定から結果確認、承認フローまで対応します。
-      </p>
-      <div class="actions-row">
-        <a routerLink="/calculations" class="text-link">計算画面を開く</a>
-      </div>
-    </section>
-
-    <section class="card">
-      <p class="eyebrow">データ閲覧サンプル</p>
-      <p class="hint">
-        ロールがゲストでも閲覧可能なデモです。担当者・承認者・システム管理者は編集・承認フローを別途実装できます。
-      </p>
-      <ul class="employees">
-        <li *ngFor="let employee of employees$ | async">
-          <span class="label">社員番号</span> {{ employee.employeeNo }}
-          <span class="label">氏名</span> {{ employee.name }}
-        </li>
-      </ul>
-      <div class="actions-row">
-        <a routerLink="/employees/E202501" class="text-link">社員詳細画面を開く（デモ）</a>
-      </div>
-    </section>
-  </section>

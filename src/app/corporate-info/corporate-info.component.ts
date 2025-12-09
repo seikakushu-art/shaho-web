@@ -12,8 +12,9 @@ import {
 } from '../app/services/corporate-info.service';
 import {  Subscription, firstValueFrom, map, tap } from 'rxjs';
 import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.component';
-import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff } from '../models/approvals';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff, ApprovalNotification } from '../models/approvals';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
+import { ApprovalNotificationService } from '../approvals/approval-notification.service';
 import { Timestamp } from '@angular/fire/firestore';
 
 @Component({
@@ -35,6 +36,7 @@ export class CorporateInfoComponent implements OnInit, OnDestroy  {
   private corporateInfoService = inject(CorporateInfoService);
   private authService = inject(AuthService);
   private approvalWorkflowService = inject(ApprovalWorkflowService);
+  private notificationService = inject(ApprovalNotificationService);
 
   readonly RoleKey = RoleKey;
   editMode = false;
@@ -248,6 +250,45 @@ export class CorporateInfoComponent implements OnInit, OnDestroy  {
       this.pendingRequestId = result.requestId;
       this.approvalSubscription = result.subscription;
       this.editMode = false;
+      
+      // 通知を送信
+      this.pushApprovalNotifications(request, result.requestId);
+    }
+  }
+
+  private pushApprovalNotifications(request: ApprovalRequest, requestId: string): void {
+    const notifications: ApprovalNotification[] = [];
+
+    const applicantNotification: ApprovalNotification = {
+      id: `ntf-${Date.now()}`,
+      requestId: requestId,
+      recipientId: request.applicantId,
+      message: `${request.title} を起票しました（${request.targetCount}件）。`,
+      unread: true,
+      createdAt: new Date(),
+      type: 'info',
+    };
+    notifications.push(applicantNotification);
+
+    const currentStep = request.steps.find((step) => step.stepOrder === request.currentStep);
+    const candidates = currentStep
+      ? request.flowSnapshot?.steps.find((step) => step.order === currentStep.stepOrder)?.candidates ?? []
+      : [];
+
+    candidates.forEach((candidate) => {
+      notifications.push({
+        id: `ntf-${Date.now()}-${candidate.id}`,
+        requestId: requestId,
+        recipientId: candidate.id,
+        message: `${request.title} の承認依頼が届いています。`,
+        unread: true,
+        createdAt: new Date(),
+        type: 'info',
+      });
+    });
+
+    if (notifications.length) {
+      this.notificationService.pushBatch(notifications);
     }
   }
   /**

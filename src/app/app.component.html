@@ -7,10 +7,13 @@
   </div>
   <nav class="main-nav" *ngIf="guestNavigable$ | async">
     <a routerLink="/dashboard">ダッシュボード</a>
+    <a routerLink="/employees">社員一覧</a>
+    <a routerLink="/calculations" *appHasRole="[RoleKey.SystemAdmin, RoleKey.Approver, RoleKey.Operator]">保険料計算</a>
     <a routerLink="/approvals" *appHasRole="[RoleKey.SystemAdmin, RoleKey.Approver, RoleKey.Operator]">
       承認一覧
     </a>
-    <a routerLink="/employees">社員一覧</a>
+    <a routerLink="/approval-flows" *appHasRole="RoleKey.SystemAdmin">承認フロー管理</a>
+    <a routerLink="/user-management" *appHasRole="RoleKey.SystemAdmin">ユーザー管理</a>
   </nav>
   <div class="actions" *ngIf="user$ | async as user">
     <span>{{ userDisplayName$ | async }}</span>
@@ -18,10 +21,6 @@
     <span class="roles" *ngIf="roleDefinitions$ | async as roleDefinitions">
       {{ getRoleNames(roleDefinitions) }}
     </span>
-    <span class="separator">|</span>
-    <a routerLink="/approval-flows" *appHasRole="RoleKey.SystemAdmin">承認フロー管理</a>
-    <span class="separator">|</span>
-    <a routerLink="/user-management" *appHasRole="RoleKey.SystemAdmin">ユーザー管理</a>
     <span class="separator">|</span>
     <button type="button" (click)="logout()">ログアウト</button>
   </div>

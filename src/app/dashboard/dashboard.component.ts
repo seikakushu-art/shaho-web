@@ -4,11 +4,12 @@ import { AuthService } from '../auth/auth.service';
 import { ROLE_DEFINITIONS, RoleDefinition, RoleKey } from '../models/roles';
 import { AsyncPipe, NgFor, NgIf } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Observable, combineLatest, firstValueFrom, map, switchMap, take } from 'rxjs';
+import { Observable, combineLatest, firstValueFrom, map, of, switchMap, take } from 'rxjs';
 import { ShahoEmployeesService, ShahoEmployee } from '../app/services/shaho-employees.service';
 import { ApprovalNotificationService } from '../approvals/approval-notification.service';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
 import { ApprovalNotification, ApprovalRequest, ApprovalRequestStatus } from '../models/approvals';
+import { UserDirectoryService } from '../auth/user-directory.service';
 
 type StatusSummary = { status: ApprovalRequestStatus; label: string; count: number };
 @Component({
@@ -23,8 +24,15 @@ export class DashboardComponent {
   private employeesService = inject(ShahoEmployeesService);
   private workflowService = inject(ApprovalWorkflowService);
   private notificationService = inject(ApprovalNotificationService);
+  private userDirectoryService = inject(UserDirectoryService);
 
   readonly user$ = this.authService.user$;
+  readonly appUser$ = this.user$.pipe(
+    switchMap((user) => {
+      if (!user?.email) return of(null);
+      return this.userDirectoryService.getUserByEmail(user.email);
+    }),
+  );
   readonly roleDefinitions$ = this.authService.roleDefinitions$;
   readonly role$ = this.authService.roleDefinition$;
   readonly allRoles: RoleDefinition[] = ROLE_DEFINITIONS;
@@ -33,6 +41,7 @@ export class DashboardComponent {
   readonly currentUserId$ = this.user$.pipe(map((user) => user?.email?.toLowerCase() ?? 'demo-approver'));
   readonly isApprover$ = this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver]);
   readonly isSystemAdmin$ = this.authService.hasAnyRole([RoleKey.SystemAdmin]);
+  readonly isGuest$ = this.authService.hasAnyRole([RoleKey.Guest]);
   readonly statusOrder: StatusSummary[] = [
     { status: 'pending', label: '承認待ち', count: 0 },
     { status: 'approved', label: '承認済', count: 0 },
@@ -42,16 +51,24 @@ export class DashboardComponent {
   ];
 
   private recipientId$ = this.authService.user$.pipe(map((user) => user?.email ?? 'demo-approver'));
-  readonly notifications$: Observable<ApprovalNotification[]> = this.notificationService.notifications$.pipe(
-    map((notifications) =>
+  readonly allNotifications$: Observable<ApprovalNotification[]> = combineLatest([
+    this.notificationService.notifications$,
+    this.recipientId$,
+  ]).pipe(
+    map(([notifications, recipientId]) =>
       [...notifications]
-        .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
-        .slice(0, 10),
+        .filter((notification) => notification.recipientId?.toLowerCase() === recipientId.toLowerCase())
+        .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)),
     ),
+  );
+  readonly notifications$: Observable<ApprovalNotification[]> = this.allNotifications$.pipe(
+    map((notifications) => notifications.slice(0, 5)),
   );
   readonly unreadCount$ = this.recipientId$.pipe(
     switchMap((recipientId) => this.notificationService.unreadCountFor(recipientId)),
   );
+  
+  notificationsExpanded = false;
 
   readonly myRequests$: Observable<ApprovalRequest[]> = combineLatest([
     this.workflowService.requests$,
@@ -188,6 +205,21 @@ export class DashboardComponent {
 
     const candidates = request.flowSnapshot?.steps.find((step) => step.order === request.currentStep)?.candidates ?? [];
     return candidates.some((candidate) => candidate.id.toLowerCase() === normalizedUserId);
+  }
+
+  markNotificationAsRead(notificationId: string, event?: Event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.notificationService.markAsRead(notificationId);
+  }
+
+  toggleNotificationsExpanded() {
+    this.notificationsExpanded = !this.notificationsExpanded;
+  }
+
+  trackByNotificationId(index: number, notification: ApprovalNotification): string {
+    return notification.id;
   }
 
 }

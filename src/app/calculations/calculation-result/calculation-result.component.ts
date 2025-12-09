@@ -17,11 +17,13 @@ import { InsuranceKey } from '../calculation-utils';
 import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
+import { ApprovalNotificationService } from '../../approvals/approval-notification.service';
 import {
   ApprovalFlow,
   ApprovalHistory,
   ApprovalRequest,
   ApprovalEmployeeDiff,
+  ApprovalNotification,
 } from '../../models/approvals';
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../../auth/auth.service';
@@ -83,6 +85,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   private calculationDataService = inject(CalculationDataService);
   private employeesService = inject(ShahoEmployeesService);
   private approvalWorkflowService = inject(ApprovalWorkflowService);
+  private notificationService = inject(ApprovalNotificationService);
   private authService = inject(AuthService);
   private destroy$ = new Subject<void>();
   private approvalSubscription?: Subscription;
@@ -1232,6 +1235,10 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         throw new Error('承認依頼IDの取得に失敗しました。');
       }
       this.approvalMessage = '承認依頼を送信しました。承認完了後に保存を実行します。';
+      
+      // 通知を送信
+      this.pushApprovalNotifications({ ...saved, id: saved.id });
+      
       this.watchApproval(saved.id, validRows, query);
     } catch (error) {
       console.error('承認依頼エラー:', error);
@@ -1359,6 +1366,42 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       alert('保存に失敗しました。時間をおいて再度お試しください。');
     } finally {
       this.saving = false;
+    }
+  }
+
+  private pushApprovalNotifications(request: ApprovalRequest): void {
+    const notifications: ApprovalNotification[] = [];
+
+    const applicantNotification: ApprovalNotification = {
+      id: `ntf-${Date.now()}`,
+      requestId: request.id ?? request.title,
+      recipientId: request.applicantId,
+      message: `${request.title} を起票しました（${request.targetCount}件）。`,
+      unread: true,
+      createdAt: new Date(),
+      type: 'info',
+    };
+    notifications.push(applicantNotification);
+
+    const currentStep = request.steps.find((step) => step.stepOrder === request.currentStep);
+    const candidates = currentStep
+      ? request.flowSnapshot?.steps.find((step) => step.order === currentStep.stepOrder)?.candidates ?? []
+      : [];
+
+    candidates.forEach((candidate) => {
+      notifications.push({
+        id: `ntf-${Date.now()}-${candidate.id}`,
+        requestId: request.id ?? request.title,
+        recipientId: candidate.id,
+        message: `${request.title} の承認依頼が届いています。`,
+        unread: true,
+        createdAt: new Date(),
+        type: 'info',
+      });
+    });
+
+    if (notifications.length) {
+      this.notificationService.pushBatch(notifications);
     }
   }
 }

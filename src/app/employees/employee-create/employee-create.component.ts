@@ -5,8 +5,9 @@ import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { Subject, switchMap, takeUntil, of, firstValueFrom, combineLatest, map, take, filter, timeout, catchError } from 'rxjs';
 import { ShahoEmployee, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
-import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff } from '../../models/approvals';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff, ApprovalNotification } from '../../models/approvals';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
+import { ApprovalNotificationService } from '../../approvals/approval-notification.service';
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../../auth/auth.service';
 import { RoleKey } from '../../models/roles';
@@ -24,6 +25,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     private employeesService = inject(ShahoEmployeesService);
     private cdr = inject(ChangeDetectorRef);
     private approvalWorkflowService = inject(ApprovalWorkflowService);
+    private notificationService = inject(ApprovalNotificationService);
     private authService = inject(AuthService);
     private destroy$ = new Subject<void>();
 
@@ -321,8 +323,13 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         console.log('保存するrequest:', request);
         console.log('request.employeeData:', request.employeeData);
 
-        await this.approvalWorkflowService.saveRequest(request);
+        const saved = await this.approvalWorkflowService.saveRequest(request);
         this.approvalMessage = '承認依頼を送信しました。承認完了までお待ちください。';
+        
+        // 通知を送信
+        if (saved.id) {
+          this.pushApprovalNotifications({ ...saved, id: saved.id });
+        }
       } catch (error) {
         console.error(error);
         this.approvalMessage = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
@@ -422,5 +429,41 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       changes.push({ field: '保険料免除', oldValue: null, newValue: this.socialInsurance.exemption ? 'はい' : 'いいえ' });
 
       return changes;
+    }
+
+    private pushApprovalNotifications(request: ApprovalRequest): void {
+      const notifications: ApprovalNotification[] = [];
+
+      const applicantNotification: ApprovalNotification = {
+        id: `ntf-${Date.now()}`,
+        requestId: request.id ?? request.title,
+        recipientId: request.applicantId,
+        message: `${request.title} を起票しました（${request.targetCount}件）。`,
+        unread: true,
+        createdAt: new Date(),
+        type: 'info',
+      };
+      notifications.push(applicantNotification);
+
+      const currentStep = request.steps.find((step) => step.stepOrder === request.currentStep);
+      const candidates = currentStep
+        ? request.flowSnapshot?.steps.find((step) => step.order === currentStep.stepOrder)?.candidates ?? []
+        : [];
+
+      candidates.forEach((candidate) => {
+        notifications.push({
+          id: `ntf-${Date.now()}-${candidate.id}`,
+          requestId: request.id ?? request.title,
+          recipientId: candidate.id,
+          message: `${request.title} の承認依頼が届いています。`,
+          unread: true,
+          createdAt: new Date(),
+          type: 'info',
+        });
+      });
+
+      if (notifications.length) {
+        this.notificationService.pushBatch(notifications);
+      }
     }
   }

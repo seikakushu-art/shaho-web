@@ -56,6 +56,62 @@
     border: 1px solid #e5e7eb;
   }
 
+  .accordion {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .accordion summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+    list-style: none;
+    position: relative;
+  }
+
+  .accordion summary::marker,
+  .accordion summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .accordion summary::after {
+    content: '\25BC';
+    position: absolute;
+    right: 1.25rem;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg);
+    transition: transform 0.3s ease;
+    font-size: 0.9rem;
+    color: #6b7280;
+  }
+
+  .accordion[open] summary::after {
+    transform: translateY(-50%) rotate(0deg);
+  }
+
+  .accordion summary:focus-visible {
+    outline: 3px solid #bfdbfe;
+    outline-offset: 2px;
+    border-radius: 10px;
+  }
+
+  .accordion-body {
+    max-height: 0;
+    overflow: hidden;
+    padding: 0 1.25rem;
+    opacity: 0;
+    transition: max-height 0.35s ease, opacity 0.25s ease, padding-top 0.35s ease;
+  }
+
+  .accordion[open] .accordion-body {
+    padding-top: 0.35rem;
+    padding-bottom: 1rem;
+    max-height: 2000px;
+    opacity: 1;
+  }
+
   .approval-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -197,6 +253,29 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    max-height: 300px; // 通知3つ分の高さ（約100px × 3）
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+  }
+
+  .notifications::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .notifications::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+  }
+
+  .notifications::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+
+  .notifications::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
   }
 
   .notifications li {
@@ -210,10 +289,21 @@
     gap: 0.75rem;
   }
 
+  .notification-clickable {
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .notification-clickable:hover {
+    background: #f3f4f6;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
   .notification-body {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
+    flex: 1;
   }
 
   .notification-body .hint {
@@ -222,14 +312,73 @@
     gap: 0.4rem;
   }
 
+  .notification-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  .notification-link {
+    color: #2563eb;
+    text-decoration: none;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+  }
+
+  .notification-link:hover {
+    background: #eff6ff;
+    text-decoration: underline;
+  }
+
+  .mark-read-button {
+    background: none;
+    border: 1px solid #e5e7eb;
+    color: #6b7280;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .mark-read-button:hover {
+    background: #f3f4f6;
+    color: #374151;
+  }
+
   .notification-unread {
     border-color: #fb923c;
     background: #fff7ed;
   }
 
+  .notification-unread.notification-clickable:hover {
+    background: #ffedd5;
+  }
+
   .unread-icon {
     color: #ea580c;
     font-weight: 700;
+  }
+
+  .notification-footer {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: center;
+  }
+
+  .notification-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.875rem;
+    padding: 0.25rem 0.5rem;
   }
 
   .status-chips {
