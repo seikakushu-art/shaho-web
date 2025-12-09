@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { collection, collectionData, doc, deleteDoc, addDoc, Firestore, serverTimestamp, setDoc, Timestamp } from '@angular/fire/firestore';
-import { BehaviorSubject, combineLatest, map, Observable, of, tap } from 'rxjs';
+import { BehaviorSubject, Subscription, combineLatest, map, Observable, of, tap } from 'rxjs';
 import {
   ApprovalFlow,
   ApprovalNotification,
@@ -28,6 +28,58 @@ export class ApprovalWorkflowService {
 
   readonly flows$ = this.flowsSubject.asObservable();
   readonly requests$ = this.requestsSubject.asObservable();
+
+  async startApprovalProcess(options: {
+    request: ApprovalRequest;
+    onApproved: () => Promise<void>;
+    onFailed?: () => void;
+    setMessage?: (message: string) => void;
+    setLoading?: (loading: boolean) => void;
+  }): Promise<{ requestId: string; subscription: Subscription } | undefined> {
+    const { request, onApproved, onFailed, setMessage, setLoading } = options;
+
+    setLoading?.(true);
+    setMessage?.('承認依頼を送信しています…');
+
+    try {
+      const savedRequest = await this.saveRequest(request);
+      const requestId = savedRequest.id ?? doc(this.requestsRef).id;
+      setMessage?.('承認依頼を送信しました。承認完了後に自動で反映されます。');
+      setLoading?.(false);
+
+      const subscription = this.getRequest(requestId).subscribe(async (latest) => {
+        if (!latest) return;
+
+        if (latest.status === 'approved') {
+          setLoading?.(true);
+          setMessage?.('承認完了。反映処理を実行しています…');
+          try {
+            await onApproved();
+            setMessage?.('承認済みの内容を反映しました。');
+          } catch (error) {
+            console.error('承認後の反映に失敗しました', error);
+            setMessage?.('承認後の反映に失敗しました。時間をおいて再度お試しください。');
+          } finally {
+            setLoading?.(false);
+            subscription.unsubscribe();
+          }
+        }
+
+        if (latest.status === 'remanded' || latest.status === 'expired') {
+          setMessage?.('承認が完了しませんでした。内容を確認してください。');
+          onFailed?.();
+          subscription.unsubscribe();
+        }
+      });
+
+      return { requestId, subscription };
+    } catch (error) {
+      console.error('承認依頼の送信に失敗しました', error);
+      setMessage?.('承認依頼の送信に失敗しました。時間をおいて再度お試しください。');
+      setLoading?.(false);
+      return undefined;
+    }
+  }
 
   constructor() {
     this.syncFlows();
@@ -129,6 +181,8 @@ export class ApprovalWorkflowService {
     };
 
     const cleanedPayload = this.removeUndefinedFields(payload as unknown as Record<string, unknown>);
+    console.log('saveRequest - payload.employeeData:', payload.employeeData);
+    console.log('saveRequest - cleanedPayload.employeeData:', cleanedPayload['employeeData']);
 
     if (payload.id) {
       const ref = doc(this.requestsRef, payload.id);
@@ -140,6 +194,8 @@ export class ApprovalWorkflowService {
     const ref = doc(this.requestsRef);
     const created: ApprovalRequest = { ...payload, id: ref.id };
     const cleanedCreated = this.removeUndefinedFields(created as unknown as Record<string, unknown>);
+    console.log('saveRequest - created.employeeData:', created.employeeData);
+    console.log('saveRequest - cleanedCreated.employeeData:', cleanedCreated['employeeData']);
     await setDoc(ref, cleanedCreated, { merge: true });
     this.refreshLocal(created);
     return created;
@@ -192,6 +248,61 @@ export class ApprovalWorkflowService {
       ],
     };
     await this.saveRequest(expired);
+  }
+
+  async resubmit(id: string, applicantId: string, applicantName: string, comment?: string): Promise<ApprovalRequest | undefined> {
+    const request = this.requestsSubject.value.find((item) => item.id === id);
+    if (!request || !request.flowSnapshot) return undefined;
+
+    // 申請者本人かどうかを確認
+    if (request.applicantId.toLowerCase() !== applicantId.toLowerCase()) {
+      throw new Error('申請者本人のみ再申請できます');
+    }
+
+    // 差し戻し状態でない場合は再申請不可
+    if (request.status !== 'remanded') {
+      throw new Error('差し戻しされた申請のみ再申請できます');
+    }
+
+    // 最初のステップを取得
+    const firstStep = request.flowSnapshot.steps[0];
+    if (!firstStep) {
+      throw new Error('承認フローにステップが設定されていません');
+    }
+
+    // ステップを最初からやり直す
+    const resetSteps: ApprovalStepState[] = request.flowSnapshot.steps.map((step) => ({
+      stepOrder: step.order,
+      status: 'waiting' as ApprovalStepStatus,
+    }));
+
+    // 再申請の履歴を追加
+    const resubmitHistory: ApprovalHistory = {
+      id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      statusAfter: 'pending',
+      action: 'apply',
+      actorId: applicantId,
+      actorName: applicantName,
+      comment: comment || '差し戻しされた申請を再申請しました',
+      attachments: [],
+      createdAt: Timestamp.fromDate(new Date()),
+    };
+
+    const updatedRequest: ApprovalRequest = {
+      ...request,
+      status: 'pending',
+      currentStep: firstStep.order,
+      steps: resetSteps,
+      comment: comment || request.comment,
+      histories: [
+        ...(request.histories ?? []),
+        resubmitHistory,
+      ],
+      updatedAt: Timestamp.fromDate(new Date()),
+    };
+
+    const saved = await this.saveRequest(updatedRequest);
+    return saved;
   }
 
   private async applyAction(

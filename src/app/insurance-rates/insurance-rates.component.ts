@@ -23,7 +23,7 @@ import {
 } from '../app/services/insurance-rates.service';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
 import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.component';
-import { ApprovalFlow, ApprovalHistory, ApprovalRequest } from '../models/approvals';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff } from '../models/approvals';
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../auth/auth.service';
 import { RoleKey } from '../models/roles';
@@ -56,12 +56,11 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
   applicantName = '';
   approvalRequestId: string | null = null;
   awaitingApproval = false;
-  applyingApprovedRates = false;
   isSystemAdmin = false;
   private pendingPayload?: InsuranceRatePayload;
 
   private historySub?: Subscription;
-  private approvalRequestSub?: Subscription;
+  private approvalSubscription?: Subscription;
 
   form = this.fb.group({
     id: [''],
@@ -91,42 +90,11 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
     void firstValueFrom(this.authService.userRoles$).then((roles) => {
       this.isSystemAdmin = roles.includes(RoleKey.SystemAdmin);
     });
-    this.approvalRequestSub = this.approvalWorkflowService.requests$.subscribe(
-      (requests) => {
-        if (!this.approvalRequestId || !this.pendingPayload) return;
-        const request = requests.find((item) => item.id === this.approvalRequestId);
-        if (!request) return;
-
-        if (request.status === 'pending') {
-          this.awaitingApproval = true;
-          this.message = '承認中です。完了するまでお待ちください。';
-          return;
-        }
-
-        if (request.status === 'remanded') {
-          this.message = '承認が却下されました。内容を見直してください。';
-          this.awaitingApproval = false;
-          this.pendingPayload = undefined;
-          this.approvalRequestId = null;
-          this.applyingApprovedRates = false;
-          return;
-        }
-
-        if (
-          request.status === 'approved' &&
-          this.awaitingApproval &&
-          !this.applyingApprovedRates
-        ) {
-          this.applyingApprovedRates = true;
-          void this.applyApprovedRates();
-        }
-      },
-    );
   }
 
   ngOnDestroy(): void {
     this.historySub?.unsubscribe();
-    this.approvalRequestSub?.unsubscribe();
+    this.approvalSubscription?.unsubscribe();
   }
 
   get healthInsuranceRates(): FormArray<FormGroup<RateFormGroup>> {
@@ -695,9 +663,6 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.saving = true;
-    this.message = '';
-
     const formValue = this.form.getRawValue();
     const payload: InsuranceRatePayload = {
       id: formValue.id || undefined,
@@ -774,77 +739,207 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       }),
     };
 
-    try {
-      const history: ApprovalHistory = {
-        id: `hist-${Date.now()}`,
-        statusAfter: 'pending',
-        action: 'apply',
-        actorId: this.applicantId,
-        actorName: this.applicantName,
-        comment: `${payload.healthType} の保険料率を更新します。`,
-        attachments: [],
-        createdAt: Timestamp.fromDate(new Date()),
-      };
-      const steps = this.selectedFlow.steps.map((step) => ({
-        stepOrder: step.order,
-        status: 'waiting' as const,
-      }));
-      const targetCount =
-        payload.healthInsuranceRates.length +
-        payload.nursingCareRates.length +
-        payload.standardCompensations.length +
-        payload.bonusCaps.length +
-        1; // 年金料率含む
+    const history: ApprovalHistory = {
+      id: `hist-${Date.now()}`,
+      statusAfter: 'pending',
+      action: 'apply',
+      actorId: this.applicantId,
+      actorName: this.applicantName,
+      comment: `${payload.healthType} の保険料率を更新します。`,
+      attachments: [],
+      createdAt: Timestamp.fromDate(new Date()),
+    };
+    const steps = this.selectedFlow.steps.map((step) => ({
+      stepOrder: step.order,
+      status: 'waiting' as const,
+    }));
+    const targetCount =
+      payload.healthInsuranceRates.length +
+      payload.nursingCareRates.length +
+      payload.standardCompensations.length +
+      payload.bonusCaps.length +
+      1; // 年金料率含む
 
-      const request: ApprovalRequest = {
-        title: `保険料率更新（${payload.healthType}）`,
-        category: '個別更新',
-        targetCount: targetCount || 1,
-        applicantId: this.applicantId,
-        applicantName: this.applicantName,
-        flowId: this.selectedFlow.id ?? 'insurance-rates-flow',
-        flowSnapshot: this.selectedFlow,
-        status: 'pending',
-        currentStep: this.selectedFlow.steps[0]?.order,
-        comment: payload.insurerName
-          ? `${payload.insurerName} の料率更新` 
-          : '保険料率更新の承認を依頼します。',
-        steps,
-        histories: [history],
-        attachments: [],
-        createdAt: Timestamp.fromDate(new Date()),
-      };
+    // 保険料率の差分を計算
+    const employeeDiffs: ApprovalEmployeeDiff[] = [
+      {
+        employeeNo: '保険料率',
+        name: payload.insurerName || payload.healthType || '保険料率',
+        status: 'ok',
+        changes: this.calculateInsuranceRateChanges(this.latestRecord, payload),
+      },
+    ];
 
-      const savedRequest = await this.approvalWorkflowService.saveRequest(request);
-      this.approvalRequestId = savedRequest.id ?? null;
-      this.pendingPayload = payload;
+    const request: ApprovalRequest = {
+      title: `保険料率更新（${payload.healthType}）`,
+      category: '保険料率更新',
+      targetCount: targetCount || 1,
+      applicantId: this.applicantId,
+      applicantName: this.applicantName,
+      flowId: this.selectedFlow.id ?? 'insurance-rates-flow',
+      flowSnapshot: this.selectedFlow,
+      status: 'pending',
+      currentStep: this.selectedFlow.steps[0]?.order,
+      comment: payload.insurerName
+        ? `${payload.insurerName} の料率更新`
+        : '保険料率更新の承認を依頼します。',
+      steps,
+      histories: [history],
+      attachments: [],
+      employeeDiffs,
+      createdAt: Timestamp.fromDate(new Date()),
+    };
+
+    this.pendingPayload = payload;
+
+    const result = await this.approvalWorkflowService.startApprovalProcess({
+      request,
+      onApproved: async () => {
+        if (!this.pendingPayload) return;
+        await this.insuranceRatesService.saveRates(this.pendingPayload);
+        this.message = '承認が完了したため保険料率を保存しました。';
+        this.awaitingApproval = false;
+        this.approvalRequestId = null;
+        this.pendingPayload = undefined;
+        this.loadHistory();
+      },
+      onFailed: () => {
+        this.awaitingApproval = false;
+        this.pendingPayload = undefined;
+        this.approvalRequestId = null;
+      },
+      setMessage: (message) => (this.message = message),
+      setLoading: (loading) => (this.saving = loading),
+    });
+
+    if (result) {
+      this.approvalRequestId = result.requestId;
+      this.approvalSubscription?.unsubscribe();
+      this.approvalSubscription = result.subscription;
       this.awaitingApproval = true;
-      this.message = '承認依頼を送信しました。承認完了後に適用されます。';
       this.editMode = false;
-    } catch (error) {
-      console.error(error);
-      this.message = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
-    } finally {
-      this.saving = false;
     }
   }
-  private async applyApprovedRates(): Promise<void> {
-    if (!this.pendingPayload) return;
-    this.saving = true;
-    try {
-      await this.insuranceRatesService.saveRates(this.pendingPayload);
-      this.message = '承認が完了したため保険料率を保存しました。';
-      this.awaitingApproval = false;
-      this.approvalRequestId = null;
-      this.pendingPayload = undefined;
-      this.loadHistory();
-    } catch (error) {
-      console.error(error);
-      this.message = '承認後の保存に失敗しました。再試行してください。';
-    } finally {
-      this.saving = false;
-      this.applyingApprovedRates = false;
+
+  /**
+   * 保険料率の差分を計算
+   */
+  private calculateInsuranceRateChanges(
+    existing: InsuranceRateRecord | undefined,
+    newData: InsuranceRatePayload,
+  ): { field: string; oldValue: string | null; newValue: string | null }[] {
+    const changes: { field: string; oldValue: string | null; newValue: string | null }[] = [];
+
+    // 保険者名称の差分
+    if (existing?.insurerName !== newData.insurerName) {
+      changes.push({
+        field: '保険者名称',
+        oldValue: existing?.insurerName ?? null,
+        newValue: newData.insurerName ?? null,
+      });
     }
+
+    // 都道府県別健康保険料率の差分
+    const existingHealthRates = existing?.healthInsuranceRates || [];
+    const newHealthRates = newData.healthInsuranceRates || [];
+    
+    // 既存の都道府県と新しい都道府県を比較
+    const allPrefectures = new Set([
+      ...existingHealthRates.map(r => r.prefecture),
+      ...newHealthRates.map(r => r.prefecture),
+    ]);
+
+    for (const prefecture of allPrefectures) {
+      const existingRate = existingHealthRates.find(r => r.prefecture === prefecture);
+      const newRate = newHealthRates.find(r => r.prefecture === prefecture);
+
+      if (!existingRate && newRate) {
+        // 新規追加
+        changes.push({
+          field: `健康保険料率（${prefecture}）`,
+          oldValue: null,
+          newValue: `総率: ${newRate.totalRate || '—'}, 従業員負担: ${newRate.employeeRate || '—'}, 適用開始: ${newRate.effectiveFrom || '—'}`,
+        });
+      } else if (existingRate && !newRate) {
+        // 削除
+        changes.push({
+          field: `健康保険料率（${prefecture}）`,
+          oldValue: `総率: ${existingRate.totalRate || '—'}, 従業員負担: ${existingRate.employeeRate || '—'}, 適用開始: ${existingRate.effectiveFrom || '—'}`,
+          newValue: null,
+        });
+      } else if (existingRate && newRate) {
+        // 変更チェック
+        if (
+          existingRate.totalRate !== newRate.totalRate ||
+          existingRate.employeeRate !== newRate.employeeRate ||
+          existingRate.effectiveFrom !== newRate.effectiveFrom
+        ) {
+          changes.push({
+            field: `健康保険料率（${prefecture}）`,
+            oldValue: `総率: ${existingRate.totalRate || '—'}, 従業員負担: ${existingRate.employeeRate || '—'}, 適用開始: ${existingRate.effectiveFrom || '—'}`,
+            newValue: `総率: ${newRate.totalRate || '—'}, 従業員負担: ${newRate.employeeRate || '—'}, 適用開始: ${newRate.effectiveFrom || '—'}`,
+          });
+        }
+      }
+    }
+
+    // 介護保険料率の差分
+    const existingNursingRates = existing?.nursingCareRates || [];
+    const newNursingRates = newData.nursingCareRates || [];
+    
+    if (existingNursingRates.length !== newNursingRates.length) {
+      changes.push({
+        field: '介護保険料率（件数）',
+        oldValue: String(existingNursingRates.length),
+        newValue: String(newNursingRates.length),
+      });
+    }
+
+    // 厚生年金保険料率の差分
+    const existingPension = existing?.pensionRate;
+    const newPension = newData.pensionRate;
+    
+    if (
+      existingPension?.totalRate !== newPension?.totalRate ||
+      existingPension?.employeeRate !== newPension?.employeeRate ||
+      existingPension?.effectiveFrom !== newPension?.effectiveFrom
+    ) {
+      changes.push({
+        field: '厚生年金保険料率',
+        oldValue: existingPension
+          ? `総率: ${existingPension.totalRate || '—'}, 従業員負担: ${existingPension.employeeRate || '—'}, 適用開始: ${existingPension.effectiveFrom || '—'}`
+          : null,
+        newValue: newPension
+          ? `総率: ${newPension.totalRate || '—'}, 従業員負担: ${newPension.employeeRate || '—'}, 適用開始: ${newPension.effectiveFrom || '—'}`
+          : null,
+      });
+    }
+
+    // 標準報酬等級の差分
+    const existingStandard = existing?.standardCompensations || [];
+    const newStandard = newData.standardCompensations || [];
+    
+    if (existingStandard.length !== newStandard.length) {
+      changes.push({
+        field: '標準報酬等級（件数）',
+        oldValue: String(existingStandard.length),
+        newValue: String(newStandard.length),
+      });
+    }
+
+    // 標準賞与額上限の差分
+    const existingBonus = existing?.bonusCaps || [];
+    const newBonus = newData.bonusCaps || [];
+    
+    if (existingBonus.length !== newBonus.length) {
+      changes.push({
+        field: '標準賞与額上限（件数）',
+        oldValue: String(existingBonus.length),
+        newValue: String(newBonus.length),
+      });
+    }
+
+    return changes;
   }
 }
 

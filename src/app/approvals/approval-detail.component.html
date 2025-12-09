@@ -72,6 +72,25 @@
     </header>
   </section>
 
+  <section class="card" *ngIf="current.status === 'remanded'">
+    <header class="section-header">
+      <div>
+        <p class="eyebrow">差戻し済み</p>
+        <h2>申請が差し戻されました</h2>
+      </div>
+      <p class="hint" *ngIf="!(canResubmit$ | async)">申請者本人のみ再申請できます。</p>
+    </header>
+    <div class="action-buttons" *ngIf="canResubmit$ | async">
+      <button
+        type="button"
+        class="primary"
+        (click)="resubmitApproval()"
+      >
+        再申請する
+      </button>
+    </div>
+  </section>
+
   <section class="card">
     <header class="section-header">
       <div>
@@ -120,28 +139,49 @@
     </div>
   </section>
 
+  <!-- 計算結果保存の場合はテーブルを表示せず、右側に確認ボタンのみ配置 -->
+  <section class="card" *ngIf="current.category === '計算結果保存'; else diffTable">
+    <header class="section-header align-end">
+      <div>
+        <h2>差分一覧</h2>
+      </div>
+      <button type="button" class="secondary" (click)="goToCalculationResult(current.id)">
+        確認へ
+      </button>
+    </header>
+  </section>
+
+  <ng-template #diffTable>
   <section class="card">
     <header class="section-header">
       <div>
         <h2>差分一覧</h2>
       </div>
-      <p class="hint">クリックして、変更内容を確認できます。</p>
+      <p class="hint" *ngIf="current.category === '新規社員登録'">クリックして、社員新規登録画面で詳細を確認できます。</p>
+      <p class="hint" *ngIf="current.category !== '新規社員登録'">クリックして、変更内容を確認できます。</p>
     </header>
 
     <div class="table-wrapper">
       <table class="step-table">
         <thead>
           <tr>
-            <th>社員番号</th>
-            <th>氏名</th>
+            <th *ngIf="current.category === '法人情報更新'">項目</th>
+            <th *ngIf="current.category !== '法人情報更新'">社員番号</th>
+            <th *ngIf="current.category === '法人情報更新'">値</th>
+            <th *ngIf="current.category !== '法人情報更新'">氏名</th>
             <th>ステータス</th>
             <th>主要差分</th>
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let employee of employees" (click)="openDiffModal(employee)">
-            <td>{{ employee.employeeNo }}</td>
-            <td>{{ employee.name }}</td>
+          <tr *ngIf="employees.length === 0">
+            <td [attr.colspan]="current.category === '法人情報更新' ? 4 : 4" class="empty-message">差分情報がありません</td>
+          </tr>
+          <tr *ngFor="let employee of employees" (click)="openDiffModal(employee)" [style.cursor]="current.category === '新規社員登録' ? 'pointer' : 'pointer'">
+            <td *ngIf="current.category === '法人情報更新'">{{ employee.employeeNo }}</td>
+            <td *ngIf="current.category !== '法人情報更新'">{{ employee.employeeNo }}</td>
+            <td *ngIf="current.category === '法人情報更新'">{{ employee.name }}</td>
+            <td *ngIf="current.category !== '法人情報更新'">{{ employee.name }}</td>
             <td>
               <span class="status-chip" [class.warning]="employee.status === '警告'">{{ employee.status }}</span>
             </td>
@@ -153,8 +193,9 @@
       </table>
     </div>
   </section>
+  </ng-template>
 
-  <section class="card action-card" *ngIf="!(isOperator$ | async)">
+  <section class="card action-card" *ngIf="current.status === 'pending' && !(isOperator$ | async)">
     <header class="section-header">
       <div>
         <h2>承認/差戻しコメント</h2>

@@ -1,6 +1,11 @@
 import { Timestamp } from '@angular/fire/firestore';
 
-type ApprovalCategory = '新規' | '個別更新' | '一括更新';
+type ApprovalCategory =
+  | '新規社員登録'
+  | '保険料率更新'
+  | '法人情報更新'
+  | '社員情報一括更新'
+  | '計算結果保存';
 
 export type ApprovalRequestStatus =
   | 'draft'
@@ -97,6 +102,74 @@ export interface ApprovalRequest {
   steps: ApprovalStepState[];
   attachments?: ApprovalAttachmentMetadata[];
   histories?: ApprovalHistory[];
+  calculationQueryParams?: {
+    type?: string;
+    targetMonth?: string;
+    method?: string;
+    standardMethod?: string;
+    insurances?: string[];
+    includeBonusInMonth?: boolean;
+    department?: string;
+    location?: string;
+    employeeNo?: string;
+    bonusPaidOn?: string;
+  };
+  calculationResultRows?: Array<{
+    employeeNo: string;
+    name: string;
+    department: string;
+    location: string;
+    month: string;
+    monthlySalary: number;
+    standardMonthly: number;
+    healthEmployeeMonthly: number;
+    healthEmployerMonthly: number;
+    nursingEmployeeMonthly: number;
+    nursingEmployerMonthly: number;
+    welfareEmployeeMonthly: number;
+    welfareEmployerMonthly: number;
+    bonusPaymentDate: string;
+    bonusTotalPay: number;
+    healthEmployeeBonus: number;
+    healthEmployerBonus: number;
+    nursingEmployeeBonus: number;
+    nursingEmployerBonus: number;
+    welfareEmployeeBonus: number;
+    welfareEmployerBonus: number;
+    standardHealthBonus: number;
+    standardWelfareBonus: number;
+    error?: string;
+  }>;
+  employeeData?: {
+    basicInfo: {
+      employeeNo: string;
+      name: string;
+      kana: string;
+      gender: string;
+      birthDate: string;
+      department: string;
+      workPrefecture: string;
+      myNumber: string;
+      basicPensionNumber: string;
+      address: string;
+    };
+    socialInsurance: {
+      pensionOffice: string;
+      officeName: string;
+      standardMonthly: number;
+      healthCumulative: number;
+      healthInsuredNumber: string;
+      pensionInsuredNumber: string;
+      careSecondInsured: boolean;
+      healthAcquisition: string;
+      pensionAcquisition: string;
+      childcareLeaveStart: string;
+      childcareLeaveEnd: string;
+      maternityLeaveStart: string;
+      maternityLeaveEnd: string;
+      exemption: boolean;
+    };
+  };
 }
 
 export interface ApprovalNotification {

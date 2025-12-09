@@ -1,7 +1,7 @@
 import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, OnDestroy, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { combineLatest, Subscription, firstValueFrom, interval, map, switchMap, tap } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
 import {
@@ -38,6 +38,7 @@ export class ApprovalDetailComponent implements OnDestroy {
   private workflowService = inject(ApprovalWorkflowService);
   private notificationService = inject(ApprovalNotificationService);
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private authService = inject(AuthService);
   private userDirectory = inject(UserDirectoryService);
 
@@ -124,6 +125,25 @@ export class ApprovalDetailComponent implements OnDestroy {
   );
   readonly isOperator$ = this.authService.hasAnyRole([RoleKey.Operator]);
 
+  readonly isApplicant$ = combineLatest([
+    this.authService.user$,
+    this.approval$,
+  ]).pipe(
+    map(([user, approval]) => {
+      if (!user?.email || !approval) return false;
+      return user.email.toLowerCase() === approval.applicantId.toLowerCase();
+    }),
+  );
+
+  readonly canResubmit$ = combineLatest([
+    this.approval$,
+    this.isApplicant$,
+  ]).pipe(
+    map(([approval, isApplicant]) => {
+      return isApplicant && approval?.status === 'remanded';
+    }),
+  );
+
   private expiryWatcher = interval(30_000)
     .pipe(
       tap(() => {
@@ -182,6 +202,17 @@ export class ApprovalDetailComponent implements OnDestroy {
   }
 
   openDiffModal(employee: ApprovalDetailEmployee) {
+    // 区分が「新規社員登録」の場合は、社員新規登録画面へ遷移
+    if (this.approval?.category === '新規社員登録' && this.approval?.id) {
+      this.router.navigate(['/employees/new'], {
+        queryParams: {
+          approvalId: this.approval.id,
+        },
+      });
+      return;
+    }
+    
+    // その他の区分の場合はモーダルを表示
     this.selectedEmployee = employee;
     this.showDiffModal = true;
   }
@@ -189,6 +220,16 @@ export class ApprovalDetailComponent implements OnDestroy {
   closeDiffModal() {
     this.showDiffModal = false;
     this.selectedEmployee = undefined;
+  }
+
+  goToCalculationResult(approvalId: string | undefined) {
+    if (!approvalId) return;
+    this.router.navigate(['/calculations/results'], {
+      queryParams: {
+        approvalId,
+        viewMode: 'true',
+      },
+    });
   }
 
 
@@ -304,6 +345,60 @@ export class ApprovalDetailComponent implements OnDestroy {
     } catch (error) {
       console.error('approval action failed', error);
       this.addToast('承認処理中にエラーが発生しました。', 'warning');
+    }
+  }
+
+  async resubmitApproval() {
+    if (!this.approval?.id) return;
+
+    const user = await firstValueFrom(this.authService.user$);
+    const applicantId = user?.email ?? '';
+    const applicantName = user?.displayName ?? user?.email ?? '申請者';
+
+    if (!applicantId) {
+      this.addToast('ユーザー情報が取得できませんでした。', 'warning');
+      return;
+    }
+
+    const canResubmit = await firstValueFrom(this.canResubmit$);
+    if (!canResubmit) {
+      this.addToast('再申請できません。申請者本人で、差し戻し状態の申請のみ再申請できます。', 'warning');
+      return;
+    }
+
+    try {
+      const resubmitted = await this.workflowService.resubmit(
+        this.approval.id,
+        applicantId,
+        applicantName,
+        '差し戻しされた申請を再申請しました',
+      );
+
+      if (!resubmitted) {
+        this.addToast('再申請に失敗しました。', 'warning');
+        return;
+      }
+
+      this.addToast('申請を再申請しました。承認フローが最初から開始されます。', 'success');
+
+      // 承認者への通知
+      const firstStep = resubmitted.flowSnapshot?.steps[0];
+      if (firstStep?.candidates) {
+        const notifications: ApprovalNotification[] = firstStep.candidates.map((candidate) => ({
+          id: `ntf-${Date.now()}-${candidate.id}`,
+          requestId: resubmitted.id!,
+          recipientId: candidate.id,
+          message: `${resubmitted.id} が再申請されました。ステップ1を承認してください`,
+          unread: true,
+          createdAt: new Date(),
+          type: 'info',
+        }));
+        this.notificationService.pushBatch(notifications);
+      }
+    } catch (error) {
+      console.error('resubmit failed', error);
+      const errorMessage = error instanceof Error ? error.message : '再申請処理中にエラーが発生しました。';
+      this.addToast(errorMessage, 'warning');
     }
   }
 }

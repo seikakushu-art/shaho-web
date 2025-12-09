@@ -17,7 +17,12 @@ import { InsuranceKey } from '../calculation-utils';
 import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
-import { ApprovalFlow, ApprovalHistory, ApprovalRequest } from '../../models/approvals';
+import {
+  ApprovalFlow,
+  ApprovalHistory,
+  ApprovalRequest,
+  ApprovalEmployeeDiff,
+} from '../../models/approvals';
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../../auth/auth.service';
 import { RoleKey } from '../../models/roles';
@@ -88,6 +93,8 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   selectedFlow?: ApprovalFlow;
   applicantId = '';
   applicantName = '';
+  isViewMode = false;
+  approvalId: string | null = null;
 
   calculationType: CalculationType = 'standard';
   targetMonth = '';
@@ -390,6 +397,98 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       this.applicantId = user?.email ?? 'requester';
       this.applicantName = user?.displayName ?? user?.email ?? '担当者';
     });
+    const params = this.route.snapshot.queryParamMap;
+    this.isViewMode = params.get('viewMode') === 'true';
+    this.approvalId = params.get('approvalId');
+    
+    // 承認依頼IDがある場合は、承認依頼から計算結果データを取得
+    if (this.approvalId) {
+      this.approvalWorkflowService.getRequest(this.approvalId)
+        .pipe(takeUntil(this.destroy$))
+        .subscribe((approval) => {
+          if (!approval) {
+            console.error('承認依頼が見つかりません');
+            this.loadParamsFromQuery();
+            return;
+          }
+
+          // 計算結果データがある場合はそれを使用
+          if (approval.calculationResultRows && approval.calculationResultRows.length > 0) {
+            this.rows = approval.calculationResultRows.map((row) => ({
+              employeeNo: row.employeeNo,
+              name: row.name,
+              department: row.department,
+              location: row.location,
+              month: row.month,
+              monthlySalary: row.monthlySalary,
+              standardMonthly: row.standardMonthly,
+              healthEmployeeMonthly: row.healthEmployeeMonthly,
+              healthEmployerMonthly: row.healthEmployerMonthly,
+              nursingEmployeeMonthly: row.nursingEmployeeMonthly,
+              nursingEmployerMonthly: row.nursingEmployerMonthly,
+              welfareEmployeeMonthly: row.welfareEmployeeMonthly,
+              welfareEmployerMonthly: row.welfareEmployerMonthly,
+              bonusPaymentDate: row.bonusPaymentDate,
+              bonusTotalPay: row.bonusTotalPay,
+              healthEmployeeBonus: row.healthEmployeeBonus,
+              healthEmployerBonus: row.healthEmployerBonus,
+              nursingEmployeeBonus: row.nursingEmployeeBonus,
+              nursingEmployerBonus: row.nursingEmployerBonus,
+              welfareEmployeeBonus: row.welfareEmployeeBonus,
+              welfareEmployerBonus: row.welfareEmployerBonus,
+              standardHealthBonus: row.standardHealthBonus,
+              standardWelfareBonus: row.standardWelfareBonus,
+              error: row.error,
+            }));
+            
+            // 計算パラメータも設定
+            if (approval.calculationQueryParams) {
+              const calcParams = approval.calculationQueryParams;
+              this.calculationType = (calcParams.type as CalculationType) ?? 'standard';
+              this.targetMonth = calcParams.targetMonth ?? '2025-02';
+              this.method = calcParams.method ?? '自動算出';
+              this.standardMethod = (calcParams.standardMethod as StandardCalculationMethod) ?? '定時決定';
+              this.activeInsurances = calcParams.insurances ?? [];
+              this.includeBonusInMonth = calcParams.includeBonusInMonth ?? true;
+              this.departmentFilter = calcParams.department ?? '';
+              this.locationFilter = calcParams.location ?? '';
+              this.employeeNoFilter = calcParams.employeeNo ?? '';
+              this.bonusPaidOnFilter = calcParams.bonusPaidOn ?? '';
+            }
+            
+            this.refreshVisibility(true);
+            this.calculateSummaries();
+            this.updateFilterOptions();
+            return;
+          }
+
+          // 計算結果データがない場合は、計算パラメータから再計算
+          if (approval.calculationQueryParams) {
+            const calcParams = approval.calculationQueryParams;
+            this.calculationType = (calcParams.type as CalculationType) ?? 'standard';
+            this.targetMonth = calcParams.targetMonth ?? '2025-02';
+            this.method = calcParams.method ?? '自動算出';
+            this.standardMethod = (calcParams.standardMethod as StandardCalculationMethod) ?? '定時決定';
+            this.activeInsurances = calcParams.insurances ?? [];
+            this.includeBonusInMonth = calcParams.includeBonusInMonth ?? true;
+            this.departmentFilter = calcParams.department ?? '';
+            this.locationFilter = calcParams.location ?? '';
+            this.employeeNoFilter = calcParams.employeeNo ?? '';
+            this.bonusPaidOnFilter = calcParams.bonusPaidOn ?? '';
+            this.loadRows();
+            return;
+          }
+
+          // 計算パラメータもない場合は、クエリパラメータから読み込む
+          this.loadParamsFromQuery();
+        });
+    } else {
+      // 承認依頼IDがない場合は、クエリパラメータから読み込む
+      this.loadParamsFromQuery();
+    }
+  }
+
+  private loadParamsFromQuery(): void {
     const params = this.route.snapshot.queryParamMap;
     const type = params.get('type') as CalculationType | null;
     this.calculationType = type ?? 'standard';
@@ -977,6 +1076,10 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   }
 
   async saveResults() {
+    if (this.isViewMode) {
+      this.approvalMessage = '閲覧モードのため保存できません。';
+      return;
+    }
     if (this.rows.length === 0) return;
 
     const validRows = this.rows.filter((row) => !row.error);
@@ -1020,9 +1123,82 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         createdAt: Timestamp.fromDate(new Date()),
       };
 
+      // 計算結果の差分データ（承認詳細の差分一覧に表示）
+      const employeeDiffs: ApprovalEmployeeDiff[] = validRows.map((row) => {
+        const changes: ApprovalEmployeeDiff['changes'] = [];
+
+        const pushIfExists = (field: string, value: number | string | undefined | null) => {
+          if (value === undefined || value === null || value === '') return;
+          changes.push({
+            field,
+            oldValue: null,
+            newValue: value.toString(),
+          });
+        };
+
+        pushIfExists('標準報酬月額', row.standardMonthly);
+
+        const healthTotalMonthly = (row.healthEmployeeMonthly || 0) + (row.healthEmployerMonthly || 0);
+        pushIfExists('健康保険料（月額）', healthTotalMonthly > 0 ? healthTotalMonthly : null);
+
+        const nursingTotalMonthly = (row.nursingEmployeeMonthly || 0) + (row.nursingEmployerMonthly || 0);
+        pushIfExists('介護保険料（月額）', nursingTotalMonthly > 0 ? nursingTotalMonthly : null);
+
+        const welfareTotalMonthly = (row.welfareEmployeeMonthly || 0) + (row.welfareEmployerMonthly || 0);
+        pushIfExists('厚生年金保険料（月額）', welfareTotalMonthly > 0 ? welfareTotalMonthly : null);
+
+        pushIfExists('賞与支給額', row.bonusTotalPay && row.bonusTotalPay > 0 ? row.bonusTotalPay : null);
+
+        const healthTotalBonus = (row.healthEmployeeBonus || 0) + (row.healthEmployerBonus || 0);
+        pushIfExists('健康保険料（賞与）', healthTotalBonus > 0 ? healthTotalBonus : null);
+
+        const welfareTotalBonus = (row.welfareEmployeeBonus || 0) + (row.welfareEmployerBonus || 0);
+        pushIfExists('厚生年金保険料（賞与）', welfareTotalBonus > 0 ? welfareTotalBonus : null);
+
+        // 差分が無い場合でも行を表示するため、標準報酬月額または社員番号で1件追加
+        if (changes.length === 0) {
+          pushIfExists('標準報酬月額', row.standardMonthly ?? 0);
+        }
+
+        return {
+          employeeNo: row.employeeNo,
+          name: row.name,
+          status: 'ok',
+          changes,
+        };
+      });
+
+      // 計算結果データを保存用に変換
+      const calculationResultRows = validRows.map((row) => ({
+        employeeNo: row.employeeNo,
+        name: row.name,
+        department: row.department,
+        location: row.location,
+        month: row.month,
+        monthlySalary: row.monthlySalary,
+        standardMonthly: row.standardMonthly,
+        healthEmployeeMonthly: row.healthEmployeeMonthly,
+        healthEmployerMonthly: row.healthEmployerMonthly,
+        nursingEmployeeMonthly: row.nursingEmployeeMonthly,
+        nursingEmployerMonthly: row.nursingEmployerMonthly,
+        welfareEmployeeMonthly: row.welfareEmployeeMonthly,
+        welfareEmployerMonthly: row.welfareEmployerMonthly,
+        bonusPaymentDate: row.bonusPaymentDate,
+        bonusTotalPay: row.bonusTotalPay,
+        healthEmployeeBonus: row.healthEmployeeBonus,
+        healthEmployerBonus: row.healthEmployerBonus,
+        nursingEmployeeBonus: row.nursingEmployeeBonus,
+        nursingEmployerBonus: row.nursingEmployerBonus,
+        welfareEmployeeBonus: row.welfareEmployeeBonus,
+        welfareEmployerBonus: row.welfareEmployerBonus,
+        standardHealthBonus: row.standardHealthBonus,
+        standardWelfareBonus: row.standardWelfareBonus,
+        error: row.error,
+      }));
+
       const request: ApprovalRequest = {
-        title: `計算結果保存（${validRows.length}件）`,
-        category: '一括更新',
+        title: '計算結果保存',
+        category: '計算結果保存',
         targetCount: validRows.length,
         applicantId: this.applicantId,
         applicantName: this.applicantName,
@@ -1034,6 +1210,20 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         steps,
         histories: [history],
         attachments: [],
+        employeeDiffs,
+        calculationQueryParams: {
+          type: this.calculationType,
+          targetMonth: this.targetMonth,
+          method: this.method,
+          standardMethod: this.standardMethod,
+          insurances: this.activeInsurances,
+          includeBonusInMonth: this.includeBonusInMonth,
+          department: this.departmentFilter,
+          location: this.locationFilter,
+          employeeNo: this.employeeNoFilter,
+          bonusPaidOn: this.bonusPaidOnFilter,
+        },
+        calculationResultRows,
         createdAt: Timestamp.fromDate(new Date()),
       };
 

@@ -487,7 +487,7 @@ private readFileAsText(file: File): Promise<string> {
     const firstStepOrder = flow.steps[0]?.order;
     return {
       title: `社員インポート（${this.selectedCount}件）`,
-      category: '一括更新',
+      category: '社員情報一括更新',
       targetCount: this.selectedCount,
       applicantId: this.applicantId,
       applicantName: this.applicantName,

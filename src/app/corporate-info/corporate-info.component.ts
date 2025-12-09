@@ -12,7 +12,7 @@ import {
 } from '../app/services/corporate-info.service';
 import {  Subscription, firstValueFrom, map, tap } from 'rxjs';
 import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.component';
-import { ApprovalFlow, ApprovalHistory, ApprovalRequest } from '../models/approvals';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff } from '../models/approvals';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
 import { Timestamp } from '@angular/fire/firestore';
 
@@ -164,8 +164,6 @@ export class CorporateInfoComponent implements OnInit, OnDestroy  {
       return;
     }
 
-
-    this.isSaving = true;
     this.message = '';
     const formValue = this.form.getRawValue();
     // null を undefined に変換（CorporateInfoPayload は undefined を期待）
@@ -182,91 +180,116 @@ export class CorporateInfoComponent implements OnInit, OnDestroy  {
       approvedBy: formValue.approvedBy ?? undefined,
     };
 
-    try {
-      const history: ApprovalHistory = {
-        id: `hist-${Date.now()}`,
-        statusAfter: 'pending',
-        action: 'apply',
-        actorId: this.applicantId,
-        actorName: this.applicantName,
-        comment: '法人情報を更新します。',
-        attachments: [],
-        createdAt: Timestamp.fromDate(new Date()),
-      };
+    const history: ApprovalHistory = {
+      id: `hist-${Date.now()}`,
+      statusAfter: 'pending',
+      action: 'apply',
+      actorId: this.applicantId,
+      actorName: this.applicantName,
+      comment: '法人情報を更新します。',
+      attachments: [],
+      createdAt: Timestamp.fromDate(new Date()),
+    };
 
-      const steps = this.selectedFlow.steps.map((step) => ({
-        stepOrder: step.order,
-        status: 'waiting' as const,
-      }));
+    const steps = this.selectedFlow.steps.map((step) => ({
+      stepOrder: step.order,
+      status: 'waiting' as const,
+    }));
 
-      const request: ApprovalRequest = {
-        title: '法人情報の更新',
-        category: '個別更新',
-        targetCount: 1,
-        applicantId: this.applicantId,
-        applicantName: this.applicantName,
-        flowId: this.selectedFlow.id ?? 'corporate-flow',
-        flowSnapshot: this.selectedFlow,
-        status: 'pending',
-        currentStep: this.selectedFlow.steps[0]?.order,
-        comment: `${payload.officeName ?? '法人情報'} の変更申請`,
-        steps,
-        histories: [history],
-        attachments: [],
-        createdAt: Timestamp.fromDate(new Date()),
-      };
+    // 法人情報の差分を計算
+    const employeeDiffs: ApprovalEmployeeDiff[] = [
+      {
+        employeeNo: '法人情報',
+        name: payload.officeName || '法人情報',
+        status: 'ok',
+        changes: this.calculateCorporateInfoChanges(this.currentInfo, payload),
+      },
+    ];
 
-      const savedRequest = await this.approvalWorkflowService.saveRequest(request);
-      this.pendingPayload = payload;
-      this.pendingRequestId = savedRequest.id;
-      this.subscribeApprovalCompletion();
-      this.message = '承認依頼を送信しました。承認完了後に反映されます。';
+    const request: ApprovalRequest = {
+      title: '法人情報の更新',
+      category: '法人情報更新',
+      targetCount: 1,
+      applicantId: this.applicantId,
+      applicantName: this.applicantName,
+      flowId: this.selectedFlow.id ?? 'corporate-flow',
+      flowSnapshot: this.selectedFlow,
+      status: 'pending',
+      currentStep: this.selectedFlow.steps[0]?.order,
+      comment: `${payload.officeName ?? '法人情報'} の変更申請`,
+      steps,
+      histories: [history],
+      attachments: [],
+      employeeDiffs,
+      createdAt: Timestamp.fromDate(new Date()),
+    };
+    this.pendingPayload = payload;
+
+    const result = await this.approvalWorkflowService.startApprovalProcess({
+      request,
+      onApproved: async () => {
+        if (!this.pendingPayload) return;
+        await this.corporateInfoService.saveCorporateInfo(this.pendingPayload);
+        this.message = '承認が完了しました。法人情報を更新しました。';
+        this.editMode = false;
+        this.pendingPayload = undefined;
+        this.pendingRequestId = undefined;
+      },
+      onFailed: () => {
+        this.pendingPayload = undefined;
+        this.pendingRequestId = undefined;
+        this.editMode = false;
+      },
+      setMessage: (message) => (this.message = message),
+      setLoading: (loading) => (this.isSaving = loading),
+    });
+
+    if (result) {
+      this.pendingRequestId = result.requestId;
+      this.approvalSubscription = result.subscription;
       this.editMode = false;
-    } catch (error) {
-      console.error(error);
-      this.message = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
-    } finally {
-      this.isSaving = false;
     }
   }
+  /**
+   * 法人情報の差分を計算
+   */
+  private calculateCorporateInfoChanges(
+    existing: CorporateInfo | null,
+    newData: CorporateInfoPayload,
+  ): { field: string; oldValue: string | null; newValue: string | null }[] {
+    const changes: { field: string; oldValue: string | null; newValue: string | null }[] = [];
+
+    const fieldMap: Record<string, string> = {
+      officeName: '事業所名',
+      address: '住所',
+      ownerName: '代表者名',
+      phoneNumber: '電話番号',
+      healthInsuranceType: '健康保険種別',
+      healthInsuranceOfficeCode: '健康保険事業所コード',
+      pensionOfficeCode: '年金事務所コード',
+      sharedOfficeNumber: '共済事業所番号',
+      insurerNumber: '保険者番号',
+      approvedBy: '承認者',
+    };
+
+    for (const [key, label] of Object.entries(fieldMap)) {
+      const oldValue = existing?.[key as keyof CorporateInfo] ?? null;
+      const newValue = newData[key as keyof CorporateInfoPayload] ?? null;
+
+      // 値が変更されている場合のみ追加
+      if (oldValue !== newValue) {
+        changes.push({
+          field: label,
+          oldValue: oldValue ? String(oldValue) : null,
+          newValue: newValue ? String(newValue) : null,
+        });
+      }
+    }
+
+    return changes;
+  }
+
   ngOnDestroy(): void {
     this.approvalSubscription?.unsubscribe();
-  }
-
-  private subscribeApprovalCompletion(): void {
-    if (!this.pendingRequestId) {
-      return;
-    }
-
-    this.approvalSubscription?.unsubscribe();
-    this.approvalSubscription = this.approvalWorkflowService
-      .getRequest(this.pendingRequestId)
-      .subscribe(async (request) => {
-        if (!request || !this.pendingPayload) {
-          return;
-        }
-
-        if (request.status === 'approved') {
-          this.isSaving = true;
-          try {
-            await this.corporateInfoService.saveCorporateInfo(this.pendingPayload);
-            this.message = '承認が完了しました。法人情報を更新しました。';
-            this.editMode = false;
-          } catch (error) {
-            console.error(error);
-            this.message = '承認後の更新に失敗しました。時間をおいて再度お試しください。';
-          } finally {
-            this.isSaving = false;
-            this.pendingPayload = undefined;
-            this.pendingRequestId = undefined;
-            this.approvalSubscription?.unsubscribe();
-          }
-        } else if (request.status === 'remanded' || request.status === 'expired') {
-          this.message = '承認が完了しませんでした。内容を確認してください。';
-          this.pendingPayload = undefined;
-          this.pendingRequestId = undefined;
-          this.approvalSubscription?.unsubscribe();
-        }
-      });
   }
 }

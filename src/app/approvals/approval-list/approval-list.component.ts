@@ -26,6 +26,7 @@ export class ApprovalListComponent {
   private selectedFlowId$ = new BehaviorSubject<string | null>(null);
   private selectedCategory$ = new BehaviorSubject<string | null>(null);
   private selectedApplicantId$ = new BehaviorSubject<string | null>(null);
+  private showOnlyMyApplications$ = new BehaviorSubject<boolean>(false);
   private showOnlyMyTasks$ = new BehaviorSubject<boolean>(false);
 
   get selectedFlowId(): string | null {
@@ -48,10 +49,18 @@ export class ApprovalListComponent {
   set selectedApplicantId(value: string | null) {
     this.selectedApplicantId$.next(value);
   }
+  get showOnlyMyApplications(): boolean {
+    return this.showOnlyMyApplications$.value;
+  }
+  set showOnlyMyApplications(value: boolean) {
+    this.showOnlyMyApplications$.next(value);
+  }
+
   get showOnlyMyTasks(): boolean {
     return this.showOnlyMyTasks$.value;
   }
   set showOnlyMyTasks(value: boolean) {
+    console.log('showOnlyMyTasks changed:', value);
     this.showOnlyMyTasks$.next(value);
   }
 
@@ -72,6 +81,27 @@ export class ApprovalListComponent {
       return ts.seconds * 1000 + (ts.nanoseconds ?? 0) / 1_000_000;
     }
     return 0;
+  }
+
+  getTimestampDate(timestamp: Timestamp | undefined): Date | null {
+    if (!timestamp) return null;
+    if (timestamp instanceof Timestamp) {
+      return timestamp.toDate();
+    }
+    // Firestoreから取得したデータがプレーンオブジェクトの場合
+    const ts = timestamp as unknown as { toDate?: () => Date; seconds?: number; nanoseconds?: number };
+    if (ts.toDate && typeof ts.toDate === 'function') {
+      return ts.toDate();
+    }
+    if (typeof ts.seconds === 'number') {
+      return new Date(ts.seconds * 1000 + (ts.nanoseconds ?? 0) / 1_000_000);
+    }
+    // 既にDateオブジェクトの場合
+    const dateValue = timestamp as unknown;
+    if (dateValue instanceof Date) {
+      return dateValue;
+    }
+    return null;
   }
 
   readonly allApprovals$: Observable<(ApprovalRequest & { applicantDisplayName: string })[]> = 
@@ -97,18 +127,35 @@ export class ApprovalListComponent {
     this.selectedFlowId$,
     this.selectedCategory$,
     this.selectedApplicantId$,
+    this.showOnlyMyApplications$,
     this.showOnlyMyTasks$,
     this.authService.user$,
     this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver]),
   ]).pipe(
-    map(([approvals, flowId, category, applicantId, showOnlyMine, user, roleAllowed]) => {
+    map(([approvals, flowId, category, applicantId, showOnlyMyApplications, showOnlyMine, user, roleAllowed]) => {
       const email = user?.email?.toLowerCase();
+      
+      console.log('フィルター状態:', {
+        showOnlyMyApplications,
+        showOnlyMine,
+        roleAllowed,
+        email,
+        totalApprovals: approvals.length,
+      });
 
-      return approvals
+      const mapped = approvals
         .map(approval => ({
           ...approval,
           isMyTask: this.isMyTask(approval, email, roleAllowed),
-        }))
+        }));
+      
+      console.log('isMyTask判定結果:', mapped.map(a => ({
+        id: a.id,
+        isMyTask: a.isMyTask,
+        currentStep: a.currentStep,
+      })));
+
+      const filtered = mapped
         .filter(approval => {
           if (flowId && approval.flowId !== flowId) {
             return false;
@@ -119,11 +166,18 @@ export class ApprovalListComponent {
           if (applicantId && approval.applicantId.toLowerCase() !== applicantId.toLowerCase()) {
             return false;
           }
+          if (showOnlyMyApplications && email && approval.applicantId.toLowerCase() !== email) {
+            return false;
+          }
           if (showOnlyMine && !approval.isMyTask) {
             return false;
           }
           return true;
-        })
+        });
+      
+      console.log('フィルター後の件数:', filtered.length);
+
+      return filtered
         .sort((a, b) => {
           if (a.isMyTask !== b.isMyTask) {
             return a.isMyTask ? -1 : 1;
@@ -134,7 +188,14 @@ export class ApprovalListComponent {
   );
 
   readonly flows$ = this.workflowService.flows$;
-  readonly categories: ApprovalRequest['category'][] = ['新規', '個別更新', '一括更新'];
+  readonly categories: ApprovalRequest['category'][] = [
+    '新規社員登録',
+    '保険料率更新',
+    '法人情報更新',
+    '社員情報一括更新',
+    '計算結果保存',
+  ];
+  readonly canApprove$ = this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver]);
   
   readonly applicants$ = this.allApprovals$.pipe(
     map(approvals => {
@@ -186,12 +247,18 @@ export class ApprovalListComponent {
 
   categoryClass(category: ApprovalRequest['category']) {
     switch (category) {
-      case '新規':
-        return 'badge-new';
-      case '個別更新':
-        return 'badge-individual';
+      case '新規社員登録':
+        return 'badge-new-employee';
+      case '保険料率更新':
+        return 'badge-insurance-rate';
+      case '法人情報更新':
+        return 'badge-corporate-info';
+      case '社員情報一括更新':
+        return 'badge-employee-bulk';
+      case '計算結果保存':
+        return 'badge-calculation-result';
       default:
-        return 'badge-bulk';
+        return 'badge-default';
     }
   }
 
@@ -199,6 +266,7 @@ export class ApprovalListComponent {
     this.selectedFlowId$.next(null);
     this.selectedCategory$.next(null);
     this.selectedApplicantId$.next(null);
+    this.showOnlyMyApplications$.next(false);
     this.showOnlyMyTasks$.next(false);
   }
   private isMyTask(
@@ -206,13 +274,28 @@ export class ApprovalListComponent {
     email: string | undefined,
     roleAllowed: boolean,
   ): boolean {
-    if (!roleAllowed || !email || !approval.currentStep) return false;
+    if (!roleAllowed || !email || !approval.currentStep) {
+      console.log('isMyTask: false (条件不足)', {
+        roleAllowed,
+        email,
+        currentStep: approval.currentStep,
+      });
+      return false;
+    }
 
     const flowStep = approval.flowSnapshot?.steps.find((s) => s.order === approval.currentStep);
     const candidateIds = flowStep?.candidates?.map((c) => c.id.toLowerCase()) ?? [];
     const currentStepState = approval.steps.find((s) => s.stepOrder === approval.currentStep);
     const assignedApprover = currentStepState?.approverId?.toLowerCase();
 
-    return candidateIds.includes(email) || assignedApprover === email;
+    const result = candidateIds.includes(email) || assignedApprover === email;
+    console.log('isMyTask判定:', {
+      approvalId: approval.id,
+      email,
+      candidateIds,
+      assignedApprover,
+      result,
+    });
+    return result;
   }
 }

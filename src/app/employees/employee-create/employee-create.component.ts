@@ -2,10 +2,10 @@ import { CommonModule } from '@angular/common';
 import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { FormsModule, NgForm } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
-import { Subject, switchMap, takeUntil, of, firstValueFrom } from 'rxjs';
+import { Subject, switchMap, takeUntil, of, firstValueFrom, combineLatest, map, take, filter, timeout, catchError } from 'rxjs';
 import { ShahoEmployee, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
-import { ApprovalFlow, ApprovalHistory, ApprovalRequest } from '../../models/approvals';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff } from '../../models/approvals';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../../auth/auth.service';
@@ -38,6 +38,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     selectedFlow?: ApprovalFlow;
     applicantId = '';
     applicantName = '';
+    isViewModeFromApproval = false; // 承認詳細から遷移した閲覧モードかどうか
   
     basicInfo = {
       employeeNo: '',
@@ -70,36 +71,87 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     };
   
     ngOnInit(): void {
-      this.route.paramMap
-        .pipe(
-          takeUntil(this.destroy$),
-          switchMap((params) => {
-            const id = params.get('id');
-            this.employeeId = id;
-            this.isEditMode = !!id;
-            
-            if (!id) {
-              // 新規作成モード
-              return of(null);
-            }
-            
-            // 編集モード: 既存データを読み込む
-            this.isLoading = true;
-            return this.employeesService.getEmployeeById(id);
-          }),
-        )
-        .subscribe((employee) => {
-          this.isLoading = false;
-          if (employee) {
-            this.loadEmployeeData(employee);
-            this.cdr.detectChanges();
-          }
-        });
-        this.authService.user$
+      // ユーザー情報を取得
+      this.authService.user$
         .pipe(takeUntil(this.destroy$))
         .subscribe((user) => {
           this.applicantId = user?.email ?? 'requester';
           this.applicantName = user?.displayName ?? user?.email ?? '担当者';
+        });
+
+      // クエリパラメータとパラメータを組み合わせて処理
+      combineLatest([this.route.queryParams, this.route.paramMap])
+        .pipe(
+          takeUntil(this.destroy$),
+          switchMap(([queryParams, params]) => {
+            const approvalId = queryParams['approvalId'];
+            const employeeId = params.get('id');
+            
+            this.employeeId = employeeId;
+            this.isEditMode = !!employeeId;
+            
+            // 承認IDがある場合は、承認リクエストから一時保存データを読み込む
+            if (approvalId) {
+              this.isViewModeFromApproval = true; // 承認詳細から遷移した閲覧モード
+              this.isLoading = true;
+              // requests$を直接監視して、データが読み込まれるまで待つ
+              return this.approvalWorkflowService.requests$.pipe(
+                map((requests) => {
+                  const approval = requests.find((req) => req.id === approvalId);
+                  console.log('承認リクエストを取得:', approval);
+                  console.log('employeeData:', approval?.employeeData);
+                  console.log('全リクエスト数:', requests.length);
+                  if (approval) {
+                    console.log('承認リクエストの全フィールド:', Object.keys(approval));
+                  }
+                  return { type: 'approval' as const, data: approval };
+                }),
+                // データが見つかるまで待つ（undefinedでない場合のみ通過）
+                filter((result) => result.data !== undefined),
+                timeout(10000), // 10秒でタイムアウト
+                catchError((error) => {
+                  console.error('承認リクエストの取得エラー:', error);
+                  return of({ type: 'approval' as const, data: undefined });
+                }),
+                take(1),
+              );
+            }
+            
+            // 社員IDがある場合は、既存社員データを読み込む
+            if (employeeId) {
+              this.isLoading = true;
+              return this.employeesService.getEmployeeById(employeeId).pipe(
+                map((employee) => ({ type: 'employee' as const, data: employee })),
+              );
+            }
+            
+            // 新規作成モード
+            return of({ type: 'new' as const, data: null });
+          }),
+        )
+        .subscribe((result) => {
+          this.isLoading = false;
+          
+          if (result.type === 'approval') {
+            console.log('承認リクエストの結果:', result);
+            if (result.data?.employeeData) {
+              console.log('employeeDataを読み込み:', result.data.employeeData);
+              // 承認リクエストから一時保存データを読み込む
+              this.basicInfo = { ...result.data.employeeData.basicInfo };
+              this.socialInsurance = { ...result.data.employeeData.socialInsurance };
+              this.editMode = false; // 閲覧モードで表示
+              this.isViewModeFromApproval = true; // 承認詳細から遷移した閲覧モード
+              console.log('読み込んだbasicInfo:', this.basicInfo);
+              console.log('読み込んだsocialInsurance:', this.socialInsurance);
+              this.cdr.detectChanges();
+            } else {
+              console.warn('employeeDataが見つかりませんでした。承認リクエスト:', result.data);
+            }
+          } else if (result.type === 'employee' && result.data) {
+            // 既存社員データを読み込む
+            this.loadEmployeeData(result.data);
+            this.cdr.detectChanges();
+          }
         });
     }
 
@@ -230,9 +282,26 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
 
         const displayName = this.basicInfo.name || this.basicInfo.employeeNo || '新規社員';
 
+        // 新規社員登録の差分情報を作成
+        const employeeDiffs: ApprovalEmployeeDiff[] = [
+          {
+            employeeNo: this.basicInfo.employeeNo || '',
+            name: this.basicInfo.name || '',
+            status: 'ok',
+            isNew: true,
+            changes: this.createEmployeeChanges(),
+          },
+        ];
+
+        // 一時保存用の社員データ
+        const employeeData = {
+          basicInfo: { ...this.basicInfo },
+          socialInsurance: { ...this.socialInsurance },
+        };
+
         const request: ApprovalRequest = {
           title: `社員新規登録（${displayName}）`,
-          category: '新規',
+          category: '新規社員登録',
           targetCount: 1,
           applicantId: this.applicantId,
           applicantName: this.applicantName,
@@ -244,8 +313,13 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           steps,
           histories: [history],
           attachments: [],
+          employeeDiffs,
+          employeeData,
           createdAt: Timestamp.fromDate(new Date()),
         };
+
+        console.log('保存するrequest:', request);
+        console.log('request.employeeData:', request.employeeData);
 
         await this.approvalWorkflowService.saveRequest(request);
         this.approvalMessage = '承認依頼を送信しました。承認完了までお待ちください。';
@@ -267,5 +341,86 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         this.selectedFlow = flows[0];
         this.selectedFlowId = flows[0].id ?? null;
       }
+    }
+
+    /**
+     * フォームの入力値を差分情報のchanges配列に変換
+     */
+    private createEmployeeChanges(): { field: string; oldValue: string | null; newValue: string | null }[] {
+      const changes: { field: string; oldValue: string | null; newValue: string | null }[] = [];
+
+      // 基本情報
+      if (this.basicInfo.employeeNo) {
+        changes.push({ field: '社員番号', oldValue: null, newValue: this.basicInfo.employeeNo });
+      }
+      if (this.basicInfo.name) {
+        changes.push({ field: '氏名(漢字)', oldValue: null, newValue: this.basicInfo.name });
+      }
+      if (this.basicInfo.kana) {
+        changes.push({ field: '氏名(カナ)', oldValue: null, newValue: this.basicInfo.kana });
+      }
+      if (this.basicInfo.gender) {
+        changes.push({ field: '性別', oldValue: null, newValue: this.basicInfo.gender });
+      }
+      if (this.basicInfo.birthDate) {
+        changes.push({ field: '生年月日', oldValue: null, newValue: this.basicInfo.birthDate });
+      }
+      if (this.basicInfo.department) {
+        changes.push({ field: '部署', oldValue: null, newValue: this.basicInfo.department });
+      }
+      if (this.basicInfo.workPrefecture) {
+        changes.push({ field: '勤務都道府県', oldValue: null, newValue: this.basicInfo.workPrefecture });
+      }
+      if (this.basicInfo.myNumber) {
+        changes.push({ field: 'マイナンバー', oldValue: null, newValue: this.basicInfo.myNumber });
+      }
+      if (this.basicInfo.basicPensionNumber) {
+        changes.push({ field: '基礎年金番号', oldValue: null, newValue: this.basicInfo.basicPensionNumber });
+      }
+      if (this.basicInfo.address) {
+        changes.push({ field: '住所', oldValue: null, newValue: this.basicInfo.address });
+      }
+
+      // 社会保険情報
+      if (this.socialInsurance.pensionOffice) {
+        changes.push({ field: '年金事務所', oldValue: null, newValue: this.socialInsurance.pensionOffice });
+      }
+      if (this.socialInsurance.officeName) {
+        changes.push({ field: '事業所名', oldValue: null, newValue: this.socialInsurance.officeName });
+      }
+      if (this.socialInsurance.standardMonthly !== 0) {
+        changes.push({ field: '標準報酬月額', oldValue: null, newValue: String(this.socialInsurance.standardMonthly) });
+      }
+      if (this.socialInsurance.healthCumulative !== 0) {
+        changes.push({ field: '標準賞与額累計', oldValue: null, newValue: String(this.socialInsurance.healthCumulative) });
+      }
+      if (this.socialInsurance.healthInsuredNumber) {
+        changes.push({ field: '健康保険被保険者番号', oldValue: null, newValue: this.socialInsurance.healthInsuredNumber });
+      }
+      if (this.socialInsurance.pensionInsuredNumber) {
+        changes.push({ field: '厚生年金被保険者番号', oldValue: null, newValue: this.socialInsurance.pensionInsuredNumber });
+      }
+      changes.push({ field: '介護保険第2号被保険者', oldValue: null, newValue: this.socialInsurance.careSecondInsured ? 'はい' : 'いいえ' });
+      if (this.socialInsurance.healthAcquisition) {
+        changes.push({ field: '健康保険取得年月日', oldValue: null, newValue: this.socialInsurance.healthAcquisition });
+      }
+      if (this.socialInsurance.pensionAcquisition) {
+        changes.push({ field: '厚生年金取得年月日', oldValue: null, newValue: this.socialInsurance.pensionAcquisition });
+      }
+      if (this.socialInsurance.childcareLeaveStart) {
+        changes.push({ field: '育児休業開始日', oldValue: null, newValue: this.socialInsurance.childcareLeaveStart });
+      }
+      if (this.socialInsurance.childcareLeaveEnd) {
+        changes.push({ field: '育児休業終了日', oldValue: null, newValue: this.socialInsurance.childcareLeaveEnd });
+      }
+      if (this.socialInsurance.maternityLeaveStart) {
+        changes.push({ field: '産前産後休業開始日', oldValue: null, newValue: this.socialInsurance.maternityLeaveStart });
+      }
+      if (this.socialInsurance.maternityLeaveEnd) {
+        changes.push({ field: '産前産後休業終了日', oldValue: null, newValue: this.socialInsurance.maternityLeaveEnd });
+      }
+      changes.push({ field: '保険料免除', oldValue: null, newValue: this.socialInsurance.exemption ? 'はい' : 'いいえ' });
+
+      return changes;
     }
   }

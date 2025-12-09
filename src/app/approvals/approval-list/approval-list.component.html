@@ -3,7 +3,7 @@
       <div>
         <h1>承認/申請一覧</h1>
       </div>
-      <p class="hint">最新の申請から表示しています。あなたの承認ステップに該当する行にはラベルと左枠が付きます。</p>
+      <p class="hint">最新の申請から表示しています。</p>
     </header>
   
     <section class="card filter-card">
@@ -30,8 +30,15 @@
           </select>
         </div>
         <div class="filter-group filter-toggle">
-          <label for="my-task-only">候補に入っているものだけ</label>
           <label class="checkbox-label">
+            <input
+              id="my-application-only"
+              type="checkbox"
+              [(ngModel)]="showOnlyMyApplications"
+            />
+            <span>自分の申請のみ表示</span>
+          </label>
+          <label class="checkbox-label" *ngIf="canApprove$ | async">
             <input
               id="my-task-only"
               type="checkbox"
@@ -60,20 +67,18 @@
             </tr>
           </thead>
           <tbody>
-            <tr *ngFor="let approval of approvals" (click)="onRowClick(approval)" [class.my-task]="approval.isMyTask">
+            <tr *ngFor="let approval of approvals" (click)="onRowClick(approval)">
               <td class="id-cell">
                 <div class="id-cell__label">
-                  <span *ngIf="approval.isMyTask" class="my-task-icon" aria-hidden="true">★</span>
                   <span class="flow-name">{{ approval.flowSnapshot?.name || '-' }}</span>
                 </div>
-                <span *ngIf="approval.isMyTask" class="my-task-badge">あなたの承認ステップ</span>
               </td>
               <td>
                 <span class="badge" [class]="categoryClass(approval.category)">{{ approval.category }}</span>
               </td>
               <td class="numeric">{{ approval.targetCount }} 件</td>
               <td>{{ approval.applicantDisplayName }}</td>
-              <td>{{ approval.createdAt?.toDate() | date: 'yyyy/MM/dd HH:mm' }}</td>
+              <td>{{ getTimestampDate(approval.createdAt) | date: 'yyyy/MM/dd HH:mm' }}</td>
               <td class="numeric">{{ approval.currentStep || '-' }}</td>
               <td>
                 <span class="status" [class]="statusClass(approval.status)">{{ statusLabel(approval.status) }}</span>

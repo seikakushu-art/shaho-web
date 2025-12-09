@@ -3,7 +3,7 @@
       <div>
         <h1>{{ isEditMode ? '社員編集' : '社員新規登録' }}</h1>
       </div>
-      <div class="header-actions">
+      <div class="header-actions" *ngIf="!isViewModeFromApproval">
         <button type="button" class="outline" (click)="toggleEditMode()">
           {{ editMode ? '閲覧モードに切替' : '編集モードに切替' }}
         </button>
@@ -247,9 +247,9 @@
         </div>
       </article>
 
-      <div class="notice">
+      <div class="notice" *ngIf="!isViewModeFromApproval">
         <app-flow-selector
-          [label]="'承認フロー選択（担当者/承認者/システム管理者のみ起票可）'"
+          [label]="'承認フロー選択'"
           [selectedFlowId]="selectedFlowId"
           (flowSelected)="onFlowSelected($event)"
           (flowsUpdated)="onFlowsUpdated($event)"
@@ -258,7 +258,7 @@
         <p class="hint" *ngIf="!approvalMessage">承認完了後に登録されます。</p>
       </div>
   
-      <div class="action-bar">
+      <div class="action-bar" *ngIf="!isViewModeFromApproval">
         <button type="button" class="secondary" (click)="handleSaveDraft(employeeForm)">一時保存</button>
         <button type="button" class="primary" (click)="handleProceedApproval(employeeForm)">承認依頼へ進む</button>
         <a routerLink="/employees" class="outline ghost">キャンセル</a>

@@ -10,7 +10,7 @@
   </header>
 
   <div class="controls card">
-    <div class="control-row">
+    <div class="control-row" *ngIf="!isViewMode">
       <button type="button" (click)="autoHideIrrelevant()">計算対象に応じて不要列を非表示</button>
       <button type="button" (click)="saveResults()" [disabled]="saving">
         {{ saving ? '保存中...' : '保存' }}
@@ -27,7 +27,7 @@
         承認フローに進む
       </button>
     </div>
-    <div class="notice">
+    <div class="notice" *ngIf="!isViewMode">
       <app-flow-selector
         [label]="'保存前に承認フローを選択'"
         [selectedFlowId]="selectedFlowId"
