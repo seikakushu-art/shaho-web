@@ -4,33 +4,16 @@
         <h1>保険料率</h1>
       </div>
       <div class="actions">
-        <button type="button" class="secondary" (click)="startNewRecord()">新規登録</button>
-        <ng-container *ngIf="viewingRecord && !editMode && isLatestSelection">
-          <button type="button" (click)="enableEdit()">編集</button>
+        <ng-container *ngIf="viewingRecord && !editMode && isLatestSelection && selectedHealthType !== '協会けんぽ'">
+          <button type="button" class="primary" (click)="enableEdit()">編集</button>
         </ng-container>
         <ng-container *ngIf="editMode">
           <button type="button" class="secondary" (click)="cancelEdit()">キャンセル</button>
-          <button
-            type="button"
-            (click)="save()"
-            [disabled]="saving || !isSystemAdmin || awaitingApproval"
-          >
-            保存
-          </button>
         </ng-container>
       </div>
     </header>
   
-    <p class="message" *ngIf="message">{{ message }}</p>
-    <div class="notice" *ngIf="editMode">
-      <app-flow-selector
-        [label]="'承認フロー（保存前に選択してください）'"
-        [selectedFlowId]="selectedFlowId"
-        (flowSelected)="onFlowSelected($event)"
-        (flowsUpdated)="onFlowsUpdated($event)"
-      ></app-flow-selector>
-      <p class="hint">システム管理者のみ起票可能です。承認完了後に反映します。</p>
-    </div>
+    <p class="message" *ngIf="message && (!editMode || awaitingApproval)">{{ message }}</p>
   
     <form class="cards" [formGroup]="form" (ngSubmit)="save()">
       <article class="card">
@@ -356,13 +339,89 @@
         </div>
       </article>
     </form>
+
+    <!-- Approval Request Section -->
+    <section class="card approval-section" *ngIf="editMode">
+      <div class="card-header">
+        <div>
+          <h2>承認依頼</h2>
+        </div>
+      </div>
+
+      <p class="message" *ngIf="message">{{ message }}</p>
+
+      <div class="approval-grid">
+        <div class="approval-summary">
+          <p class="label">対象区分</p>
+          <p class="value">{{ selectedHealthType }}</p>
+          <ul>
+            <li>健康保険料率：{{ healthInsuranceRates.length }} 件</li>
+            <li>介護保険料率：{{ nursingCareRates.length }} 件</li>
+            <li>標準報酬等級：{{ standardCompensations.length }} 件</li>
+            <li>標準賞与額上限：{{ bonusCaps.length }} 件</li>
+          </ul>
+        </div>
+        <div class="approval-form">
+          <app-flow-selector
+            [label]="'承認ルート'"
+            [selectedFlowId]="selectedFlowId"
+            (flowSelected)="onFlowSelected($event)"
+            (flowsUpdated)="onFlowsUpdated($event)"
+          />
+          <label class="field">
+            <span>申請コメント</span>
+            <textarea rows="4" [(ngModel)]="requestComment" placeholder="例：保険料率の更新です。"></textarea>
+          </label>
+          <div class="attachment-box">
+            <div class="attachment-header">
+              <div>
+                <p class="label">申請時の添付</p>
+                <p class="hint">1件10MB以内・最大5件・合計30MB</p>
+              </div>
+              <label class="upload-button">
+                <input
+                  type="file"
+                  multiple
+                  (change)="onFileSelected($event)"
+                  [accept]="attachmentService.acceptExtensions"
+                />
+                ファイルを選択
+              </label>
+            </div>
+            <p class="hint">合計サイズ: {{ formatFileSize(totalSelectedSize()) }}</p>
+            <p class="hint warning" *ngIf="validationErrors.length">{{ validationErrors[0] }}</p>
+            <ul class="selected-files" *ngIf="selectedFiles.length">
+              <li *ngFor="let file of selectedFiles; let i = index">
+                <div>
+                  <p class="file-name">{{ file.name }}</p>
+                  <p class="hint">{{ formatFileSize(file.size) }}</p>
+                </div>
+                <button type="button" class="ghost" (click)="removeFile(i)">削除</button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="approval-actions">
+        <button type="button" class="secondary" (click)="cancelEdit()">キャンセル</button>
+        <button
+          type="button"
+          class="primary"
+          (click)="save()"
+          [disabled]="saving || !isSystemAdmin || awaitingApproval || !selectedFlowId"
+        >
+          承認を依頼する
+        </button>
+      </div>
+    </section>
   
-    <section class="card history" *ngIf="historyRecords.length">
+    <section class="card history" *ngIf="historyRecords.length && selectedHealthType !== '協会けんぽ' && !editMode">
       <div class="card-header">
         <div>
           <h2>修正履歴</h2>
         </div>
-        <p class="hint">過去の履歴は参照のみです。必要に応じて最新のレコードを編集してください。</p>
+        <p class="hint">過去の履歴は参照のみです。</p>
       </div>
       <div class="history-list">
         <article

@@ -434,6 +434,9 @@
     padding: 1.25rem 1.35rem;
     border-radius: 14px;
     width: min(640px, 90%);
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
     box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
   }
   
@@ -442,6 +445,7 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.5rem;
+    flex-shrink: 0;
   }
   
   .modal-content button {
@@ -459,6 +463,9 @@
     margin: 0;
     display: grid;
     gap: 0.65rem;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
   }
   
   .diff-list li {

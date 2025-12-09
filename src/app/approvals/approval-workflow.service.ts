@@ -181,8 +181,10 @@ export class ApprovalWorkflowService {
     };
 
     const cleanedPayload = this.removeUndefinedFields(payload as unknown as Record<string, unknown>);
-    console.log('saveRequest - payload.employeeData:', payload.employeeData);
-    console.log('saveRequest - cleanedPayload.employeeData:', cleanedPayload['employeeData']);
+    console.log('saveRequest - payload.employeeDiffs:', payload.employeeDiffs);
+    console.log('saveRequest - payload.employeeDiffs[0]?.changes:', payload.employeeDiffs?.[0]?.changes);
+    console.log('saveRequest - cleanedPayload.employeeDiffs:', cleanedPayload['employeeDiffs']);
+    console.log('saveRequest - cleanedPayload.employeeDiffs[0]?.changes:', (cleanedPayload['employeeDiffs'] as any)?.[0]?.changes);
 
     if (payload.id) {
       const ref = doc(this.requestsRef, payload.id);

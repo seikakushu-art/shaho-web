@@ -18,12 +18,14 @@ import { ShahoEmployeesService } from '../../app/services/shaho-employees.servic
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
 import { ApprovalNotificationService } from '../../approvals/approval-notification.service';
+import { ApprovalAttachmentService } from '../../approvals/approval-attachment.service';
 import {
   ApprovalFlow,
   ApprovalHistory,
   ApprovalRequest,
   ApprovalEmployeeDiff,
   ApprovalNotification,
+  ApprovalAttachmentMetadata,
 } from '../../models/approvals';
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../../auth/auth.service';
@@ -87,6 +89,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   private approvalWorkflowService = inject(ApprovalWorkflowService);
   private notificationService = inject(ApprovalNotificationService);
   private authService = inject(AuthService);
+  readonly attachmentService = inject(ApprovalAttachmentService);
   private destroy$ = new Subject<void>();
   private approvalSubscription?: Subscription;
 
@@ -98,6 +101,9 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   applicantName = '';
   isViewMode = false;
   approvalId: string | null = null;
+  requestComment = '';
+  selectedFiles: File[] = [];
+  validationErrors: string[] = [];
 
   calculationType: CalculationType = 'standard';
   targetMonth = '';
@@ -997,6 +1003,14 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     return this.calculationType !== 'standard';
   }
 
+  get validRowsCount(): number {
+    return this.rows.filter((r) => !r.error).length;
+  }
+
+  get errorRowsCount(): number {
+    return this.rows.filter((r) => r.error).length;
+  }
+
   goToApprovalFlow() {
     this.router.navigate(['/approvals'], {
       queryParams: {
@@ -1037,6 +1051,47 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       this.selectedFlow = flows[0];
       this.selectedFlowId = flows[0].id ?? null;
     }
+  }
+
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    if (!files.length) {
+      input.value = '';
+      return;
+    }
+
+    const merged = [...this.selectedFiles, ...files];
+    const validation = this.attachmentService.validateFiles(merged);
+    this.validationErrors = validation.errors;
+    this.selectedFiles = validation.files;
+
+    if (!validation.valid) {
+      alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+    }
+
+    input.value = '';
+  }
+
+  removeFile(index: number): void {
+    this.selectedFiles.splice(index, 1);
+    this.selectedFiles = [...this.selectedFiles];
+    const validation = this.attachmentService.validateFiles(this.selectedFiles);
+    this.validationErrors = validation.errors;
+  }
+
+  totalSelectedSize(): number {
+    return this.selectedFiles.reduce((sum, file) => sum + file.size, 0);
+  }
+
+  formatFileSize(size: number): string {
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    if (size >= 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+    return `${size} B`;
   }
 
   async onSelectHistory(historyId: string) {
@@ -1107,6 +1162,14 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const validation = this.attachmentService.validateFiles(this.selectedFiles);
+    this.validationErrors = validation.errors;
+
+    if (!validation.valid && this.selectedFiles.length) {
+      alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+      return;
+    }
+
     this.saving = true;
     this.approvalMessage = '';
     const query = this.buildQueryParams();
@@ -1115,16 +1178,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         stepOrder: step.order,
         status: 'waiting' as const,
       }));
-      const history: ApprovalHistory = {
-        id: `hist-${Date.now()}`,
-        statusAfter: 'pending',
-        action: 'apply',
-        actorId: this.applicantId,
-        actorName: this.applicantName,
-        comment: `${this.calculationTypeLabel}の保存を申請します。`,
-        attachments: [],
-        createdAt: Timestamp.fromDate(new Date()),
-      };
 
       // 計算結果の差分データ（承認詳細の差分一覧に表示）
       const employeeDiffs: ApprovalEmployeeDiff[] = validRows.map((row) => {
@@ -1209,9 +1262,9 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         flowSnapshot: this.selectedFlow,
         status: 'pending',
         currentStep: this.selectedFlow.steps[0]?.order,
-        comment: `${this.targetMonth}の${this.calculationTypeLabel}を保存します。`,
+        comment: this.requestComment || `${this.targetMonth}の${this.calculationTypeLabel}を保存します。`,
         steps,
-        histories: [history],
+        histories: [],
         attachments: [],
         employeeDiffs,
         calculationQueryParams: {
@@ -1230,16 +1283,47 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         createdAt: Timestamp.fromDate(new Date()),
       };
 
-      const saved = await this.approvalWorkflowService.saveRequest(request);
-      if (!saved.id) {
+      const savedBase = await this.approvalWorkflowService.saveRequest(request);
+      if (!savedBase.id) {
         throw new Error('承認依頼IDの取得に失敗しました。');
       }
+
+      let uploaded: ApprovalAttachmentMetadata[] = [];
+
+      if (validation.files.length && savedBase.id) {
+        uploaded = await this.attachmentService.upload(
+          savedBase.id,
+          validation.files,
+          this.applicantId,
+          this.applicantName,
+        );
+      }
+
+      const applyHistory: ApprovalHistory = {
+        id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        statusAfter: 'pending',
+        action: 'apply',
+        actorId: this.applicantId,
+        actorName: this.applicantName,
+        comment: this.requestComment || undefined,
+        attachments: uploaded,
+        createdAt: Timestamp.fromDate(new Date()),
+      };
+
+      const saved = await this.approvalWorkflowService.saveRequest({
+        ...savedBase,
+        attachments: uploaded,
+        histories: [applyHistory],
+      });
+
       this.approvalMessage = '承認依頼を送信しました。承認完了後に保存を実行します。';
+      this.selectedFiles = [];
+      this.validationErrors = [];
       
       // 通知を送信
       this.pushApprovalNotifications({ ...saved, id: saved.id });
       
-      this.watchApproval(saved.id, validRows, query);
+      this.watchApproval(saved.id!, validRows, query);
     } catch (error) {
       console.error('承認依頼エラー:', error);
       this.approvalMessage = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';

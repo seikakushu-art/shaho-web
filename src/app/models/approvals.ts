@@ -1,4 +1,6 @@
 import { Timestamp } from '@angular/fire/firestore';
+import { HealthInsuranceType } from '../app/services/corporate-info.service';
+import { InsuranceRatePayload } from '../app/services/insurance-rates.service';
 
 type ApprovalCategory =
   | '新規社員登録'
@@ -151,6 +153,8 @@ export interface ApprovalRequest {
       workPrefecture: string;
       myNumber: string;
       basicPensionNumber: string;
+      hasDependent?: boolean;
+      postalCode?: string;
       address: string;
     };
     socialInsurance: {
@@ -170,6 +174,7 @@ export interface ApprovalRequest {
       exemption: boolean;
     };
   };
+  insuranceRateData?: InsuranceRatePayload;
 }
 
 export interface ApprovalNotification {

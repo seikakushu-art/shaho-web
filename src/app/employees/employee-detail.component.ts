@@ -94,6 +94,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     workPrefecture: '',
     personalNumber: '',
     basicPensionNumber: '',
+    hasDependent: false,
   };
 
   auditInfo: AuditInfo = {
@@ -611,6 +612,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       workPrefecture: employee.workPrefecture ?? '',
       personalNumber: employee.personalNumber ?? '',
       basicPensionNumber: employee.basicPensionNumber ?? '',
+      hasDependent: employee.hasDependent ?? false,
     };
 
     this.socialInsurance = {

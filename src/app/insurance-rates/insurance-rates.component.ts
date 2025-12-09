@@ -23,16 +23,18 @@ import {
 } from '../app/services/insurance-rates.service';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
 import { ApprovalNotificationService } from '../approvals/approval-notification.service';
+import { ApprovalAttachmentService } from '../approvals/approval-attachment.service';
 import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.component';
-import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff, ApprovalNotification } from '../models/approvals';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff, ApprovalNotification, ApprovalAttachmentMetadata } from '../models/approvals';
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../auth/auth.service';
 import { RoleKey } from '../models/roles';
+import { FormsModule } from '@angular/forms';
 
 @Component({
   selector: 'app-insurance-rates',
   standalone: true,
-  imports: [DatePipe, NgFor, NgIf, ReactiveFormsModule, FlowSelectorComponent],
+  imports: [DatePipe, NgFor, NgIf, ReactiveFormsModule, FormsModule, FlowSelectorComponent],
   templateUrl: './insurance-rates.component.html',
   styleUrl: './insurance-rates.component.scss',
 })
@@ -43,6 +45,7 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
   private approvalWorkflowService = inject(ApprovalWorkflowService);
   private notificationService = inject(ApprovalNotificationService);
   private authService = inject(AuthService);
+  readonly attachmentService = inject(ApprovalAttachmentService);
 
   readonly healthTypes: HealthInsuranceType[] = ['協会けんぽ', '組合健保'];
   message = '';
@@ -60,6 +63,9 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
   awaitingApproval = false;
   isSystemAdmin = false;
   private pendingPayload?: InsuranceRatePayload;
+  requestComment = '';
+  selectedFiles: File[] = [];
+  validationErrors: string[] = [];
 
   private historySub?: Subscription;
   private approvalSubscription?: Subscription;
@@ -143,8 +149,7 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
           this.populateForm(records[0]);
           this.editMode = false;
         } else {
-          this.message = 'まだ保険料率が登録されていません。新規登録を作成してください。';
-          this.startNewRecord();
+          this.message = 'まだ保険料率が登録されていません。';
         }
       });
   }
@@ -562,17 +567,47 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
     }
   }
 
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    if (!files.length) {
+      input.value = '';
+      return;
+    }
 
-  startNewRecord(): void {
-    this.viewingRecord = undefined;
-    this.editMode = true;
-    this.form.reset({
-      id: '',
-      healthType: this.selectedHealthType,
-      insurerName: '',
-    });
-    this.populateForm();
+    const merged = [...this.selectedFiles, ...files];
+    const validation = this.attachmentService.validateFiles(merged);
+    this.validationErrors = validation.errors;
+    this.selectedFiles = validation.files;
+
+    if (!validation.valid) {
+      alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+    }
+
+    input.value = '';
   }
+
+  removeFile(index: number): void {
+    this.selectedFiles.splice(index, 1);
+    this.selectedFiles = [...this.selectedFiles];
+    const validation = this.attachmentService.validateFiles(this.selectedFiles);
+    this.validationErrors = validation.errors;
+  }
+
+  totalSelectedSize(): number {
+    return this.selectedFiles.reduce((sum, file) => sum + file.size, 0);
+  }
+
+  formatFileSize(size: number): string {
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    if (size >= 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+    return `${size} B`;
+  }
+
 
   viewHistory(record: InsuranceRateRecord): void {
     this.viewingRecord = record;
@@ -580,7 +615,7 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
     this.editMode = false;
     this.message = this.isLatestSelection
       ? ''
-      : '過去の履歴は参照のみです。修正する場合は最新のレコードを編集してください。';
+      : '過去の履歴は参照のみです。';
   }
 
   enableEdit(): void {
@@ -588,7 +623,7 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       return;
     }
     this.editMode = true;
-    this.message = '最新レコードを編集しています。新規登録も可能です。';
+    this.message = '最新レコードを編集しています。';
   }
 
   cancelEdit(): void {
@@ -597,6 +632,9 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
     }
     this.editMode = false;
     this.message = '';
+    this.selectedFiles = [];
+    this.validationErrors = [];
+    this.requestComment = '';
   }
 
   async save(): Promise<void> {
@@ -665,9 +703,18 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const validation = this.attachmentService.validateFiles(this.selectedFiles);
+    this.validationErrors = validation.errors;
+
+    if (!validation.valid && this.selectedFiles.length) {
+      this.message = validation.errors[0] ?? '添付ファイルの条件を確認してください。';
+      return;
+    }
+
     const formValue = this.form.getRawValue();
     const payload: InsuranceRatePayload = {
-      id: formValue.id || undefined,
+      // 履歴を保持するため、常に新しいレコードとして保存（idはundefined）
+      id: undefined,
       healthType: formValue.healthType!,
       insurerName: formValue.insurerName ?? undefined,
       // 都道府県が入力されている行のみを保存対象とする
@@ -747,7 +794,7 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       action: 'apply',
       actorId: this.applicantId,
       actorName: this.applicantName,
-      comment: `${payload.healthType} の保険料率を更新します。`,
+      comment: this.requestComment || `${payload.healthType} の保険料率を更新します。`,
       attachments: [],
       createdAt: Timestamp.fromDate(new Date()),
     };
@@ -763,14 +810,33 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       1; // 年金料率含む
 
     // 保険料率の差分を計算
+    const changes = this.calculateInsuranceRateChanges(this.latestRecord, payload);
+
+    // 差分が検出されなかった場合でも、サマリ差分を1件入れて主要差分を表示する
+    if (changes.length === 0) {
+      const summarize = (data: { healthInsuranceRates?: any[]; nursingCareRates?: any[]; pensionRate?: any; standardCompensations?: any[]; bonusCaps?: any[]; insurerName?: string; healthType?: string; }) => {
+        return `保険者: ${data.insurerName ?? data.healthType ?? '—'} / 健康: ${(data.healthInsuranceRates ?? []).length}件 / 介護: ${(data.nursingCareRates ?? []).length}件 / 年金: ${data.pensionRate ? 'あり' : 'なし'} / 等級: ${(data.standardCompensations ?? []).length}件 / 賞与上限: ${(data.bonusCaps ?? []).length}件`;
+      };
+      changes.push({
+        field: '保険料率の変更',
+        oldValue: this.latestRecord ? summarize(this.latestRecord) : null,
+        newValue: summarize(payload),
+      });
+    }
+
+    console.log('保険料率の差分計算結果:', changes);
+    console.log('既存レコード:', this.latestRecord);
+    console.log('新しいデータ:', payload);
+    
     const employeeDiffs: ApprovalEmployeeDiff[] = [
       {
         employeeNo: '保険料率',
         name: payload.insurerName || payload.healthType || '保険料率',
         status: 'ok',
-        changes: this.calculateInsuranceRateChanges(this.latestRecord, payload),
+        changes: changes,
       },
     ];
+    console.log('employeeDiffs:', employeeDiffs);
 
     const request: ApprovalRequest = {
       title: `保険料率更新（${payload.healthType}）`,
@@ -782,27 +848,86 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       flowSnapshot: this.selectedFlow,
       status: 'pending',
       currentStep: this.selectedFlow.steps[0]?.order,
-      comment: payload.insurerName
+      comment: this.requestComment || (payload.insurerName
         ? `${payload.insurerName} の料率更新`
-        : '保険料率更新の承認を依頼します。',
+        : '保険料率更新の承認を依頼します。'),
       steps,
       histories: [history],
       attachments: [],
       employeeDiffs,
+      insuranceRateData: {
+        id: payload.id,
+        healthType: payload.healthType,
+        insurerName: payload.insurerName,
+        healthInsuranceRates: payload.healthInsuranceRates,
+        nursingCareRates: payload.nursingCareRates,
+        pensionRate: payload.pensionRate,
+        standardCompensations: payload.standardCompensations,
+        bonusCaps: payload.bonusCaps,
+      },
       createdAt: Timestamp.fromDate(new Date()),
     };
 
     this.pendingPayload = payload;
+    this.saving = true;
 
-    const result = await this.approvalWorkflowService.startApprovalProcess({
-      request,
+    try {
+      // まずrequestを保存してIDを取得
+      const savedBase = await this.approvalWorkflowService.saveRequest(request);
+      
+      let uploaded: ApprovalAttachmentMetadata[] = [];
+
+      // 添付ファイルをアップロード
+      if (validation.files.length && savedBase.id) {
+        uploaded = await this.attachmentService.upload(
+          savedBase.id,
+          validation.files,
+          this.applicantId,
+          this.applicantName,
+        );
+      }
+
+      // 添付ファイルを含むhistoryを作成
+      const applyHistory: ApprovalHistory = {
+        id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        statusAfter: 'pending',
+        action: 'apply',
+        actorId: this.applicantId,
+        actorName: this.applicantName,
+        comment: this.requestComment || undefined,
+        attachments: uploaded,
+        createdAt: Timestamp.fromDate(new Date()),
+      };
+
+      // 添付ファイルとhistoryを含む完全なrequestを作成
+      // savedBaseにemployeeDiffsが含まれていない場合があるため、明示的に設定
+      const completeRequest: ApprovalRequest = {
+        ...savedBase,
+        attachments: uploaded,
+        histories: [applyHistory],
+        employeeDiffs: savedBase.employeeDiffs || request.employeeDiffs, // employeeDiffsを保持
+      };
+      console.log('completeRequest.employeeDiffs:', completeRequest.employeeDiffs);
+      console.log('completeRequest.employeeDiffs[0].changes:', completeRequest.employeeDiffs?.[0]?.changes);
+
+      // startApprovalProcessに渡す（内部でsaveRequestが呼ばれるが、既に保存済みのIDがあるので更新される）
+      const result = await this.approvalWorkflowService.startApprovalProcess({
+      request: completeRequest,
       onApproved: async () => {
         if (!this.pendingPayload) return;
-        await this.insuranceRatesService.saveRates(this.pendingPayload);
+        // 履歴を保持するため、常に新しいレコードとして保存（idはundefined）
+        const payloadToSave = {
+          ...this.pendingPayload,
+          id: undefined,
+        };
+        await this.insuranceRatesService.saveRates(payloadToSave);
         this.message = '承認が完了したため保険料率を保存しました。';
         this.awaitingApproval = false;
         this.approvalRequestId = null;
         this.pendingPayload = undefined;
+        this.selectedFiles = [];
+        this.validationErrors = [];
+        this.requestComment = '';
         this.loadHistory();
       },
       onFailed: () => {
@@ -819,10 +944,27 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       this.approvalSubscription?.unsubscribe();
       this.approvalSubscription = result.subscription;
       this.awaitingApproval = true;
-      this.editMode = false;
+      
+      // メッセージを表示してから少し待ってからeditModeをfalseにする
+      setTimeout(() => {
+        this.editMode = false;
+        // メッセージ表示位置をスクロール
+        setTimeout(() => {
+          const messageElement = document.querySelector('.message');
+          if (messageElement) {
+            messageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 100);
+      }, 500);
       
       // 通知を送信
-      this.pushApprovalNotifications(request, result.requestId);
+      this.pushApprovalNotifications(completeRequest, result.requestId);
+    }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '承認依頼の送信に失敗しました。';
+      console.error(message, error);
+      this.message = message;
+      this.saving = false;
     }
   }
 
@@ -886,41 +1028,53 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
     
     // 既存の都道府県と新しい都道府県を比較
     const allPrefectures = new Set([
-      ...existingHealthRates.map(r => r.prefecture),
-      ...newHealthRates.map(r => r.prefecture),
+      ...existingHealthRates.map(r => r.prefecture).filter(p => p),
+      ...newHealthRates.map(r => r.prefecture).filter(p => p),
     ]);
 
-    for (const prefecture of allPrefectures) {
-      const existingRate = existingHealthRates.find(r => r.prefecture === prefecture);
-      const newRate = newHealthRates.find(r => r.prefecture === prefecture);
+    // 都道府県が存在する場合のみ差分を計算
+    if (allPrefectures.size > 0) {
+      for (const prefecture of allPrefectures) {
+        const existingRate = existingHealthRates.find(r => r.prefecture === prefecture);
+        const newRate = newHealthRates.find(r => r.prefecture === prefecture);
 
-      if (!existingRate && newRate) {
-        // 新規追加
-        changes.push({
-          field: `健康保険料率（${prefecture}）`,
-          oldValue: null,
-          newValue: `総率: ${newRate.totalRate || '—'}, 従業員負担: ${newRate.employeeRate || '—'}, 適用開始: ${newRate.effectiveFrom || '—'}`,
-        });
-      } else if (existingRate && !newRate) {
-        // 削除
-        changes.push({
-          field: `健康保険料率（${prefecture}）`,
-          oldValue: `総率: ${existingRate.totalRate || '—'}, 従業員負担: ${existingRate.employeeRate || '—'}, 適用開始: ${existingRate.effectiveFrom || '—'}`,
-          newValue: null,
-        });
-      } else if (existingRate && newRate) {
-        // 変更チェック
-        if (
-          existingRate.totalRate !== newRate.totalRate ||
-          existingRate.employeeRate !== newRate.employeeRate ||
-          existingRate.effectiveFrom !== newRate.effectiveFrom
-        ) {
+        if (!existingRate && newRate) {
+          // 新規追加
+          changes.push({
+            field: `健康保険料率（${prefecture}）`,
+            oldValue: null,
+            newValue: `総率: ${newRate.totalRate || '—'}, 従業員負担: ${newRate.employeeRate || '—'}, 適用開始: ${newRate.effectiveFrom || '—'}`,
+          });
+        } else if (existingRate && !newRate) {
+          // 削除
           changes.push({
             field: `健康保険料率（${prefecture}）`,
             oldValue: `総率: ${existingRate.totalRate || '—'}, 従業員負担: ${existingRate.employeeRate || '—'}, 適用開始: ${existingRate.effectiveFrom || '—'}`,
-            newValue: `総率: ${newRate.totalRate || '—'}, 従業員負担: ${newRate.employeeRate || '—'}, 適用開始: ${newRate.effectiveFrom || '—'}`,
+            newValue: null,
           });
+        } else if (existingRate && newRate) {
+          // 変更チェック
+          if (
+            existingRate.totalRate !== newRate.totalRate ||
+            existingRate.employeeRate !== newRate.employeeRate ||
+            existingRate.effectiveFrom !== newRate.effectiveFrom
+          ) {
+            changes.push({
+              field: `健康保険料率（${prefecture}）`,
+              oldValue: `総率: ${existingRate.totalRate || '—'}, 従業員負担: ${existingRate.employeeRate || '—'}, 適用開始: ${existingRate.effectiveFrom || '—'}`,
+              newValue: `総率: ${newRate.totalRate || '—'}, 従業員負担: ${newRate.employeeRate || '—'}, 適用開始: ${newRate.effectiveFrom || '—'}`,
+            });
+          }
         }
+      }
+    } else if (newHealthRates.length > 0 || existingHealthRates.length > 0) {
+      // 都道府県が設定されていないが、データが存在する場合
+      if (newHealthRates.length !== existingHealthRates.length) {
+        changes.push({
+          field: '健康保険料率（件数）',
+          oldValue: existing ? String(existingHealthRates.length) : null,
+          newValue: String(newHealthRates.length),
+        });
       }
     }
 
@@ -928,19 +1082,46 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
     const existingNursingRates = existing?.nursingCareRates || [];
     const newNursingRates = newData.nursingCareRates || [];
     
-    if (existingNursingRates.length !== newNursingRates.length) {
+    // 既存レコードがない場合、または件数が異なる場合
+    if (!existing || existingNursingRates.length !== newNursingRates.length) {
       changes.push({
         field: '介護保険料率（件数）',
-        oldValue: String(existingNursingRates.length),
+        oldValue: existing ? String(existingNursingRates.length) : null,
         newValue: String(newNursingRates.length),
       });
+    }
+    
+    // 介護保険料率の詳細差分（既存レコードがある場合のみ）
+    if (existing && existingNursingRates.length === newNursingRates.length) {
+      for (let i = 0; i < newNursingRates.length; i++) {
+        const existingRate = existingNursingRates[i];
+        const newRate = newNursingRates[i];
+        if (
+          existingRate?.totalRate !== newRate?.totalRate ||
+          existingRate?.employeeRate !== newRate?.employeeRate ||
+          existingRate?.effectiveFrom !== newRate?.effectiveFrom
+        ) {
+          changes.push({
+            field: `介護保険料率（${i + 1}件目）`,
+            oldValue: existingRate
+              ? `総率: ${existingRate.totalRate || '—'}, 従業員負担: ${existingRate.employeeRate || '—'}, 適用開始: ${existingRate.effectiveFrom || '—'}`
+              : null,
+            newValue: newRate
+              ? `総率: ${newRate.totalRate || '—'}, 従業員負担: ${newRate.employeeRate || '—'}, 適用開始: ${newRate.effectiveFrom || '—'}`
+              : null,
+          });
+        }
+      }
     }
 
     // 厚生年金保険料率の差分
     const existingPension = existing?.pensionRate;
     const newPension = newData.pensionRate;
     
+    // 既存レコードがない場合、または値が異なる場合
     if (
+      !existing ||
+      !existingPension ||
       existingPension?.totalRate !== newPension?.totalRate ||
       existingPension?.employeeRate !== newPension?.employeeRate ||
       existingPension?.effectiveFrom !== newPension?.effectiveFrom
@@ -960,23 +1141,56 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
     const existingStandard = existing?.standardCompensations || [];
     const newStandard = newData.standardCompensations || [];
     
-    if (existingStandard.length !== newStandard.length) {
+    if (!existing || existingStandard.length !== newStandard.length) {
       changes.push({
         field: '標準報酬等級（件数）',
-        oldValue: String(existingStandard.length),
+        oldValue: existing ? String(existingStandard.length) : null,
         newValue: String(newStandard.length),
       });
     }
 
-    // 標準賞与額上限の差分
+    // 標準賞与額上限の差分（値単位で比較）
     const existingBonus = existing?.bonusCaps || [];
     const newBonus = newData.bonusCaps || [];
-    
-    if (existingBonus.length !== newBonus.length) {
+
+    const existingHealthBonus = existingBonus.find((b) => b.insuranceType === '健康保険');
+    const existingPensionBonus = existingBonus.find((b) => b.insuranceType === '厚生年金');
+    const newHealthBonus = newBonus.find((b) => b.insuranceType === '健康保険');
+    const newPensionBonus = newBonus.find((b) => b.insuranceType === '厚生年金');
+
+    // 健康保険ー年度累計上限
+    if (
+      (existingHealthBonus?.yearlyCap ?? null) !== (newHealthBonus?.yearlyCap ?? null) ||
+      (existingHealthBonus?.yearlyCapEffectiveFrom ?? null) !== (newHealthBonus?.yearlyCapEffectiveFrom ?? null)
+    ) {
       changes.push({
-        field: '標準賞与額上限（件数）',
-        oldValue: String(existingBonus.length),
-        newValue: String(newBonus.length),
+        field: '健康保険ー年度累計上限',
+        oldValue:
+          existingHealthBonus?.yearlyCap != null
+            ? `${existingHealthBonus.yearlyCap}（適用開始: ${existingHealthBonus.yearlyCapEffectiveFrom || '—'}）`
+            : null,
+        newValue:
+          newHealthBonus?.yearlyCap != null
+            ? `${newHealthBonus.yearlyCap}（適用開始: ${newHealthBonus.yearlyCapEffectiveFrom || '—'}）`
+            : null,
+      });
+    }
+
+    // 厚生年金ー月額上限
+    if (
+      (existingPensionBonus?.monthlyCap ?? null) !== (newPensionBonus?.monthlyCap ?? null) ||
+      (existingPensionBonus?.monthlyCapEffectiveFrom ?? null) !== (newPensionBonus?.monthlyCapEffectiveFrom ?? null)
+    ) {
+      changes.push({
+        field: '厚生年金ー月額上限',
+        oldValue:
+          existingPensionBonus?.monthlyCap != null
+            ? `${existingPensionBonus.monthlyCap}（適用開始: ${existingPensionBonus.monthlyCapEffectiveFrom || '—'}）`
+            : null,
+        newValue:
+          newPensionBonus?.monthlyCap != null
+            ? `${newPensionBonus.monthlyCap}（適用開始: ${newPensionBonus.monthlyCapEffectiveFrom || '—'}）`
+            : null,
       });
     }
 

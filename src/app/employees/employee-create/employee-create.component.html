@@ -4,10 +4,7 @@
         <h1>{{ isEditMode ? '社員編集' : '社員新規登録' }}</h1>
       </div>
       <div class="header-actions" *ngIf="!isViewModeFromApproval">
-        <button type="button" class="outline" (click)="toggleEditMode()">
-          {{ editMode ? '閲覧モードに切替' : '編集モードに切替' }}
-        </button>
-        <a routerLink="/employees" class="secondary ghost">一覧に戻る</a>
+        <a routerLink="/employees" class="outline ghost">社員一覧に戻る</a>
       </div>
     </header>
   
@@ -96,8 +93,17 @@
             </p>
           </div>
           <div>
-            <label>勤務地都道府県</label>
-            <input name="workPrefecture" [(ngModel)]="basicInfo.workPrefecture" [readonly]="!editMode" />
+            <label>勤務地都道府県 *</label>
+            <input
+              name="workPrefecture"
+              [(ngModel)]="basicInfo.workPrefecture"
+              required
+              [readonly]="!editMode"
+              #workPrefectureModel="ngModel"
+            />
+            <p class="error" *ngIf="workPrefectureModel.invalid && (submitAttempted || workPrefectureModel.touched)">
+              勤務地都道府県は必須です。
+            </p>
           </div>
           <div>
             <label>個人番号</label>
@@ -106,6 +112,17 @@
           <div>
             <label>基礎年金番号</label>
             <input name="basicPensionNumber" [(ngModel)]="basicInfo.basicPensionNumber" [readonly]="!editMode" />
+          </div>
+          <div>
+            <label>扶養の有無</label>
+            <select name="hasDependent" [(ngModel)]="basicInfo.hasDependent" [disabled]="!editMode">
+              <option [ngValue]="false">無</option>
+              <option [ngValue]="true">有</option>
+            </select>
+          </div>
+          <div>
+            <label>郵便番号</label>
+            <input name="postalCode" [(ngModel)]="basicInfo.postalCode" [readonly]="!editMode" />
           </div>
           <div>
             <label>住所</label>
@@ -247,20 +264,69 @@
         </div>
       </article>
 
-      <div class="notice" *ngIf="!isViewModeFromApproval">
-        <app-flow-selector
-          [label]="'承認フロー選択'"
-          [selectedFlowId]="selectedFlowId"
-          (flowSelected)="onFlowSelected($event)"
-          (flowsUpdated)="onFlowsUpdated($event)"
-        ></app-flow-selector>
+      <article class="card approval-section" *ngIf="!isViewModeFromApproval">
+        <div class="card-header">
+          <div>
+            <h2>承認依頼</h2>
+          </div>
+        </div>
+
+        <div class="approval-grid">
+          <div class="approval-summary">
+            <p class="label">対象社員件数</p>
+            <p class="value">1 件</p>
+            <ul>
+              <li>新規登録：1 件</li>
+            </ul>
+          </div>
+          <div class="approval-form">
+            <app-flow-selector
+              [label]="'承認ルート'"
+              [selectedFlowId]="selectedFlowId"
+              (flowSelected)="onFlowSelected($event)"
+              (flowsUpdated)="onFlowsUpdated($event)"
+            />
+            <label class="field">
+              <span>申請コメント</span>
+              <textarea name="requestComment" rows="4" [(ngModel)]="requestComment" placeholder="例：新規社員の登録です。"></textarea>
+            </label>
+            <div class="attachment-box">
+              <div class="attachment-header">
+                <div>
+                  <p class="label">申請時の添付</p>
+                  <p class="hint">1件10MB以内・最大5件・合計30MB</p>
+                </div>
+                <label class="upload-button">
+                  <input
+                    type="file"
+                    multiple
+                    (change)="onFileSelected($event)"
+                    [accept]="attachmentService.acceptExtensions"
+                  />
+                  ファイルを選択
+                </label>
+              </div>
+              <p class="hint">合計サイズ: {{ formatFileSize(totalSelectedSize()) }}</p>
+              <p class="hint warning" *ngIf="validationErrors.length">{{ validationErrors[0] }}</p>
+              <ul class="selected-files" *ngIf="selectedFiles.length">
+                <li *ngFor="let file of selectedFiles; let i = index">
+                  <div>
+                    <p class="file-name">{{ file.name }}</p>
+                    <p class="hint">{{ formatFileSize(file.size) }}</p>
+                  </div>
+                  <button type="button" class="ghost" (click)="removeFile(i)">削除</button>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         <p class="message" *ngIf="approvalMessage">{{ approvalMessage }}</p>
-        <p class="hint" *ngIf="!approvalMessage">承認完了後に登録されます。</p>
-      </div>
+        <p class="hint" *ngIf="!approvalMessage">承認完了後新規社員の情報は登録されます。</p>
+      </article>
   
       <div class="action-bar" *ngIf="!isViewModeFromApproval">
-        <button type="button" class="secondary" (click)="handleSaveDraft(employeeForm)">一時保存</button>
-        <button type="button" class="primary" (click)="handleProceedApproval(employeeForm)">承認依頼へ進む</button>
+        <button type="button" class="primary" (click)="handleProceedApproval(employeeForm)" [disabled]="isLoading || sendingApproval || !selectedFlowId">承認依頼を送信</button>
         <a routerLink="/employees" class="outline ghost">キャンセル</a>
       </div>
     </form>

@@ -17,6 +17,7 @@ import { ApprovalNotificationService } from './approval-notification.service';
 import { ApprovalWorkflowService } from './approval-workflow.service';
 import { RoleKey } from '../models/roles';
 import { UserDirectoryService } from '../auth/user-directory.service';
+import { InsuranceRatesService } from '../app/services/insurance-rates.service';
 
 type EmployeeStatus = 'OK' | '警告' | 'エラー';
 
@@ -48,6 +49,7 @@ export class ApprovalDetailComponent implements OnDestroy {
   private router = inject(Router);
   private authService = inject(AuthService);
   private userDirectory = inject(UserDirectoryService);
+  private insuranceRatesService = inject(InsuranceRatesService);
 
   approval?: ApprovalRequest;
   private subscription: Subscription;
@@ -95,17 +97,24 @@ export class ApprovalDetailComponent implements OnDestroy {
     }),
     tap((approval) => {
       this.approval = approval || undefined;
+      console.log('承認詳細 - approval:', approval);
+      console.log('承認詳細 - approval.employeeDiffs:', approval?.employeeDiffs);
       if (approval?.employeeDiffs) {
-        this.employees = approval.employeeDiffs.map((diff) => ({
-          employeeNo: diff.employeeNo,
-          name: diff.name,
-          status: diff.status === 'warning' ? '警告' : diff.status === 'error' ? 'エラー' : 'OK',
-          diffs: diff.changes.map((change) => ({
-            field: change.field,
-            oldValue: change.oldValue ?? '',
-            newValue: change.newValue ?? '',
-          })),
-        }));
+        this.employees = approval.employeeDiffs.map((diff) => {
+          console.log('差分処理 - diff:', diff);
+          console.log('差分処理 - diff.changes:', diff.changes);
+          return {
+            employeeNo: diff.employeeNo,
+            name: diff.name,
+            status: diff.status === 'warning' ? '警告' : diff.status === 'error' ? 'エラー' : 'OK',
+            diffs: diff.changes.map((change) => ({
+              field: change.field,
+              oldValue: change.oldValue ?? '',
+              newValue: change.newValue ?? '',
+            })),
+          };
+        });
+        console.log('承認詳細 - this.employees:', this.employees);
       } else {
         this.employees = [];
       }
@@ -324,6 +333,22 @@ export class ApprovalDetailComponent implements OnDestroy {
       const actionText = action === 'approve' ? '承認しました' : '差戻しました';
       this.addToast(`申請を${actionText}（コメント: ${this.approvalComment || 'なし'}）`, 'success');
       this.approvalComment = '';
+
+      // 保険料率更新の承認が完了した場合、データを保存
+      if (action === 'approve' && result.request.status === 'approved' && result.request.category === '保険料率更新' && result.request.insuranceRateData) {
+        try {
+          // 履歴を保持するため、常に新しいレコードとして保存（idはundefined）
+          const payloadToSave = {
+            ...result.request.insuranceRateData,
+            id: undefined,
+          };
+          await this.insuranceRatesService.saveRates(payloadToSave);
+          this.addToast('保険料率のデータを保存しました。', 'success');
+        } catch (error) {
+          console.error('保険料率の保存に失敗しました', error);
+          this.addToast('保険料率の保存に失敗しました。', 'warning');
+        }
+      }
 
       // 計算結果保存の場合は、計算種別を含めたタイトルを生成
       let requestTitle = result.request.title || result.request.flowSnapshot?.name || result.request.id || '申請';

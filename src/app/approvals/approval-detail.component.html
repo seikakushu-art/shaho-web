@@ -158,7 +158,8 @@
         <h2>差分一覧</h2>
       </div>
       <p class="hint" *ngIf="current.category === '新規社員登録'">クリックして、社員新規登録画面で詳細を確認できます。</p>
-      <p class="hint" *ngIf="current.category !== '新規社員登録'">クリックして、変更内容を確認できます。</p>
+      <p class="hint" *ngIf="current.category === '保険料率更新'">クリックして、変更内容を確認できます。</p>
+      <p class="hint" *ngIf="current.category !== '新規社員登録' && current.category !== '保険料率更新'">クリックして、変更内容を確認できます。</p>
     </header>
 
     <div class="table-wrapper">
@@ -166,27 +167,40 @@
         <thead>
           <tr>
             <th *ngIf="current.category === '法人情報更新'">項目</th>
-            <th *ngIf="current.category !== '法人情報更新'">社員番号</th>
+            <th *ngIf="current.category === '保険料率更新'">区分</th>
+            <th *ngIf="current.category !== '法人情報更新' && current.category !== '保険料率更新'">社員番号</th>
             <th *ngIf="current.category === '法人情報更新'">値</th>
-            <th *ngIf="current.category !== '法人情報更新'">氏名</th>
+            <th *ngIf="current.category === '保険料率更新'">保険者名称</th>
+            <th *ngIf="current.category !== '法人情報更新' && current.category !== '保険料率更新'">氏名</th>
             <th>ステータス</th>
             <th>主要差分</th>
           </tr>
         </thead>
         <tbody>
           <tr *ngIf="employees.length === 0">
-            <td [attr.colspan]="current.category === '法人情報更新' ? 4 : 4" class="empty-message">差分情報がありません</td>
+            <td [attr.colspan]="current.category === '法人情報更新' || current.category === '保険料率更新' ? 4 : 4" class="empty-message">差分情報がありません</td>
           </tr>
           <tr *ngFor="let employee of employees" (click)="openDiffModal(employee)" [style.cursor]="current.category === '新規社員登録' ? 'pointer' : 'pointer'">
             <td *ngIf="current.category === '法人情報更新'">{{ employee.employeeNo }}</td>
-            <td *ngIf="current.category !== '法人情報更新'">{{ employee.employeeNo }}</td>
+            <td *ngIf="current.category === '保険料率更新'">{{ employee.employeeNo === '保険料率' ? (current.insuranceRateData?.healthType || '保険料率') : employee.employeeNo }}</td>
+            <td *ngIf="current.category !== '法人情報更新' && current.category !== '保険料率更新'">{{ employee.employeeNo }}</td>
             <td *ngIf="current.category === '法人情報更新'">{{ employee.name }}</td>
-            <td *ngIf="current.category !== '法人情報更新'">{{ employee.name }}</td>
+            <td *ngIf="current.category === '保険料率更新'">{{ employee.name }}</td>
+            <td *ngIf="current.category !== '法人情報更新' && current.category !== '保険料率更新'">{{ employee.name }}</td>
             <td>
               <span class="status-chip" [class.warning]="employee.status === '警告'">{{ employee.status }}</span>
             </td>
             <td class="diff-preview">
-              <span *ngFor="let diff of employee.diffs | slice:0:2" class="pill">{{ diff.field }}</span>
+              <span *ngIf="employee.diffs && employee.diffs.length > 0; else noDiffs">
+                <span
+                  *ngFor="let diff of employee.diffs | slice:0:2"
+                  class="pill"
+                  [title]="diff.oldValue + ' → ' + diff.newValue"
+                >
+                  {{ diff.field }}: {{ diff.oldValue || '—' }} → {{ diff.newValue || '—' }}
+                </span>
+              </span>
+              <ng-template #noDiffs>-</ng-template>
             </td>
           </tr>
         </tbody>

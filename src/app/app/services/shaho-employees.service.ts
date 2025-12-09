@@ -32,6 +32,7 @@ export interface ShahoEmployee {
   workPrefectureCode?: string;
   personalNumber?: string;
   basicPensionNumber?: string;
+  hasDependent?: boolean;
   standardMonthly?: number;
   standardBonusAnnualTotal?: number;
   healthInsuredNumber?: string;

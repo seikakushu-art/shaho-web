@@ -4,26 +4,11 @@
         <h1>法人情報</h1>
       </div>
       <div class="actions" *ngIf="isSystemAdmin$ | async">
-        <ng-container *ngIf="!editMode; else editButtons">
-          <button type="button" (click)="toggleEdit()">編集</button>
-        </ng-container>
-        <ng-template #editButtons>
-          <button type="button" class="secondary" (click)="cancelEdit()">キャンセル</button>
-          <button type="button" (click)="save()" [disabled]="isSaving">保存</button>
-        </ng-template>
+        <button type="button" (click)="toggleEdit()" *ngIf="!editMode">編集</button>
       </div>
     </header>
   
     <p class="message" *ngIf="message">{{ message }}</p>
-    <div class="notice" *ngIf="(isSystemAdmin$ | async) && editMode">
-      <app-flow-selector
-        [label]="'承認フロー（システム管理者のみ起票可）'"
-        [selectedFlowId]="selectedFlowId"
-        (flowSelected)="onFlowSelected($event)"
-        (flowsUpdated)="onFlowsUpdated($event)"
-      ></app-flow-selector>
-      <p class="hint">更新内容は承認完了後に反映されます。</p>
-    </div>
   
     <form class="cards" [formGroup]="form" (ngSubmit)="save()">
       <article class="card">
@@ -161,6 +146,69 @@
         </div>
       </article>
     </form>
+
+    <div class="card approval-section" *ngIf="(isSystemAdmin$ | async) && editMode">
+      <div class="card-header">
+        <div>
+          <h2>承認依頼</h2>
+        </div>
+      </div>
+      <div class="approval-grid">
+        <div class="approval-summary">
+          <p class="label">対象件数</p>
+          <p class="value">1 件</p>
+          <ul>
+            <li>法人情報更新：1 件</li>
+          </ul>
+        </div>
+        <div class="approval-form">
+          <app-flow-selector
+            [label]="'承認ルート'"
+            [selectedFlowId]="selectedFlowId"
+            (flowSelected)="onFlowSelected($event)"
+            (flowsUpdated)="onFlowsUpdated($event)"
+          />
+          <label class="field">
+            <span>申請コメント</span>
+            <textarea name="requestComment" rows="4" [(ngModel)]="requestComment" placeholder="例：法人情報を更新します。"></textarea>
+          </label>
+          <div class="attachment-box">
+            <div class="attachment-header">
+              <div>
+                <p class="label">申請時の添付</p>
+                <p class="hint">1件10MB以内・最大5件・合計30MB</p>
+              </div>
+              <label class="upload-button">
+                <input
+                  type="file"
+                  multiple
+                  (change)="onFileSelected($event)"
+                  [accept]="attachmentService.acceptExtensions"
+                />
+                ファイルを選択
+              </label>
+            </div>
+            <p class="hint">合計サイズ: {{ formatFileSize(totalSelectedSize()) }}</p>
+            <p class="hint warning" *ngIf="validationErrors.length">{{ validationErrors[0] }}</p>
+            <ul class="selected-files" *ngIf="selectedFiles.length">
+              <li *ngFor="let file of selectedFiles; let i = index">
+                <div>
+                  <p class="file-name">{{ file.name }}</p>
+                  <p class="hint">{{ formatFileSize(file.size) }}</p>
+                </div>
+                <button type="button" class="ghost" (click)="removeFile(i)">削除</button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="navigation">
+        <button type="button" class="secondary" (click)="cancelEdit()">キャンセル</button>
+        <button type="button" (click)="save()" [disabled]="isSaving || !selectedFlowId">
+          {{ isSaving ? '保存中...' : '承認依頼を送信' }}
+        </button>
+      </div>
+    </div>
   </section>
   
   <ng-template #loading>

@@ -5,9 +5,10 @@ import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { Subject, switchMap, takeUntil, of, firstValueFrom, combineLatest, map, take, filter, timeout, catchError } from 'rxjs';
 import { ShahoEmployee, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
-import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff, ApprovalNotification } from '../../models/approvals';
+import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff, ApprovalNotification, ApprovalAttachmentMetadata } from '../../models/approvals';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
 import { ApprovalNotificationService } from '../../approvals/approval-notification.service';
+import { ApprovalAttachmentService } from '../../approvals/approval-attachment.service';
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../../auth/auth.service';
 import { RoleKey } from '../../models/roles';
@@ -27,6 +28,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     private approvalWorkflowService = inject(ApprovalWorkflowService);
     private notificationService = inject(ApprovalNotificationService);
     private authService = inject(AuthService);
+    readonly attachmentService = inject(ApprovalAttachmentService);
     private destroy$ = new Subject<void>();
 
     editMode = true;
@@ -41,6 +43,9 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     applicantId = '';
     applicantName = '';
     isViewModeFromApproval = false; // 承認詳細から遷移した閲覧モードかどうか
+    requestComment = '';
+    selectedFiles: File[] = [];
+    validationErrors: string[] = [];
   
     basicInfo = {
       employeeNo: '',
@@ -52,6 +57,8 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       workPrefecture: '',
       myNumber: '',
       basicPensionNumber: '',
+      hasDependent: false,
+      postalCode: '',
       address: '',
     };
   
@@ -139,7 +146,11 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             if (result.data?.employeeData) {
               console.log('employeeDataを読み込み:', result.data.employeeData);
               // 承認リクエストから一時保存データを読み込む
-              this.basicInfo = { ...result.data.employeeData.basicInfo };
+              this.basicInfo = { 
+                ...result.data.employeeData.basicInfo,
+                hasDependent: result.data.employeeData.basicInfo?.hasDependent ?? false,
+                postalCode: result.data.employeeData.basicInfo?.postalCode ?? '',
+              };
               this.socialInsurance = { ...result.data.employeeData.socialInsurance };
               this.editMode = false; // 閲覧モードで表示
               this.isViewModeFromApproval = true; // 承認詳細から遷移した閲覧モード
@@ -187,6 +198,8 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         workPrefecture: employee.workPrefecture || '',
         myNumber: employee.personalNumber || '',
         basicPensionNumber: employee.basicPensionNumber || '',
+        hasDependent: employee.hasDependent ?? false,
+        postalCode: employee.postalCode || '',
         address: employee.address || '',
       };
 
@@ -230,20 +243,51 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       return `${year}-${month}-${day}`;
     }
 
-    toggleEditMode() {
-      this.editMode = !this.editMode;
-    }
-  
-    handleSaveDraft(form: NgForm) {
-      this.submitAttempted = true;
-      if (form.invalid) return;
-      alert('一時保存しました（ダミー動作）');
-    }
-  
     handleProceedApproval(form: NgForm) {
       this.submitAttempted = true;
       if (form.invalid) return;
       void this.sendApprovalRequest();
+    }
+
+    onFileSelected(event: Event): void {
+      const input = event.target as HTMLInputElement;
+      const files = Array.from(input.files ?? []);
+      if (!files.length) {
+        input.value = '';
+        return;
+      }
+
+      const merged = [...this.selectedFiles, ...files];
+      const validation = this.attachmentService.validateFiles(merged);
+      this.validationErrors = validation.errors;
+      this.selectedFiles = validation.files;
+
+      if (!validation.valid) {
+        alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+      }
+
+      input.value = '';
+    }
+
+    removeFile(index: number): void {
+      this.selectedFiles.splice(index, 1);
+      this.selectedFiles = [...this.selectedFiles];
+      const validation = this.attachmentService.validateFiles(this.selectedFiles);
+      this.validationErrors = validation.errors;
+    }
+
+    totalSelectedSize(): number {
+      return this.selectedFiles.reduce((sum, file) => sum + file.size, 0);
+    }
+
+    formatFileSize(size: number): string {
+      if (size >= 1024 * 1024) {
+        return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+      }
+      if (size >= 1024) {
+        return `${(size / 1024).toFixed(1)} KB`;
+      }
+      return `${size} B`;
     }
 
     private async sendApprovalRequest(): Promise<void> {
@@ -262,6 +306,14 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         return;
       }
 
+      const validation = this.attachmentService.validateFiles(this.selectedFiles);
+      this.validationErrors = validation.errors;
+
+      if (!validation.valid && this.selectedFiles.length) {
+        alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+        return;
+      }
+
       this.sendingApproval = true;
       this.approvalMessage = '';
 
@@ -270,17 +322,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           stepOrder: step.order,
           status: 'waiting' as const,
         }));
-
-        const history: ApprovalHistory = {
-          id: `hist-${Date.now()}`,
-          statusAfter: 'pending',
-          action: 'apply',
-          actorId: this.applicantId,
-          actorName: this.applicantName,
-          comment: '社員新規登録の承認を依頼します。',
-          attachments: [],
-          createdAt: Timestamp.fromDate(new Date()),
-        };
 
         const displayName = this.basicInfo.name || this.basicInfo.employeeNo || '新規社員';
 
@@ -311,9 +352,9 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           flowSnapshot: this.selectedFlow,
           status: 'pending',
           currentStep: this.selectedFlow.steps[0]?.order,
-          comment: '入力内容を承認後に登録します。',
+          comment: this.requestComment || '入力内容を承認後に登録します。',
           steps,
-          histories: [history],
+          histories: [],
           attachments: [],
           employeeDiffs,
           employeeData,
@@ -323,8 +364,39 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         console.log('保存するrequest:', request);
         console.log('request.employeeData:', request.employeeData);
 
-        const saved = await this.approvalWorkflowService.saveRequest(request);
+        const savedBase = await this.approvalWorkflowService.saveRequest(request);
+
+        let uploaded: ApprovalAttachmentMetadata[] = [];
+
+        if (validation.files.length && savedBase.id) {
+          uploaded = await this.attachmentService.upload(
+            savedBase.id,
+            validation.files,
+            this.applicantId,
+            this.applicantName,
+          );
+        }
+
+        const applyHistory: ApprovalHistory = {
+          id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          statusAfter: 'pending',
+          action: 'apply',
+          actorId: this.applicantId,
+          actorName: this.applicantName,
+          comment: this.requestComment || undefined,
+          attachments: uploaded,
+          createdAt: Timestamp.fromDate(new Date()),
+        };
+
+        const saved = await this.approvalWorkflowService.saveRequest({
+          ...savedBase,
+          attachments: uploaded,
+          histories: [applyHistory],
+        });
+
         this.approvalMessage = '承認依頼を送信しました。承認完了までお待ちください。';
+        this.selectedFiles = [];
+        this.validationErrors = [];
         
         // 通知を送信
         if (saved.id) {
@@ -383,6 +455,10 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       }
       if (this.basicInfo.basicPensionNumber) {
         changes.push({ field: '基礎年金番号', oldValue: null, newValue: this.basicInfo.basicPensionNumber });
+      }
+      changes.push({ field: '扶養の有無', oldValue: null, newValue: this.basicInfo.hasDependent ? '有' : '無' });
+      if (this.basicInfo.postalCode) {
+        changes.push({ field: '郵便番号', oldValue: null, newValue: this.basicInfo.postalCode });
       }
       if (this.basicInfo.address) {
         changes.push({ field: '住所', oldValue: null, newValue: this.basicInfo.address });

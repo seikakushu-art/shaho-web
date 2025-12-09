@@ -62,7 +62,11 @@
                         <label>基礎年金番号</label>
                         <p class="value">{{ basicInfo.basicPensionNumber || '—' }}</p>
                     </div>
-                    <div style="grid-column: span 3;">
+                    <div>
+                        <label>扶養の有無</label>
+                        <p class="value">{{ basicInfo.hasDependent ? '有' : '無' }}</p>
+                    </div>
+                    <div style="grid-column: span 2;">
                         <label>住所</label>
                         <p class="value">{{ formattedAddress || '—' }}</p>
                     </div>
