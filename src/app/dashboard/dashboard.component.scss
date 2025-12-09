@@ -13,10 +13,23 @@
     align-items: center;
     gap: 1rem;
   }
+
+  .header-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.4rem;
+  }
   
   h1 {
     margin: 0;
     font-size: 1.75rem;
+  }
+
+  .greeting {
+    margin: 0.2rem 0;
+    font-weight: 700;
+    color: #111827;
   }
   
   h2 {
@@ -95,6 +108,23 @@
   
   .text-link:hover {
     text-decoration: underline;
+  }
+  .primary-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.6rem 1.1rem;
+    background: #2563eb;
+    color: #fff;
+    border-radius: 10px;
+    font-weight: 700;
+    text-decoration: none;
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.25);
+    border: 1px solid #2563eb;
+  }
+
+  .primary-cta:hover {
+    background: #1d4ed8;
   }
   
   .employees {
@@ -302,4 +332,17 @@
   .shortcut-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18);
+  }
+
+  @media (max-width: 640px) {
+    header {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .header-actions {
+      width: 100%;
+      align-items: flex-start;
+      margin-top: 0.2rem;
+    }
   }

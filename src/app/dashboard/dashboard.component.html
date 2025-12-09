@@ -3,11 +3,15 @@
       <div>
         <p class="eyebrow">ログイン情報</p>
         <h1>ロール別ダッシュボード</h1>
+        <p class="greeting" *ngIf="(user$ | async) as user">こんにちは、{{ user.displayName || user.email }} さん</p>
         <p class="hint">
           ログインユーザーのロールに応じた業務範囲を可視化し、承認フローの状況を素早く把握できます。
         </p>
       </div>
-      <a routerLink="/login" class="text-link">ログイン画面へ戻る</a>
+      <div class="header-actions">
+        <a routerLink="/calculations" class="primary-cta">新規申請</a>
+        <a routerLink="/login" class="text-link">ログイン画面へ戻る</a>
+      </div>
     </header>
   
     <section class="card" *ngIf="(roleDefinitions$ | async) as roles">
