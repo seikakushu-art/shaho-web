@@ -4,7 +4,9 @@
         <h1>{{ isEditMode ? '社員編集' : '社員新規登録' }}</h1>
       </div>
       <div class="header-actions" *ngIf="!isViewModeFromApproval">
-        <a routerLink="/employees" class="outline ghost">社員一覧に戻る</a>
+        <a [routerLink]="isEditMode ? '/employees/' + employeeId : '/employees'" class="outline ghost">
+          {{ isEditMode ? '社員詳細に戻る' : '社員一覧に戻る' }}
+        </a>
       </div>
     </header>
   
@@ -262,6 +264,135 @@
             </label>
           </div>
         </div>
+      </article>
+
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2>扶養情報</h2>
+          </div>
+        </div>
+
+        <div *ngIf="basicInfo.hasDependent; else noDependentNotice" class="grid three-col">
+          <div>
+            <label>続柄</label>
+            <input
+              name="dependentRelationship"
+              [(ngModel)]="dependentInfo.relationship"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>氏名（漢字）</label>
+            <input
+              name="dependentNameKanji"
+              [(ngModel)]="dependentInfo.nameKanji"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>氏名（カナ）</label>
+            <input
+              name="dependentNameKana"
+              [(ngModel)]="dependentInfo.nameKana"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>生年月日</label>
+            <input
+              type="date"
+              name="dependentBirthDate"
+              [(ngModel)]="dependentInfo.birthDate"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>性別</label>
+            <select
+              name="dependentGender"
+              [(ngModel)]="dependentInfo.gender"
+              [disabled]="!editMode"
+            >
+              <option value="">選択してください</option>
+              <option value="男性">男性</option>
+              <option value="女性">女性</option>
+            </select>
+          </div>
+          <div>
+            <label>個人番号</label>
+            <input
+              name="dependentPersonalNumber"
+              [(ngModel)]="dependentInfo.personalNumber"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>基礎年金番号</label>
+            <input
+              name="dependentBasicPensionNumber"
+              [(ngModel)]="dependentInfo.basicPensionNumber"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>同居区分</label>
+            <input
+              name="dependentCohabitationType"
+              [(ngModel)]="dependentInfo.cohabitationType"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>住所（別居の場合のみ）</label>
+            <input
+              name="dependentAddress"
+              [(ngModel)]="dependentInfo.address"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>職業</label>
+            <input
+              name="dependentOccupation"
+              [(ngModel)]="dependentInfo.occupation"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>年収（見込み）</label>
+            <input
+              type="number"
+              name="dependentAnnualIncome"
+              [(ngModel)]="dependentInfo.annualIncome"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>被扶養者になった日</label>
+            <input
+              type="date"
+              name="dependentStartDate"
+              [(ngModel)]="dependentInfo.dependentStartDate"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>国民年金第3号被保険者該当フラグ</label>
+            <label class="switch">
+              <input
+                type="checkbox"
+                name="dependentThirdCategoryFlag"
+                [(ngModel)]="dependentInfo.thirdCategoryFlag"
+                [disabled]="!editMode"
+              />
+              <span></span>
+            </label>
+          </div>
+        </div>
+        <ng-template #noDependentNotice>
+          <p class="hint">扶養の有無を「有」にすると入力欄が表示されます。</p>
+        </ng-template>
       </article>
 
       <article class="card approval-section" *ngIf="!isViewModeFromApproval">

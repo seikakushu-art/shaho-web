@@ -1,11 +1,17 @@
 import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { Timestamp } from '@angular/fire/firestore';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subject, of, switchMap, takeUntil, firstValueFrom } from 'rxjs';
+import { Subject, of, switchMap, takeUntil, firstValueFrom, combineLatest } from 'rxjs';
 import { ShahoEmployee, ShahoEmployeesService, PayrollData } from '../app/services/shaho-employees.service';
 import { AuthService } from '../auth/auth.service';
 import { RoleKey } from '../models/roles';
+import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
+import { ApprovalRequest, ApprovalHistory, ApprovalRequestStatus, ApprovalFlow, ApprovalEmployeeDiff, ApprovalAttachmentMetadata } from '../models/approvals';
+import { UserDirectoryService, AppUser } from '../auth/user-directory.service';
+import { ApprovalAttachmentService } from '../approvals/approval-attachment.service';
+import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.component';
 
 interface AuditInfo {
   registeredAt: string;
@@ -30,6 +36,22 @@ interface SocialInsuranceInfo {
   exemption: boolean;
 }
 
+interface DependentInfo {
+  relationship: string;
+  nameKanji: string;
+  nameKana: string;
+  birthDate: string;
+  gender: string;
+  personalNumber: string;
+  basicPensionNumber: string;
+  cohabitationType: string;
+  address: string;
+  occupation: string;
+  annualIncome: number | null;
+  dependentStartDate: string;
+  thirdCategoryFlag: boolean;
+}
+
 
 interface HistoryRecord {
   id: string;
@@ -41,6 +63,17 @@ interface HistoryRecord {
   approver: string;
   groupId: string;
 }
+
+type ApprovalHistoryEntry = {
+  requestId: string;
+  requestTitle: string;
+  category: string;
+  actionLabel: string;
+  statusLabel: string;
+  actor: string;
+  comment: string;
+  createdAt: Date;
+};
 
 interface SocialInsuranceHistoryData {
   monthlySalary?: number;
@@ -59,7 +92,7 @@ interface SocialInsuranceHistoryData {
 @Component({
   selector: 'app-employee-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, NgIf, NgFor, DatePipe],
+  imports: [CommonModule, FormsModule, NgIf, NgFor, DatePipe, FlowSelectorComponent],
   templateUrl: './employee-detail.component.html',
   styleUrl: './employee-detail.component.scss',
 })
@@ -68,18 +101,36 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     private router = inject(Router);
     private employeesService = inject(ShahoEmployeesService);
     private authService = inject(AuthService);
+    private workflowService = inject(ApprovalWorkflowService);
+    private userDirectory = inject(UserDirectoryService);
+    readonly attachmentService = inject(ApprovalAttachmentService);
     private destroy$ = new Subject<void>();
+  deleteSubscription: any;
   tabs = [
     { key: 'basic', label: '基本情報' },
     { key: 'insurance', label: '社会保険情報' },
     { key: 'insurance-history', label: '給与/賞与/社会保険料履歴' },
-    { key: 'bonus', label: '標準賞与額算定' },
+    { key: 'dependent', label: '扶養情報' },
     { key: 'history', label: '変更履歴' },
   ];
 
   selectedTab = 'basic';
   showApprovalHistory = false;
   canDelete = true;
+  applicantId = '';
+  applicantName = '';
+  approvalHistoryEntries: ApprovalHistoryEntry[] = [];
+  private cachedApprovalRequests: ApprovalRequest[] = [];
+  private cachedUsers: AppUser[] = [];
+  approvalFlows: ApprovalFlow[] = [];
+  selectedDeleteFlow: ApprovalFlow | null = null;
+  selectedDeleteFlowId: string | null = null;
+  showDeletePanel = false;
+  deleteComment = '';
+  selectedFiles: File[] = [];
+  validationErrors: string[] = [];
+  deleteMessage = '';
+  isDeleting = false;
 
   isLoading = true;
   notFound = false;
@@ -118,6 +169,22 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     maternityLeaveStart: '',
     maternityLeaveEnd: '',
     exemption: false,
+  };
+
+  dependentInfo: DependentInfo = {
+    relationship: '',
+    nameKanji: '',
+    nameKana: '',
+    birthDate: '',
+    gender: '',
+    personalNumber: '',
+    basicPensionNumber: '',
+    cohabitationType: '',
+    address: '',
+    occupation: '',
+    annualIncome: null,
+    dependentStartDate: '',
+    thirdCategoryFlag: false,
   };
 
   insuranceHistoryFilter = {
@@ -163,45 +230,31 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     '介護保険第2号被保険者',
   ];
 
-  historyRecords: HistoryRecord[] = [
-    {
-      id: 'h1',
-      groupId: 'g1',
-      changedAt: '2025-02-03 15:24',
-      field: '標準報酬月額',
-      oldValue: '410,000',
-      newValue: '420,000',
-      actor: 'approver02',
-      approver: 'manager03',
-    },
-    {
-      id: 'h2',
-      groupId: 'g1',
-      changedAt: '2025-02-03 15:24',
-      field: '標準賞与額',
-      oldValue: '730,000',
-      newValue: '760,000',
-      actor: 'approver02',
-      approver: 'manager03',
-    },
-    {
-      id: 'h3',
-      groupId: 'g2',
-      changedAt: '2024-12-01 10:12',
-      field: '所属部署',
-      oldValue: '営業部',
-      newValue: '営業企画部',
-      actor: 'admin01',
-      approver: 'manager02',
-    },
-  ];
-
+  changeHistoryRecords: HistoryRecord[] = [];
   groupedHistory: HistoryRecord[] = [];
 
-  readonly canManage$ = this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Operator]);
+  readonly canManage$ = this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver, RoleKey.Operator]);
 
   ngOnInit(): void {
+    this.authService.user$.pipe(takeUntil(this.destroy$)).subscribe((user) => {
+      this.applicantId = user?.email?.toLowerCase() || '';
+      this.applicantName = user?.displayName || this.applicantId;
+    });
+    this.workflowService.flows$.pipe(takeUntil(this.destroy$)).subscribe((flows) => {
+      this.approvalFlows = flows || [];
+      this.selectedDeleteFlow = this.approvalFlows[0] ?? null;
+      this.selectedDeleteFlowId = this.selectedDeleteFlow?.id ?? null;
+    });
     this.refreshDisplayedMonths();
+    combineLatest([this.workflowService.requests$, this.userDirectory.getUsers()])
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(([requests, users]) => {
+        this.cachedApprovalRequests = requests;
+        this.cachedUsers = users;
+        this.rebuildApprovalHistory();
+        this.rebuildChangeHistory();
+      });
+
     this.route.paramMap
       .pipe(
         takeUntil(this.destroy$),
@@ -224,14 +277,21 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           if (employee.id) {
             this.loadPayrollHistory(employee.id);
           }
+          this.rebuildApprovalHistory();
+          this.rebuildChangeHistory();
         } else {
           this.employee = null;
           this.notFound = true;
+          this.approvalHistoryEntries = [];
+          this.changeHistoryRecords = [];
         }
       });
   }
 
   ngOnDestroy(): void {
+    if (this.deleteSubscription) {
+      this.deleteSubscription.unsubscribe();
+    }
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -330,7 +390,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
 
 
   get filteredHistory() {
-    return this.historyRecords.filter((record) => {
+    return this.changeHistoryRecords.filter((record) => {
       const date = record.changedAt.slice(0, 10);
       if (this.historyFilters.from && date < this.historyFilters.from) return false;
       if (this.historyFilters.to && date > this.historyFilters.to) return false;
@@ -347,13 +407,213 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   }
 
   openHistoryGroup(groupId: string) {
-    this.groupedHistory = this.historyRecords.filter(
+    this.groupedHistory = this.changeHistoryRecords.filter(
       (item) => item.groupId === groupId,
     );
   }
 
   closeHistoryGroup() {
     this.groupedHistory = [];
+  }
+
+  requestDelete() {
+    console.log('requestDelete called', { employee: this.employee, canDelete: this.canDelete });
+    if (!this.employee?.id || !this.employee.employeeNo) {
+      alert('社員情報が読み込まれていません。');
+      return;
+    }
+    console.log('Opening delete panel');
+    this.showDeletePanel = true;
+    this.deleteComment = '';
+    this.selectedFiles = [];
+    this.validationErrors = [];
+  }
+
+  cancelDelete() {
+    this.showDeletePanel = false;
+    this.deleteComment = '';
+    this.selectedFiles = [];
+    this.validationErrors = [];
+  }
+
+  onDeleteFlowSelected(flow: ApprovalFlow | undefined) {
+    this.selectedDeleteFlow = flow ?? null;
+    this.selectedDeleteFlowId = flow?.id ?? null;
+  }
+
+  onDeleteFlowsUpdated(flows: ApprovalFlow[]) {
+    this.approvalFlows = flows;
+    if (!this.selectedDeleteFlowId && flows[0]?.id) {
+      this.selectedDeleteFlowId = flows[0].id;
+      this.selectedDeleteFlow = flows[0];
+    }
+  }
+
+  onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+    if (!files.length) {
+      input.value = '';
+      return;
+    }
+
+    const merged = [...this.selectedFiles, ...files];
+    const validation = this.attachmentService.validateFiles(merged);
+    this.validationErrors = validation.errors;
+    this.selectedFiles = validation.files;
+
+    if (!validation.valid) {
+      alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+    }
+
+    input.value = '';
+  }
+
+  removeFile(index: number): void {
+    this.selectedFiles.splice(index, 1);
+    this.selectedFiles = [...this.selectedFiles];
+    const validation = this.attachmentService.validateFiles(this.selectedFiles);
+    this.validationErrors = validation.errors;
+  }
+
+  totalSelectedSize(): number {
+    return this.selectedFiles.reduce((sum, file) => sum + file.size, 0);
+  }
+
+  formatFileSize(size: number): string {
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    if (size >= 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+    return `${size} B`;
+  }
+
+  async submitDeleteApproval(): Promise<void> {
+    if (!this.employee?.id || !this.employee.employeeNo) {
+      alert('社員情報が読み込まれていません。');
+      return;
+    }
+    if (!this.selectedDeleteFlow || !this.selectedDeleteFlowId) {
+      alert('承認ルートを選択してください。');
+      return;
+    }
+
+    const validation = this.attachmentService.validateFiles(this.selectedFiles);
+    this.validationErrors = validation.errors;
+
+    if (!validation.valid && this.selectedFiles.length) {
+      alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+      return;
+    }
+
+    this.isDeleting = true;
+    this.deleteMessage = '';
+
+    try {
+      const steps = this.selectedDeleteFlow.steps.map((step) => ({
+        stepOrder: step.order,
+        status: 'waiting' as const,
+      }));
+
+      const employeeDiffs: ApprovalEmployeeDiff[] = [
+        {
+          employeeNo: this.employee.employeeNo,
+          name: this.employee.name ?? '',
+          status: 'ok',
+          existingEmployeeId: this.employee.id,
+          changes: [
+            {
+              field: '社員削除',
+              oldValue: '登録済み',
+              newValue: '削除予定',
+            },
+          ],
+        },
+      ];
+
+      const request: ApprovalRequest = {
+        title: `社員削除（${this.employee.name ?? this.employee.employeeNo}）`,
+        category: '社員削除',
+        targetCount: 1,
+        applicantId: this.applicantId,
+        applicantName: this.applicantName || this.applicantId,
+        flowId: this.selectedDeleteFlow.id ?? 'employee-delete-flow',
+        flowSnapshot: this.selectedDeleteFlow,
+        status: 'pending',
+        currentStep: this.selectedDeleteFlow.steps[0]?.order,
+        comment: this.deleteComment || '社員削除の承認をお願いします。',
+        steps,
+        histories: [],
+        attachments: [],
+        employeeDiffs,
+        createdAt: Timestamp.fromDate(new Date()),
+      };
+
+      const savedBase = await this.workflowService.saveRequest(request);
+
+      let uploaded: ApprovalAttachmentMetadata[] = [];
+
+      if (validation.files.length && savedBase.id) {
+        uploaded = await this.attachmentService.upload(
+          savedBase.id,
+          validation.files,
+          this.applicantId,
+          this.applicantName,
+        );
+      }
+
+      const applyHistory: ApprovalHistory = {
+        id: `hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        statusAfter: 'pending',
+        action: 'apply',
+        actorId: this.applicantId,
+        actorName: this.applicantName,
+        comment: this.deleteComment || undefined,
+        attachments: uploaded,
+        createdAt: Timestamp.fromDate(new Date()),
+      };
+
+      const completeRequest: ApprovalRequest = {
+        ...savedBase,
+        attachments: uploaded,
+        histories: [applyHistory],
+        employeeDiffs: savedBase.employeeDiffs || employeeDiffs,
+      };
+
+      const result = await this.workflowService.startApprovalProcess({
+        request: completeRequest,
+        onApproved: async () => {
+          await this.employeesService.deleteEmployee(this.employee!.id!);
+          this.deleteMessage = '承認完了により社員を削除しました。';
+          this.showDeletePanel = false;
+          await this.router.navigate(['/employees']);
+        },
+        onFailed: () => {
+          this.deleteMessage = '承認が完了しませんでした。内容を確認してください。';
+        },
+        setMessage: (message) => (this.deleteMessage = message),
+        setLoading: (loading) => (this.isDeleting = loading),
+      });
+
+      if (result) {
+        this.deleteMessage = '削除申請を送信しました。承認完了後に削除されます。';
+        if (this.deleteSubscription) {
+          this.deleteSubscription.unsubscribe();
+        }
+        this.deleteSubscription = result.subscription;
+        this.showDeletePanel = false;
+        this.selectedFiles = [];
+        this.validationErrors = [];
+        this.deleteComment = '';
+      }
+    } catch (error) {
+      console.error('削除申請の起票に失敗しました', error);
+      alert('削除申請の起票に失敗しました。時間をおいて再度お試しください。');
+    } finally {
+      this.isDeleting = false;
+    }
   }
 
   private addMonths(date: Date, months: number): Date {
@@ -631,6 +891,22 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       exemption: employee.exemption ?? this.socialInsurance.exemption,
     };
 
+    this.dependentInfo = {
+      relationship: employee.dependentRelationship ?? '',
+      nameKanji: employee.dependentNameKanji ?? '',
+      nameKana: employee.dependentNameKana ?? '',
+      birthDate: this.formatDateForInput(employee.dependentBirthDate),
+      gender: employee.dependentGender ?? '',
+      personalNumber: employee.dependentPersonalNumber ?? '',
+      basicPensionNumber: employee.dependentBasicPensionNumber ?? '',
+      cohabitationType: employee.dependentCohabitationType ?? '',
+      address: employee.dependentAddress ?? '',
+      occupation: employee.dependentOccupation ?? '',
+      annualIncome: employee.dependentAnnualIncome ?? null,
+      dependentStartDate: this.formatDateForInput(employee.dependentStartDate),
+      thirdCategoryFlag: employee.dependentThirdCategoryFlag ?? false,
+    };
+
     // 監査情報を反映
     if (employee.createdAt || employee.updatedAt || employee.createdBy || employee.updatedBy || employee.approvedBy) {
       const formatDate = (date: string | Date | undefined): string => {
@@ -656,6 +932,211 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
 
     if (employee.birthDate) {
       this.recalcCareFlag();
+    }
+
+    this.rebuildApprovalHistory();
+    this.rebuildChangeHistory();
+  }
+
+  private rebuildApprovalHistory() {
+    if (!this.employee) {
+      this.approvalHistoryEntries = [];
+      return;
+    }
+    this.approvalHistoryEntries = this.buildApprovalHistoryEntries(
+      this.employee,
+      this.cachedApprovalRequests,
+      this.cachedUsers,
+    );
+  }
+
+  private buildApprovalHistoryEntries(
+    employee: ShahoEmployee,
+    requests: ApprovalRequest[],
+    users: AppUser[],
+  ): ApprovalHistoryEntry[] {
+    const userMap = new Map(
+      users.map((u) => [u.email.toLowerCase(), u.displayName || u.email]),
+    );
+
+    const entries: ApprovalHistoryEntry[] = [];
+
+    requests
+      .filter((req) => this.matchesEmployee(req, employee))
+      .forEach((req) => {
+        (req.histories ?? []).forEach((history) => {
+          const createdAt =
+            typeof history.createdAt?.toDate === 'function'
+              ? history.createdAt.toDate()
+              : new Date(history.createdAt as unknown as string);
+          const actor =
+            userMap.get(history.actorId.toLowerCase()) ||
+            history.actorName ||
+            history.actorId;
+          entries.push({
+            requestId: req.id ?? req.title,
+            requestTitle: req.title,
+            category: req.category,
+            actionLabel: this.actionLabel(history),
+            statusLabel: this.requestStatusLabel(req.status),
+            actor,
+            comment: history.comment || '',
+            createdAt,
+          });
+        });
+      });
+
+    return entries.sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+  }
+
+  private matchesEmployee(request: ApprovalRequest, employee: ShahoEmployee) {
+    const diffs = request.employeeDiffs || [];
+    return diffs.some((diff) => {
+      const matchesId =
+        employee.id && diff.existingEmployeeId === employee.id;
+      const matchesEmployeeNo =
+        employee.employeeNo &&
+        diff.employeeNo &&
+        diff.employeeNo === employee.employeeNo;
+      return matchesId || matchesEmployeeNo;
+    });
+  }
+
+  private rebuildChangeHistory() {
+    if (!this.employee) {
+      this.changeHistoryRecords = [];
+      return;
+    }
+
+    const userMap = new Map(
+      this.cachedUsers.map((u) => [u.email.toLowerCase(), u.displayName || u.email]),
+    );
+
+    const records: HistoryRecord[] = [];
+
+    this.cachedApprovalRequests
+      .filter((req) => this.matchesEmployee(req, this.employee!))
+      .forEach((req) => {
+        const targetHistories = (req.histories ?? []).slice().sort((a, b) => {
+          const aDate =
+            typeof a.createdAt?.toDate === 'function'
+              ? a.createdAt.toDate().getTime()
+              : new Date(a.createdAt as unknown as string).getTime();
+          const bDate =
+            typeof b.createdAt?.toDate === 'function'
+              ? b.createdAt.toDate().getTime()
+              : new Date(b.createdAt as unknown as string).getTime();
+          return bDate - aDate;
+        });
+
+        const primaryHistory =
+          targetHistories.find((h) => h.action === 'approve') || targetHistories[0];
+        if (!primaryHistory) return;
+
+        const primaryDate =
+          typeof primaryHistory.createdAt?.toDate === 'function'
+            ? primaryHistory.createdAt.toDate()
+            : new Date(primaryHistory.createdAt as unknown as string);
+
+        const actor = this.resolveUserDisplayName(
+          primaryHistory.actorId,
+          primaryHistory.actorName,
+          userMap,
+        );
+
+        const approver =
+          primaryHistory.action === 'approve'
+            ? actor
+            : (() => {
+                const approved = targetHistories.find((h) => h.action === 'approve');
+                if (!approved) return '';
+                return this.resolveUserDisplayName(
+                  approved.actorId,
+                  approved.actorName,
+                  userMap,
+                );
+              })();
+
+        const targetDiffs =
+          req.employeeDiffs?.filter((diff) =>
+            diff.existingEmployeeId
+              ? diff.existingEmployeeId === this.employee!.id
+              : diff.employeeNo === this.employee!.employeeNo,
+          ) ?? [];
+
+        targetDiffs.forEach((diff) => {
+          diff.changes.forEach((change, index) => {
+            records.push({
+              id: `${req.id ?? req.title}-hist-${primaryHistory.id}-${index}`,
+              groupId: `${req.id ?? req.title}-group-${primaryHistory.id}`,
+              changedAt: this.formatDateTime(primaryDate),
+              field: change.field,
+              oldValue: change.oldValue ?? '',
+              newValue: change.newValue ?? '',
+              actor,
+              approver,
+            });
+          });
+        });
+      });
+
+    this.changeHistoryRecords = records.sort((a, b) =>
+      b.changedAt.localeCompare(a.changedAt),
+    );
+  }
+
+  private formatDateTime(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  }
+
+  private resolveUserDisplayName(
+    userId: string,
+    fallbackName: string | undefined,
+    userMap: Map<string, string>,
+  ): string {
+    const key = userId?.toLowerCase();
+    if (key && userMap.has(key)) {
+      return userMap.get(key) as string;
+    }
+    return fallbackName || userId || '';
+  }
+
+  private requestStatusLabel(status: ApprovalRequestStatus | undefined) {
+    switch (status) {
+      case 'approved':
+        return '承認済';
+      case 'remanded':
+        return '差戻し';
+      case 'expired':
+        return '失効';
+      case 'draft':
+        return '下書き';
+      case 'pending':
+        return '承認待ち';
+      default:
+        return '—';
+    }
+  }
+
+  private actionLabel(history: ApprovalHistory): string {
+    switch (history.action) {
+      case 'apply':
+        return '申請';
+      case 'approve':
+        return '承認';
+      case 'remand':
+        return '差戻し';
+      case 'expired':
+        return '失効';
+      default:
+        return history.action;
     }
   }
   }

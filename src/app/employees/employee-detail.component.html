@@ -8,8 +8,8 @@
                 </p>
             </div>
             <div class="header-actions">
-                <button type="button" class="secondary" (click)="navigateToEdit()" [disabled]="!(canManage$ | async)">編集</button>
-                <button *ngIf="canDelete" type="button" class="danger" [disabled]="!(canManage$ | async)">削除</button>
+                <button *ngIf="canManage$ | async" type="button" class="secondary" (click)="navigateToEdit()">編集</button>
+                <button *ngIf="canDelete && (canManage$ | async)" type="button" class="danger" (click)="requestDelete()" [disabled]="!employee">削除</button>
                 <button type="button" class="outline" (click)="showApprovalHistory = true">承認履歴</button>
             </div>
         </header>
@@ -224,14 +224,74 @@
             </article>
         </section>
 
-        <section *ngIf="selectedTab === 'bonus'" class="tab-body">
+        <section *ngIf="selectedTab === 'dependent'" class="tab-body">
+            <article class="card">
+                <div class="card-header">
+                    <div>
+                        <h2>扶養情報</h2>
+                    </div>
+                </div>
+                <div class="grid three-col">
+                    <div>
+                        <label>続柄</label>
+                        <p class="value">{{ dependentInfo.relationship || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>氏名（漢字）</label>
+                        <p class="value">{{ dependentInfo.nameKanji || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>氏名（カナ）</label>
+                        <p class="value">{{ dependentInfo.nameKana || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>生年月日</label>
+                        <p class="value">{{ dependentInfo.birthDate ? (dependentInfo.birthDate | date: 'yyyy/MM/dd') : '—' }}</p>
+                    </div>
+                    <div>
+                        <label>性別</label>
+                        <p class="value">{{ dependentInfo.gender || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>個人番号</label>
+                        <p class="value">{{ dependentInfo.personalNumber || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>基礎年金番号</label>
+                        <p class="value">{{ dependentInfo.basicPensionNumber || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>同居区分</label>
+                        <p class="value">{{ dependentInfo.cohabitationType || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>住所（別居の場合のみ入力）</label>
+                        <p class="value">{{ dependentInfo.address || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>職業</label>
+                        <p class="value">{{ dependentInfo.occupation || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>年収（見込みでも可）</label>
+                        <p class="value">{{ displayAmount(dependentInfo.annualIncome) }}</p>
+                    </div>
+                    <div>
+                        <label>被扶養者になった日</label>
+                        <p class="value">{{ dependentInfo.dependentStartDate ? (dependentInfo.dependentStartDate | date: 'yyyy/MM/dd') : '—' }}</p>
+                    </div>
+                    <div>
+                        <label>国民年金第3号被保険者該当フラグ</label>
+                        <p class="value">{{ dependentInfo.thirdCategoryFlag ? 'ON' : 'OFF' }}</p>
+                    </div>
+                </div>
+            </article>
         </section>
 
         <section *ngIf="selectedTab === 'history'" class="tab-body">
             <article class="card">
                 <div class="card-header">
                     <div>
-                        <p class="eyebrow">絞り込み条件</p>
                         <h2>変更履歴フィルター</h2>
                     </div>
                 </div>
@@ -315,11 +375,37 @@
                     <h3>承認履歴</h3>
                     <button type="button" (click)="showApprovalHistory = false">閉じる</button>
                 </header>
-                <p class="hint">実運用ではワークフロー履歴を表示します。ここではダミーです。</p>
-                <ul>
-                    <li>2025-02-03 標準報酬月額を承認（manager03）</li>
-                    <li>2024-12-01 所属部署変更を承認（manager02）</li>
-                </ul>
+                <ng-container *ngIf="approvalHistoryEntries.length; else noApprovalHistory">
+                    <div class="table-wrapper">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>日時</th>
+                                    <th>区分</th>
+                                    <th>申請タイトル</th>
+                                    <th>アクション</th>
+                                    <th>ステータス</th>
+                                    <th>実行者</th>
+                                    <th>コメント</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr *ngFor="let history of approvalHistoryEntries">
+                                    <td>{{ history.createdAt | date: 'yyyy/MM/dd HH:mm' }}</td>
+                                    <td>{{ history.category }}</td>
+                                    <td>{{ history.requestTitle }}</td>
+                                    <td>{{ history.actionLabel }}</td>
+                                    <td>{{ history.statusLabel }}</td>
+                                    <td>{{ history.actor }}</td>
+                                    <td>{{ history.comment || '—' }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </ng-container>
+                <ng-template #noApprovalHistory>
+                    <p class="hint">該当する承認履歴がありません。</p>
+                </ng-template>
             </div>
         </div>
     </section>
@@ -336,3 +422,70 @@
         <p class="hint">該当する社員情報が見つかりませんでした。</p>
     </section>
 </ng-template>
+
+<!-- 削除承認依頼モーダル -->
+<section *ngIf="showDeletePanel" class="modal-overlay" (click)="cancelDelete()">
+    <div class="modal-content" (click)="$event.stopPropagation()">
+        <div class="panel-header">
+            <div>
+                <h2>社員削除の承認依頼</h2>
+            </div>
+            <button type="button" class="ghost" (click)="cancelDelete()">×</button>
+        </div>
+
+        <div class="approval-grid">
+            <div class="approval-summary">
+                <p class="label">削除対象</p>
+                <p class="value">{{ employee?.name || '—' }}</p>
+                <p class="hint">社員番号: {{ employee?.employeeNo || '—' }}</p>
+            </div>
+            <div class="approval-form">
+                <app-flow-selector
+                  [label]="'承認ルート'"
+                  [selectedFlowId]="selectedDeleteFlowId"
+                  (flowSelected)="onDeleteFlowSelected($event)"
+                  (flowsUpdated)="onDeleteFlowsUpdated($event)"
+                />
+                <label class="field">
+                    <span>申請コメント</span>
+                    <textarea rows="4" [(ngModel)]="deleteComment" placeholder="例：退職に伴う削除です。"></textarea>
+                </label>
+                <div class="attachment-box">
+                    <div class="attachment-header">
+                        <div>
+                            <p class="label">申請時の添付</p>
+                            <p class="hint">1件10MB以内・最大5件・合計30MB</p>
+                        </div>
+                        <label class="upload-button">
+                            <input
+                                type="file"
+                                multiple
+                                (change)="onFileSelected($event)"
+                                [accept]="attachmentService.acceptExtensions"
+                            />
+                            ファイルを選択
+                        </label>
+                    </div>
+                    <p class="hint">合計サイズ: {{ formatFileSize(totalSelectedSize()) }}</p>
+                    <p class="hint warning" *ngIf="validationErrors.length">{{ validationErrors[0] }}</p>
+                    <ul class="selected-files" *ngIf="selectedFiles.length">
+                        <li *ngFor="let file of selectedFiles; let i = index">
+                            <div>
+                                <p class="file-name">{{ file.name }}</p>
+                                <p class="hint">{{ formatFileSize(file.size) }}</p>
+                            </div>
+                            <button type="button" class="ghost" (click)="removeFile(i)">削除</button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <p class="message" *ngIf="deleteMessage">{{ deleteMessage }}</p>
+
+        <div class="navigation">
+            <button type="button" class="ghost" (click)="cancelDelete()" [disabled]="isDeleting">キャンセル</button>
+            <button type="button" class="primary danger" (click)="submitDeleteApproval()" [disabled]="isDeleting || !selectedDeleteFlowId">承認依頼を送信</button>
+        </div>
+    </div>
+</section>

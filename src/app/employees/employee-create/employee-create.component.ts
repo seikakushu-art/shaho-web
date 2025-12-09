@@ -79,6 +79,22 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       exemption: false,
     };
   
+    dependentInfo = {
+      relationship: '',
+      nameKanji: '',
+      nameKana: '',
+      birthDate: '',
+      gender: '',
+      personalNumber: '',
+      basicPensionNumber: '',
+      cohabitationType: '',
+      address: '',
+      occupation: '',
+      annualIncome: null as number | null,
+      dependentStartDate: '',
+      thirdCategoryFlag: false,
+    };
+  
     ngOnInit(): void {
       // ユーザー情報を取得
       this.authService.user$
@@ -152,6 +168,21 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
                 postalCode: result.data.employeeData.basicInfo?.postalCode ?? '',
               };
               this.socialInsurance = { ...result.data.employeeData.socialInsurance };
+              this.dependentInfo = {
+                relationship: result.data.employeeData.dependentInfo?.relationship ?? '',
+                nameKanji: result.data.employeeData.dependentInfo?.nameKanji ?? '',
+                nameKana: result.data.employeeData.dependentInfo?.nameKana ?? '',
+                birthDate: result.data.employeeData.dependentInfo?.birthDate ?? '',
+                gender: result.data.employeeData.dependentInfo?.gender ?? '',
+                personalNumber: result.data.employeeData.dependentInfo?.personalNumber ?? '',
+                basicPensionNumber: result.data.employeeData.dependentInfo?.basicPensionNumber ?? '',
+                cohabitationType: result.data.employeeData.dependentInfo?.cohabitationType ?? '',
+                address: result.data.employeeData.dependentInfo?.address ?? '',
+                occupation: result.data.employeeData.dependentInfo?.occupation ?? '',
+                annualIncome: result.data.employeeData.dependentInfo?.annualIncome ?? null,
+                dependentStartDate: result.data.employeeData.dependentInfo?.dependentStartDate ?? '',
+                thirdCategoryFlag: result.data.employeeData.dependentInfo?.thirdCategoryFlag ?? false,
+              };
               this.editMode = false; // 閲覧モードで表示
               this.isViewModeFromApproval = true; // 承認詳細から遷移した閲覧モード
               console.log('読み込んだbasicInfo:', this.basicInfo);
@@ -220,6 +251,22 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         maternityLeaveEnd: this.formatDateForInput(employee.maternityLeaveEnd) || '',
         exemption: employee.exemption ?? false,
       };
+    
+    this.dependentInfo = {
+      relationship: employee.dependentRelationship ?? '',
+      nameKanji: employee.dependentNameKanji ?? '',
+      nameKana: employee.dependentNameKana ?? '',
+      birthDate: this.formatDateForInput(employee.dependentBirthDate) || '',
+      gender: employee.dependentGender ?? '',
+      personalNumber: employee.dependentPersonalNumber ?? '',
+      basicPensionNumber: employee.dependentBasicPensionNumber ?? '',
+      cohabitationType: employee.dependentCohabitationType ?? '',
+      address: employee.dependentAddress ?? '',
+      occupation: employee.dependentOccupation ?? '',
+      annualIncome: employee.dependentAnnualIncome ?? null,
+      dependentStartDate: this.formatDateForInput(employee.dependentStartDate) || '',
+      thirdCategoryFlag: employee.dependentThirdCategoryFlag ?? false,
+    };
     }
 
     /**
@@ -340,6 +387,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         const employeeData = {
           basicInfo: { ...this.basicInfo },
           socialInsurance: { ...this.socialInsurance },
+          dependentInfo: { ...this.dependentInfo },
         };
 
         const request: ApprovalRequest = {
@@ -503,6 +551,54 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         changes.push({ field: '産前産後休業終了日', oldValue: null, newValue: this.socialInsurance.maternityLeaveEnd });
       }
       changes.push({ field: '保険料免除', oldValue: null, newValue: this.socialInsurance.exemption ? 'はい' : 'いいえ' });
+    
+      // 扶養情報
+      const hasDependentData =
+        this.basicInfo.hasDependent ||
+        Object.values(this.dependentInfo).some((value) => value !== '' && value !== null && value !== false);
+      if (hasDependentData) {
+        if (this.dependentInfo.relationship) {
+          changes.push({ field: '扶養 続柄', oldValue: null, newValue: this.dependentInfo.relationship });
+        }
+        if (this.dependentInfo.nameKanji) {
+          changes.push({ field: '扶養 氏名(漢字)', oldValue: null, newValue: this.dependentInfo.nameKanji });
+        }
+        if (this.dependentInfo.nameKana) {
+          changes.push({ field: '扶養 氏名(カナ)', oldValue: null, newValue: this.dependentInfo.nameKana });
+        }
+        if (this.dependentInfo.birthDate) {
+          changes.push({ field: '扶養 生年月日', oldValue: null, newValue: this.dependentInfo.birthDate });
+        }
+        if (this.dependentInfo.gender) {
+          changes.push({ field: '扶養 性別', oldValue: null, newValue: this.dependentInfo.gender });
+        }
+        if (this.dependentInfo.personalNumber) {
+          changes.push({ field: '扶養 個人番号', oldValue: null, newValue: this.dependentInfo.personalNumber });
+        }
+        if (this.dependentInfo.basicPensionNumber) {
+          changes.push({ field: '扶養 基礎年金番号', oldValue: null, newValue: this.dependentInfo.basicPensionNumber });
+        }
+        if (this.dependentInfo.cohabitationType) {
+          changes.push({ field: '扶養 同居区分', oldValue: null, newValue: this.dependentInfo.cohabitationType });
+        }
+        if (this.dependentInfo.address) {
+          changes.push({ field: '扶養 住所', oldValue: null, newValue: this.dependentInfo.address });
+        }
+        if (this.dependentInfo.occupation) {
+          changes.push({ field: '扶養 職業', oldValue: null, newValue: this.dependentInfo.occupation });
+        }
+        if (this.dependentInfo.annualIncome !== null) {
+          changes.push({ field: '扶養 年収', oldValue: null, newValue: String(this.dependentInfo.annualIncome) });
+        }
+        if (this.dependentInfo.dependentStartDate) {
+          changes.push({ field: '扶養 開始日', oldValue: null, newValue: this.dependentInfo.dependentStartDate });
+        }
+        changes.push({
+          field: '扶養 第3号被保険者',
+          oldValue: null,
+          newValue: this.dependentInfo.thirdCategoryFlag ? 'はい' : 'いいえ',
+        });
+      }
 
       return changes;
     }

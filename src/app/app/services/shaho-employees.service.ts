@@ -6,6 +6,7 @@ import {
   addDoc,
   doc,
   docData,
+  deleteDoc,
   updateDoc,
   setDoc,
   query,
@@ -33,6 +34,19 @@ export interface ShahoEmployee {
   personalNumber?: string;
   basicPensionNumber?: string;
   hasDependent?: boolean;
+  dependentRelationship?: string;
+  dependentNameKanji?: string;
+  dependentNameKana?: string;
+  dependentBirthDate?: string;
+  dependentGender?: string;
+  dependentPersonalNumber?: string;
+  dependentBasicPensionNumber?: string;
+  dependentCohabitationType?: string;
+  dependentAddress?: string;
+  dependentOccupation?: string;
+  dependentAnnualIncome?: number;
+  dependentStartDate?: string;
+  dependentThirdCategoryFlag?: boolean;
   standardMonthly?: number;
   standardBonusAnnualTotal?: number;
   healthInsuredNumber?: string;
@@ -123,6 +137,11 @@ export class ShahoEmployeesService {
     return collectionData(this.colRef, { idField: 'id' }) as Observable<
       ShahoEmployee[]
     >;
+  }
+
+  async deleteEmployee(id: string): Promise<void> {
+    const ref = doc(this.colRef, id);
+    await deleteDoc(ref);
   }
 
   getEmployeesWithPayrolls(): Observable<

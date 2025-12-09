@@ -8,7 +8,7 @@ import {
     ValidatedRow,
   } from './csv-import.types';
   
-  const DATE_FIELDS = ['入社日', '生年月日', '賞与支給日'];
+  const DATE_FIELDS = ['入社日', '生年月日', '賞与支給日', '扶養 生年月日', '扶養 被扶養者になった日'];
   const YEAR_MONTH_FIELDS = ['算定対象期間開始年月', '算定対象期間終了年月', '算定年度', '賞与支給年度', '月給支払月'];
   const NUMBER_FIELDS = [
     '標準報酬月額',
@@ -21,10 +21,11 @@ import {
     '4月支払基礎日数',
     '5月支払基礎日数',
     '6月支払基礎日数',
+    '扶養 年収（見込みでも可）',
   ];
   const POSTAL_CODE_FIELDS = ['郵便番号'];
-  const ADDRESS_FIELDS = ['住所'];
-  const FLAG_FIELDS = ['介護保険第2号フラグ', '一時免除フラグ（健康保険料・厚生年金一時免除）'];
+  const ADDRESS_FIELDS = ['住所', '扶養 住所（別居の場合のみ入力）'];
+  const FLAG_FIELDS = ['介護保険第2号フラグ', '一時免除フラグ（健康保険料・厚生年金一時免除）', '扶養の有無', '扶養 国民年金第3号被保険者該当フラグ'];
   
   const REQUIRED_FIELDS: Record<TemplateType, string[]> = {
     new: [
@@ -43,7 +44,7 @@ import {
   };
   
   const GENDER_VALUES = ['男', '女', '男性', '女性', 'male', 'female'];
-  const FLAG_VALUES = ['0', '1', 'on', 'off', 'true', 'false', 'yes', 'no'];
+  const FLAG_VALUES = ['0', '1', 'on', 'off', 'true', 'false', 'yes', 'no', '有', '無'];
   
   export function parseCSV(csvText: string): string[][] {
     let text = csvText;
@@ -148,10 +149,10 @@ import {
     }
 
     // 新規登録/一括更新用テンプレートの判定
-    // 11項目（旧形式）、24項目（新形式）、または15項目以上で氏名(漢字)を含む場合
+    // 11項目（旧形式）、24項目以上（新形式拡張）、または15項目以上で氏名(漢字)を含む場合
     if (
       headers.length === 11 ||
-      headers.length === 24 ||
+      headers.length >= 24 ||
       (headers.length >= 15 && (headerSet.has('氏名(漢字)') || headerSet.has('氏名漢字')))
     ) {
       return 'new';
@@ -297,6 +298,10 @@ import {
     if (gender && !GENDER_VALUES.includes(gender.toLowerCase())) {
       errors.push(buildError(row.rowIndex, '性別', '性別の値が不正です', templateType));
     }
+  const dependentGender = row.data['扶養 性別'];
+  if (dependentGender && !GENDER_VALUES.includes(dependentGender.toLowerCase())) {
+    errors.push(buildError(row.rowIndex, '扶養 性別', '扶養 性別の値が不正です', templateType));
+  }
   
     FLAG_FIELDS.forEach((field) => {
       const value = row.data[field];
@@ -327,7 +332,7 @@ import {
       }
 
       // 生年月日の場合は年分の制限をチェック
-      if (field === '生年月日') {
+      if (field === '生年月日' || field === '扶養 生年月日') {
         date.setHours(0, 0, 0, 0);
         if (date > today) {
           errors.push(buildError(row.rowIndex, field, `${field}は未来の日付は入力できません`, templateType));
@@ -590,6 +595,20 @@ import {
     workPrefecture?: string;
     personalNumber?: string;
     basicPensionNumber?: string;
+    hasDependent?: boolean;
+    dependentRelationship?: string;
+    dependentNameKanji?: string;
+    dependentNameKana?: string;
+    dependentBirthDate?: string;
+    dependentGender?: string;
+    dependentPersonalNumber?: string;
+    dependentBasicPensionNumber?: string;
+    dependentCohabitationType?: string;
+    dependentAddress?: string;
+    dependentOccupation?: string;
+    dependentAnnualIncome?: number;
+    dependentStartDate?: string;
+    dependentThirdCategoryFlag?: boolean;
     standardMonthly?: number;
     standardBonusAnnualTotal?: number;
     healthInsuredNumber?: string;
@@ -751,6 +770,20 @@ import {
         '勤務地都道府県名': 'workPrefecture',
         '個人番号': 'personalNumber',
         '基礎年金番号': 'basicPensionNumber',
+        '扶養の有無': 'hasDependent',
+        '扶養 続柄': 'dependentRelationship',
+        '扶養 氏名(漢字)': 'dependentNameKanji',
+        '扶養 氏名(カナ)': 'dependentNameKana',
+        '扶養 生年月日': 'dependentBirthDate',
+        '扶養 性別': 'dependentGender',
+        '扶養 個人番号': 'dependentPersonalNumber',
+        '扶養 基礎年金番号': 'dependentBasicPensionNumber',
+        '扶養 同居区分': 'dependentCohabitationType',
+        '扶養 住所（別居の場合のみ入力）': 'dependentAddress',
+        '扶養 職業': 'dependentOccupation',
+        '扶養 年収（見込みでも可）': 'dependentAnnualIncome',
+        '扶養 被扶養者になった日': 'dependentStartDate',
+        '扶養 国民年金第3号被保険者該当フラグ': 'dependentThirdCategoryFlag',
         '標準報酬月額': 'standardMonthly',
         '被保険者番号（健康保険)': 'healthInsuredNumber',
         '被保険者番号（厚生年金）': 'pensionInsuredNumber',
@@ -775,6 +808,7 @@ import {
         // 日付フィールドのリスト
         const dateFields = [
           '生年月日',
+          '扶養 生年月日',
           '健康保険資格取得日',
           '健康保険 資格取得日',
           '厚生年金資格取得日',
@@ -783,6 +817,7 @@ import {
           '育休終了日',
           '産休開始日',
           '産休終了日',
+          '扶養 被扶養者になった日',
         ];
         
         // 日付フィールドの正規化関数（YYYY/MM/DD形式に統一）
@@ -793,7 +828,7 @@ import {
         };
         
         // 数値フィールドの比較
-        if (csvField === '標準報酬月額') {
+        if (csvField === '標準報酬月額' || csvField === '扶養 年収（見込みでも可）') {
           const csvNum = Number(csvValue.replace(/,/g, ''));
           const existingNum = typeof existingValue === 'number' ? existingValue : 
                              (existingValue ? Number(String(existingValue).replace(/,/g, '')) : undefined);

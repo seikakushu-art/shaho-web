@@ -7,6 +7,7 @@ type ApprovalCategory =
   | '保険料率更新'
   | '法人情報更新'
   | '社員情報一括更新'
+  | '社員削除'
   | '計算結果保存';
 
 export type ApprovalRequestStatus =
@@ -172,6 +173,21 @@ export interface ApprovalRequest {
       maternityLeaveStart: string;
       maternityLeaveEnd: string;
       exemption: boolean;
+    };
+    dependentInfo?: {
+      relationship: string;
+      nameKanji: string;
+      nameKana: string;
+      birthDate: string;
+      gender: string;
+      personalNumber: string;
+      basicPensionNumber: string;
+      cohabitationType: string;
+      address: string;
+      occupation: string;
+      annualIncome: number | null;
+      dependentStartDate: string;
+      thirdCategoryFlag: boolean;
     };
   };
   insuranceRateData?: InsuranceRatePayload;
