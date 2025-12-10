@@ -80,6 +80,10 @@
       </div>
       <p class="hint" *ngIf="!(canResubmit$ | async)">申請者本人のみ再申請できます。</p>
     </header>
+    <div class="comment-box" *ngIf="current.remandComment">
+      <p class="comment-label">差し戻しコメント</p>
+      <p class="comment-text">{{ current.remandComment }}</p>
+    </div>
     <div class="action-buttons" *ngIf="canResubmit$ | async">
       <button
         type="button"

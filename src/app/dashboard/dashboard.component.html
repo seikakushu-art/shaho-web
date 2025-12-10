@@ -2,7 +2,10 @@
     <header>
       <div>
         <h1>社会保険管理システム</h1>
-        <p class="greeting" *ngIf="(appUser$ | async) as appUser">こんにちは、{{ appUser?.displayName }} さん</p>
+        <p class="greeting" *ngIf="(appUser$ | async) as appUser; else notLoggedIn">こんにちは、{{ appUser?.displayName }} さん</p>
+        <ng-template #notLoggedIn>
+          <p class="greeting">ログインしてください。</p>
+        </ng-template>
       </div>
       <div class="header-actions">
       </div>
@@ -61,7 +64,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card" *ngIf="(appUser$ | async)">
       <h2>ワークスペース</h2>
       <div class="shortcut-grid">
         <a routerLink="/approval-flows" class="shortcut-card" *ngIf="(isSystemAdmin$ | async)">

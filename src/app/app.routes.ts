@@ -94,13 +94,13 @@ export const routes: Routes = [
   {
     path: 'corporate-info',
     component: CorporateInfoComponent,
-    canActivate: [authGuard, roleGuard(adminOnly)],
+    canActivate: [authGuard, roleGuard(guestViewers)],
     title: '法人情報',
   },
   {
     path: 'insurance-rates',
     component: InsuranceRatesComponent,
-    canActivate: [authGuard, roleGuard(adminOnly)],
+    canActivate: [authGuard, roleGuard(guestViewers)],
     title: '保険料率設定',
   },
   {

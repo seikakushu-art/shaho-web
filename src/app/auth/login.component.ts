@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from './auth.service';
 import { RoleKey } from '../models/roles';
@@ -9,7 +9,7 @@ import { take } from 'rxjs/operators';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, RouterLink],
   templateUrl: './login.component.html',
   styleUrl: './login.component.scss',
 })
@@ -26,6 +26,7 @@ export class LoginComponent {
   errorMessage = '';
   infoMessage = '';
   showPassword = false;
+  passwordResetEmail = '';
 
   readonly user$ = this.authService.user$;
 
@@ -78,21 +79,32 @@ export class LoginComponent {
     const currentUser = await this.authService.user$.pipe(take(1)).toPromise();
     console.log('取得したユーザー情報:', currentUser);
     
-    if (!currentUser?.email) {
-      console.log('ユーザーがログインしていません');
-      this.errorMessage = 'ログインしてください';
+    // ログインしている場合は現在のユーザーのメールアドレスを使用
+    // ログインしていない場合は入力されたメールアドレスを使用
+    const email = currentUser?.email || this.passwordResetEmail.trim();
+    
+    if (!email) {
+      console.log('メールアドレスが指定されていません');
+      this.errorMessage = 'メールアドレスを入力してください';
       return;
     }
     
-    console.log('パスワード変更リクエスト:', currentUser.email);
+    // メールアドレスの形式チェック
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      this.errorMessage = '有効なメールアドレスを入力してください';
+      return;
+    }
+    
+    console.log('パスワード変更リクエスト:', email);
     
     try {
       console.log('sendPasswordResetEmailToAddress を呼び出します...');
-      // user$から取得したメールアドレスを直接使用
-      await this.authService.sendPasswordResetEmailToAddress(currentUser.email);
+      await this.authService.sendPasswordResetEmailToAddress(email);
       console.log('パスワード変更が成功しました');
       this.errorMessage = '';
-      this.infoMessage = `登録メールアドレス（${currentUser.email}）宛にパスワード再設定メールを送信しました。メールボックスを確認してください。`;
+      this.infoMessage = `登録メールアドレス（${email}）宛にパスワード再設定メールを送信しました。メールボックスを確認してください。`;
+      this.passwordResetEmail = '';
     } catch (error: any) {
       console.error('パスワード変更エラー:', error);
       console.error('エラーの詳細:', {

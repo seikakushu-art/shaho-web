@@ -1252,6 +1252,10 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         error: row.error,
       }));
 
+      const createdAt = new Date();
+      const dueDate = new Date(createdAt);
+      dueDate.setDate(dueDate.getDate() + 14);
+
       const request: ApprovalRequest = {
         title: '計算結果保存',
         category: '計算結果保存',
@@ -1280,7 +1284,8 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           bonusPaidOn: this.bonusPaidOnFilter,
         },
         calculationResultRows,
-        createdAt: Timestamp.fromDate(new Date()),
+        createdAt: Timestamp.fromDate(createdAt),
+        dueDate: Timestamp.fromDate(dueDate),
       };
 
       const savedBase = await this.approvalWorkflowService.saveRequest(request);

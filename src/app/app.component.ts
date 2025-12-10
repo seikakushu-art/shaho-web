@@ -1,5 +1,5 @@
 import { Component, inject } from '@angular/core';
-import { RouterLink, RouterOutlet } from '@angular/router';
+import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { AsyncPipe, NgIf } from '@angular/common';
 import { combineLatest, map } from 'rxjs';
 import { AuthService } from './auth/auth.service';
@@ -18,6 +18,7 @@ import { UserDirectoryService } from './auth/user-directory.service';
 export class AppComponent {
   private authService = inject(AuthService);
   private userDirectory = inject(UserDirectoryService);
+  private router = inject(Router);
 
   readonly user$ = this.authService.user$;
   readonly role$ = this.authService.roleDefinition$;
@@ -50,7 +51,12 @@ export class AppComponent {
     return roleDefinitions.map((role) => role.name).join(' / ');
   }
 
-  logout() {
-    return this.authService.logout();
+  async logout() {
+    await this.authService.logout();
+    this.router.navigate(['/login']);
+  }
+
+  login() {
+    this.router.navigate(['/login']);
   }
 }

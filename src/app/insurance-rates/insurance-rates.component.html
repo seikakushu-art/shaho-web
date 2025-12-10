@@ -4,7 +4,7 @@
         <h1>保険料率</h1>
       </div>
       <div class="actions">
-        <ng-container *ngIf="viewingRecord && !editMode && isLatestSelection && selectedHealthType !== '協会けんぽ'">
+        <ng-container *ngIf="viewingRecord && !editMode && isLatestSelection && selectedHealthType !== '協会けんぽ' && isSystemAdmin">
           <button type="button" class="primary" (click)="enableEdit()">編集</button>
         </ng-container>
         <ng-container *ngIf="editMode">
@@ -20,6 +20,7 @@
         <div class="card-header">
           <div>
             <h2>対象区分</h2>
+            <p class="hint" style="color: #94a3b8;">健康保険の種類を切り替えできます（実運用では 協会けんぽ または 組合健保 のいずれかを表示します）。</p>
           </div>
         </div>
         <div class="grid three-col">

@@ -485,6 +485,10 @@ private readFileAsText(file: File): Promise<string> {
 
   private buildApprovalRequest(flow: ApprovalFlow): ApprovalRequest {
     const firstStepOrder = flow.steps[0]?.order;
+    const createdAt = new Date();
+    const dueDate = new Date(createdAt);
+    dueDate.setDate(dueDate.getDate() + 14);
+    
     return {
       title: `社員インポート（${this.selectedCount}件）`,
       category: '社員情報一括更新',
@@ -512,7 +516,8 @@ private readFileAsText(file: File): Promise<string> {
       steps: flow.steps.map((step) => ({ stepOrder: step.order, status: 'waiting' })),
       attachments: [],
       histories: [],
-      createdAt: Timestamp.fromDate(new Date()),
+      createdAt: Timestamp.fromDate(createdAt),
+      dueDate: Timestamp.fromDate(dueDate),
     };
   }
 

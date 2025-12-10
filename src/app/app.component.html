@@ -15,14 +15,19 @@
     <a routerLink="/approval-flows" *appHasRole="RoleKey.SystemAdmin">承認フロー管理</a>
     <a routerLink="/user-management" *appHasRole="RoleKey.SystemAdmin">ユーザー管理</a>
   </nav>
-  <div class="actions" *ngIf="user$ | async as user">
-    <span>{{ userDisplayName$ | async }}</span>
-    <span class="separator">|</span>
-    <span class="roles" *ngIf="roleDefinitions$ | async as roleDefinitions">
-      {{ getRoleNames(roleDefinitions) }}
-    </span>
-    <span class="separator">|</span>
-    <button type="button" (click)="logout()">ログアウト</button>
+  <div class="actions">
+    <ng-container *ngIf="user$ | async as user; else notLoggedIn">
+      <span>{{ userDisplayName$ | async }}</span>
+      <span class="separator">|</span>
+      <span class="roles" *ngIf="roleDefinitions$ | async as roleDefinitions">
+        {{ getRoleNames(roleDefinitions) }}
+      </span>
+      <span class="separator">|</span>
+      <button type="button" (click)="logout()">ログアウト</button>
+    </ng-container>
+    <ng-template #notLoggedIn>
+      <button type="button" (click)="login()">ログイン</button>
+    </ng-template>
   </div>
 </header>
 

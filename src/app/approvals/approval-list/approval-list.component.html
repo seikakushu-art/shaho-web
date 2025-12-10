@@ -76,7 +76,11 @@
               <td>
                 <span class="badge" [class]="categoryClass(approval.category)">{{ approval.category }}</span>
               </td>
-              <td class="numeric">{{ approval.targetCount }} 件</td>
+              <td class="numeric">
+                <ng-container *ngIf="approval.category !== '保険料率更新' && approval.category !== '法人情報更新'">
+                  {{ approval.targetCount }} 件
+                </ng-container>
+              </td>
               <td>{{ approval.applicantDisplayName }}</td>
               <td>{{ getTimestampDate(approval.createdAt) | date: 'yyyy/MM/dd HH:mm' }}</td>
               <td class="numeric">{{ approval.currentStep || '-' }}</td>

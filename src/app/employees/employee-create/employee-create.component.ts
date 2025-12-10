@@ -390,6 +390,10 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           dependentInfo: { ...this.dependentInfo },
         };
 
+        const createdAt = new Date();
+        const dueDate = new Date(createdAt);
+        dueDate.setDate(dueDate.getDate() + 14);
+
         const request: ApprovalRequest = {
           title: `社員新規登録（${displayName}）`,
           category: '新規社員登録',
@@ -406,7 +410,8 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           attachments: [],
           employeeDiffs,
           employeeData,
-          createdAt: Timestamp.fromDate(new Date()),
+          createdAt: Timestamp.fromDate(createdAt),
+          dueDate: Timestamp.fromDate(dueDate),
         };
 
         console.log('保存するrequest:', request);

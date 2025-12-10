@@ -130,11 +130,13 @@
   input,
   select {
     width: 100%;
+    max-width: 100%;
     padding: 0.6rem 0.75rem;
     border-radius: 8px;
     border: 1px solid #d1d5db;
     font-size: 0.95rem;
     background: #fff;
+    box-sizing: border-box;
   }
 
   .insurance-form input,
@@ -332,6 +334,10 @@
   
   .filters {
     align-items: end;
+  }
+
+  .filters > div {
+    min-width: 0;
   }
 
   .filters > div:nth-child(1) input,

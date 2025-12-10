@@ -93,6 +93,9 @@ export class ApprovalDetailComponent implements OnDestroy {
             actorDisplayName: userMap.get(history.actorId.toLowerCase()) || history.actorName || history.actorId,
           }))
           .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()),
+        remandComment: [...(approval.histories || [])]
+          .filter(history => history.action === 'remand')
+          .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0]?.comment,
       };
     }),
     tap((approval) => {
@@ -445,7 +448,7 @@ export class ApprovalDetailComponent implements OnDestroy {
           id: `ntf-${Date.now()}-${candidate.id}`,
           requestId: resubmitted.id!,
           recipientId: candidate.id,
-          message: `${resubmitted.id} が再申請されました。ステップ1を承認してください`,
+          message: `${resubmitted.title} が再申請されました。ステップ1を承認してください`,
           unread: true,
           createdAt: new Date(),
           type: 'info',

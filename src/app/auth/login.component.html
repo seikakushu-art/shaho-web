@@ -1,8 +1,10 @@
 <section class="login-panel">
     <header>
       <h1>ログイン</h1>
-      <p class="hint">メールアドレスとパスワードでサインインします。</p>
     </header>
+  
+    <p class="message info" *ngIf="infoMessage">{{ infoMessage }}</p>
+    <p class="message error" *ngIf="errorMessage">{{ errorMessage }}</p>
   
     <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="form-card">
       <label>
@@ -25,16 +27,24 @@
     </form>
   
     <section class="form-card">
-      <h2>パスワード変更</h2>
-      <p class="hint">
-        ログイン中のユーザー宛にパスワード再設定メールを送信します。
-        <span class="chip">送信先: {{ (user$ | async)?.email || '未ログイン' }}</span>
-      </p>
-      <div class="inline">
-        <button type="button" (click)="onPasswordChange()" [disabled]="!(user$ | async)">パスワード再設定メールを送る</button>
+      <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+        <h2>パスワード変更</h2>
+        <p class="hint" style="font-size: 0.875rem; color: #666; margin: 0;" *ngIf="!(user$ | async)">メールアドレスを入力して、パスワード変更できます。</p>
       </div>
+      <ng-container *ngIf="(user$ | async) as user; else notLoggedIn">
+        <p class="hint">
+          ログイン中のユーザー宛にパスワード再設定メールを送信します。
+          <span class="chip">送信先: {{ user.email }}</span>
+        </p>
+        <div class="inline">
+          <button type="button" (click)="onPasswordChange()">パスワード再設定メールを送る</button>
+        </div>
+      </ng-container>
+      <ng-template #notLoggedIn>
+          <input type="email" [(ngModel)]="passwordResetEmail" placeholder="user@example.com" />
+        <div class="inline">
+          <button type="button" (click)="onPasswordChange()" [disabled]="!passwordResetEmail.trim()">パスワード再設定メールを送る</button>
+        </div>
+      </ng-template>
     </section>
-  
-    <p class="message info" *ngIf="infoMessage">{{ infoMessage }}</p>
-    <p class="message error" *ngIf="errorMessage">{{ errorMessage }}</p>
   </section>

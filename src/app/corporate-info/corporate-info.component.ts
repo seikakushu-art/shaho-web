@@ -253,6 +253,10 @@ export class CorporateInfoComponent implements OnInit, OnDestroy  {
       },
     ];
 
+    const createdAt = new Date();
+    const dueDate = new Date(createdAt);
+    dueDate.setDate(dueDate.getDate() + 14);
+
     const request: ApprovalRequest = {
       title: '法人情報の更新',
       category: '法人情報更新',
@@ -268,7 +272,8 @@ export class CorporateInfoComponent implements OnInit, OnDestroy  {
       histories: [],
       attachments: [],
       employeeDiffs,
-      createdAt: Timestamp.fromDate(new Date()),
+      createdAt: Timestamp.fromDate(createdAt),
+      dueDate: Timestamp.fromDate(dueDate),
     };
     this.pendingPayload = payload;
 

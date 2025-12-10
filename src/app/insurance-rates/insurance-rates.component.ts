@@ -838,6 +838,10 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
     ];
     console.log('employeeDiffs:', employeeDiffs);
 
+    const createdAt = new Date();
+    const dueDate = new Date(createdAt);
+    dueDate.setDate(dueDate.getDate() + 14);
+
     const request: ApprovalRequest = {
       title: `保険料率更新（${payload.healthType}）`,
       category: '保険料率更新',
@@ -865,7 +869,8 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
         standardCompensations: payload.standardCompensations,
         bonusCaps: payload.bonusCaps,
       },
-      createdAt: Timestamp.fromDate(new Date()),
+      createdAt: Timestamp.fromDate(createdAt),
+      dueDate: Timestamp.fromDate(dueDate),
     };
 
     this.pendingPayload = payload;
