@@ -15,8 +15,9 @@ import {
   writeBatch,
 } from '@angular/fire/firestore';
 import { Auth } from '@angular/fire/auth';
-import { Observable, combineLatest, map, of, switchMap } from 'rxjs';
+import { Observable, combineLatest, map, of, switchMap, firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
+import { UserDirectoryService } from '../../auth/user-directory.service';
 
 export interface ShahoEmployee {
   id?: string;
@@ -34,19 +35,6 @@ export interface ShahoEmployee {
   personalNumber?: string;
   basicPensionNumber?: string;
   hasDependent?: boolean;
-  dependentRelationship?: string;
-  dependentNameKanji?: string;
-  dependentNameKana?: string;
-  dependentBirthDate?: string;
-  dependentGender?: string;
-  dependentPersonalNumber?: string;
-  dependentBasicPensionNumber?: string;
-  dependentCohabitationType?: string;
-  dependentAddress?: string;
-  dependentOccupation?: string;
-  dependentAnnualIncome?: number;
-  dependentStartDate?: string;
-  dependentThirdCategoryFlag?: boolean;
   standardMonthly?: number;
   standardBonusAnnualTotal?: number;
   healthInsuredNumber?: string;
@@ -127,10 +115,33 @@ export interface PayrollData {
   approvedBy?: string; // 承認者
 }
 
+export interface DependentData {
+  id?: string; // FirestoreドキュメントID
+  relationship?: string; // 続柄
+  nameKanji?: string; // 氏名(漢字)
+  nameKana?: string; // 氏名(カナ)
+  birthDate?: string; // 生年月日
+  gender?: string; // 性別
+  personalNumber?: string; // 個人番号
+  basicPensionNumber?: string; // 基礎年金番号
+  cohabitationType?: string; // 同居区分
+  address?: string; // 住所
+  occupation?: string; // 職業
+  annualIncome?: number | null; // 年収
+  dependentStartDate?: string; // 被扶養者になった日
+  thirdCategoryFlag?: boolean; // 第3号被保険者フラグ
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  createdBy?: string;
+  updatedBy?: string;
+  approvedBy?: string; // 承認者
+}
+
 @Injectable({ providedIn: 'root' })
 export class ShahoEmployeesService {
   private firestore = inject(Firestore);
   private auth = inject(Auth);
+  private userDirectory = inject(UserDirectoryService);
   private colRef = collection(this.firestore, 'shaho_employees');
 
   getEmployees(): Observable<ShahoEmployee[]> {
@@ -244,9 +255,8 @@ export class ShahoEmployeesService {
     records: ExternalEmployeeRecord[],
   ): Promise<ExternalSyncResult> {
     const now = new Date().toISOString();
-    const currentUser = this.auth.currentUser;
-    const userId =
-      currentUser?.displayName || currentUser?.email || currentUser?.uid || 'system';
+    // app_usersのdisplayNameを取得
+    const userDisplayName = await this.getUserDisplayName();
 
     const snapshot = await getDocs(this.colRef);
     const existingMap = new Map<string, { id: string; data: ShahoEmployee }>();
@@ -302,7 +312,7 @@ export class ShahoEmployeesService {
           {
             ...cleanedData,
             updatedAt: now,
-            updatedBy: userId,
+            updatedBy: userDisplayName,
             approvedBy: '外部データ連携',
           },
           { merge: true },
@@ -314,8 +324,8 @@ export class ShahoEmployeesService {
           ...cleanedData,
           createdAt: now,
           updatedAt: now,
-          createdBy: userId,
-          updatedBy: userId,
+          createdBy: userDisplayName,
+          updatedBy: userDisplayName,
           approvedBy: '外部データ連携',
         });
         created += 1;
@@ -466,18 +476,36 @@ export class ShahoEmployeesService {
     };
   }
 
+  /** app_usersコレクションからdisplayNameを取得 */
+  private async getUserDisplayName(): Promise<string> {
+    const currentUser = this.auth.currentUser;
+    if (!currentUser?.email) {
+      return 'system';
+    }
+
+    try {
+      const user = await firstValueFrom(
+        this.userDirectory.getUserByEmail(currentUser.email)
+      );
+      // app_usersのdisplayNameを優先的に使用（なければメールアドレス）
+      return user?.displayName || currentUser.email;
+    } catch (error) {
+      console.error('ユーザー情報の取得に失敗しました:', error);
+      return currentUser.email;
+    }
+  }
+
   async addEmployee(data: ShahoEmployee) {
     const now = new Date().toISOString();
-    const currentUser = this.auth.currentUser;
-    // ユーザーが設定したID（displayName）を優先的に使用
-    const userId = currentUser?.displayName || currentUser?.email || currentUser?.uid || 'system';
+    // app_usersのdisplayNameを取得
+    const userDisplayName = await this.getUserDisplayName();
 
     const employeeData: ShahoEmployee = {
       ...data,
       createdAt: now,
       updatedAt: now,
-      createdBy: userId,
-      updatedBy: userId,
+      createdBy: userDisplayName,
+      updatedBy: userDisplayName,
     };
 
     return addDoc(this.colRef, employeeData);
@@ -486,14 +514,13 @@ export class ShahoEmployeesService {
   async updateEmployee(id: string, data: Partial<ShahoEmployee>) {
     const docRef = doc(this.firestore, 'shaho_employees', id);
     const now = new Date().toISOString();
-    const currentUser = this.auth.currentUser;
-    // ユーザーが設定したID（displayName）を優先的に使用
-    const userId = currentUser?.displayName || currentUser?.email || currentUser?.uid || 'system';
+    // app_usersのdisplayNameを取得
+    const userDisplayName = await this.getUserDisplayName();
 
     const updateData: Partial<ShahoEmployee> = {
       ...data,
       updatedAt: now,
-      updatedBy: userId,
+      updatedBy: userDisplayName,
     };
 
     return updateDoc(docRef, updateData);
@@ -576,5 +603,108 @@ export class ShahoEmployeesService {
     );
     const q = query(payrollsRef, orderBy('yearMonth', 'desc'));
     return collectionData(q, { idField: 'id' }) as Observable<PayrollData[]>;
+  }
+
+  // 扶養情報（dependents）の操作メソッド
+
+  /**
+   * 扶養情報を追加または更新
+   * @param employeeId 社員ID
+   * @param dependentId 扶養情報ID（指定しない場合は自動生成）
+   * @param dependentData 扶養情報データ
+   */
+  async addOrUpdateDependent(
+    employeeId: string,
+    dependentData: DependentData,
+    dependentId?: string,
+  ) {
+    const dependentRef = dependentId
+      ? doc(
+          this.firestore,
+          'shaho_employees',
+          employeeId,
+          'dependents',
+          dependentId,
+        )
+      : doc(
+          collection(
+            this.firestore,
+            'shaho_employees',
+            employeeId,
+            'dependents',
+          ),
+        );
+    const now = new Date().toISOString();
+    const currentUser = this.auth.currentUser;
+    // ユーザーが設定したID（displayName）を優先的に使用
+    const userId =
+      currentUser?.displayName ||
+      currentUser?.email ||
+      currentUser?.uid ||
+      'system';
+
+    const data: DependentData = {
+      ...dependentData,
+      updatedAt: now,
+      updatedBy: userId,
+      createdAt: dependentData.createdAt || now,
+      createdBy: dependentData.createdBy || userId,
+    };
+
+    return setDoc(dependentRef, data, { merge: true });
+  }
+
+  /**
+   * 特定の扶養情報を取得
+   * @param employeeId 社員ID
+   * @param dependentId 扶養情報ID
+   */
+  getDependent(
+    employeeId: string,
+    dependentId: string,
+  ): Observable<DependentData | undefined> {
+    const dependentRef = doc(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'dependents',
+      dependentId,
+    );
+    return docData(dependentRef, { idField: 'id' }) as Observable<
+      DependentData | undefined
+    >;
+  }
+
+  /**
+   * 社員の扶養情報一覧を取得
+   * @param employeeId 社員ID
+   */
+  getDependents(employeeId: string): Observable<DependentData[]> {
+    const dependentsRef = collection(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'dependents',
+    );
+    const q = query(dependentsRef, orderBy('createdAt', 'desc'));
+    return collectionData(q, { idField: 'id' }) as Observable<
+      DependentData[]
+    >;
+  }
+
+  /**
+   * 扶養情報を削除
+   * @param employeeId 社員ID
+   * @param dependentId 扶養情報ID
+   */
+  async deleteDependent(employeeId: string, dependentId: string): Promise<void> {
+    const dependentRef = doc(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'dependents',
+      dependentId,
+    );
+    await deleteDoc(dependentRef);
   }
 }

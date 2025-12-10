@@ -8,7 +8,6 @@ import { RoleKey } from '../../models/roles';
 import {
   ShahoEmployee,
   ShahoEmployeesService,
-  ExternalSyncResult,
 } from '../../app/services/shaho-employees.service';
 
 interface EmployeeListItem {
@@ -61,11 +60,8 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
   currentPage = 1;
 
   isLoading = true;
-  isSyncingExternal = false;
 
   filteredEmployees = [...this.employees];
-  externalSyncResult?: ExternalSyncResult;
-  externalSyncError?: string;
 
   ngOnInit() {
     this.employeesService
@@ -148,19 +144,6 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
     this.router.navigate(['/csv-export']);
   }
 
-  async syncExternalData() {
-    this.isSyncingExternal = true;
-    this.externalSyncError = undefined;
-    try {
-      this.externalSyncResult = await this.employeesService.syncEmployeesFromExternalSource();
-    } catch (error) {
-      this.externalSyncError =
-        error instanceof Error ? error.message : '外部データ連携に失敗しました';
-    } finally {
-      this.isSyncingExternal = false;
-    }
-  }
-
   trackByEmployee(index: number, employee: EmployeeListItem) {
     return employee.id;
   }
@@ -173,16 +156,28 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
     const end = Math.min(this.currentPage * this.pageSize, this.totalCount);
     return `${start} - ${end} / ${this.totalCount}件`;
   }
+  private normalizeSpaces(text: string): string {
+    // 半角スペースと全角スペースを統一（半角スペースに統一）
+    return text.replace(/\u3000/g, ' ').replace(/\s+/g, ' ');
+  }
+
+  private removeSpaces(text: string): string {
+    // すべてのスペース（半角・全角）を削除
+    return text.replace(/\u3000/g, '').replace(/\s+/g, '');
+  }
+
   private applyFilters() {
     const { employeeNo, name, department } = this.searchCondition;
-    const normalizedName = name.trim().toLowerCase();
+    // 検索条件からスペースを削除して正規化
+    const normalizedName = this.removeSpaces(name.trim().toLowerCase());
 
     this.filteredEmployees = this.employees.filter((employee) => {
       const matchesEmployeeNo = employeeNo
         ? employee.employeeNo === employeeNo.trim()
         : true;
+      // 社員名からもスペースを削除してから比較
       const matchesName = normalizedName
-        ? employee.name.toLowerCase().includes(normalizedName)
+        ? this.removeSpaces(employee.name.toLowerCase()).includes(normalizedName)
         : true;
       const matchesDepartment = department
         ? employee.department === department

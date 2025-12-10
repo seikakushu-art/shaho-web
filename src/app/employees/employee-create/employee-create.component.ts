@@ -3,7 +3,7 @@ import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angula
 import { FormsModule, NgForm } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import { Subject, switchMap, takeUntil, of, firstValueFrom, combineLatest, map, take, filter, timeout, catchError } from 'rxjs';
-import { ShahoEmployee, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
+import { ShahoEmployee, ShahoEmployeesService, DependentData } from '../../app/services/shaho-employees.service';
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
 import { ApprovalFlow, ApprovalHistory, ApprovalRequest, ApprovalEmployeeDiff, ApprovalNotification, ApprovalAttachmentMetadata } from '../../models/approvals';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
@@ -12,6 +12,7 @@ import { ApprovalAttachmentService } from '../../approvals/approval-attachment.s
 import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../../auth/auth.service';
 import { RoleKey } from '../../models/roles';
+import { UserDirectoryService } from '../../auth/user-directory.service';
 
 @Component({
   selector: 'app-employee-create',
@@ -28,6 +29,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     private approvalWorkflowService = inject(ApprovalWorkflowService);
     private notificationService = inject(ApprovalNotificationService);
     private authService = inject(AuthService);
+    private userDirectory = inject(UserDirectoryService);
     readonly attachmentService = inject(ApprovalAttachmentService);
     private destroy$ = new Subject<void>();
 
@@ -35,6 +37,22 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     submitAttempted = false;
     isEditMode = false;
     employeeId: string | null = null;
+    originalEmployee: ShahoEmployee | null = null; // 編集前の既存データを保存
+    originalDependentInfo: {
+      relationship: string;
+      nameKanji: string;
+      nameKana: string;
+      birthDate: string;
+      gender: string;
+      personalNumber: string;
+      basicPensionNumber: string;
+      cohabitationType: string;
+      address: string;
+      occupation: string;
+      annualIncome: number | null;
+      dependentStartDate: string;
+      thirdCategoryFlag: boolean;
+    } | null = null; // 編集前の扶養情報を保存
     isLoading = false;
     sendingApproval = false;
     approvalMessage = '';
@@ -46,6 +64,8 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     requestComment = '';
     selectedFiles: File[] = [];
     validationErrors: string[] = [];
+    employeeNoDuplicateError: string | null = null;
+    checkingDuplicate = false;
   
     basicInfo = {
       employeeNo: '',
@@ -79,21 +99,21 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       exemption: false,
     };
   
-    dependentInfo = {
-      relationship: '',
-      nameKanji: '',
-      nameKana: '',
-      birthDate: '',
-      gender: '',
-      personalNumber: '',
-      basicPensionNumber: '',
-      cohabitationType: '',
-      address: '',
-      occupation: '',
-      annualIncome: null as number | null,
-      dependentStartDate: '',
-      thirdCategoryFlag: false,
-    };
+    dependentInfos: Array<{
+      relationship: string;
+      nameKanji: string;
+      nameKana: string;
+      birthDate: string;
+      gender: string;
+      personalNumber: string;
+      basicPensionNumber: string;
+      cohabitationType: string;
+      address: string;
+      occupation: string;
+      annualIncome: number | null;
+      dependentStartDate: string;
+      thirdCategoryFlag: boolean;
+    }> = [];
   
     ngOnInit(): void {
       // ユーザー情報を取得
@@ -146,7 +166,12 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             if (employeeId) {
               this.isLoading = true;
               return this.employeesService.getEmployeeById(employeeId).pipe(
-                map((employee) => ({ type: 'employee' as const, data: employee })),
+                switchMap(async (employee) => {
+                  if (employee) {
+                    await this.loadEmployeeData(employee);
+                  }
+                  return { type: 'employee' as const, data: employee };
+                }),
               );
             }
             
@@ -168,21 +193,44 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
                 postalCode: result.data.employeeData.basicInfo?.postalCode ?? '',
               };
               this.socialInsurance = { ...result.data.employeeData.socialInsurance };
-              this.dependentInfo = {
-                relationship: result.data.employeeData.dependentInfo?.relationship ?? '',
-                nameKanji: result.data.employeeData.dependentInfo?.nameKanji ?? '',
-                nameKana: result.data.employeeData.dependentInfo?.nameKana ?? '',
-                birthDate: result.data.employeeData.dependentInfo?.birthDate ?? '',
-                gender: result.data.employeeData.dependentInfo?.gender ?? '',
-                personalNumber: result.data.employeeData.dependentInfo?.personalNumber ?? '',
-                basicPensionNumber: result.data.employeeData.dependentInfo?.basicPensionNumber ?? '',
-                cohabitationType: result.data.employeeData.dependentInfo?.cohabitationType ?? '',
-                address: result.data.employeeData.dependentInfo?.address ?? '',
-                occupation: result.data.employeeData.dependentInfo?.occupation ?? '',
-                annualIncome: result.data.employeeData.dependentInfo?.annualIncome ?? null,
-                dependentStartDate: result.data.employeeData.dependentInfo?.dependentStartDate ?? '',
-                thirdCategoryFlag: result.data.employeeData.dependentInfo?.thirdCategoryFlag ?? false,
-              };
+              // 承認リクエストの扶養情報を読み込み（複数件に対応）
+              const dependentInfosFromRequest = result.data.employeeData.dependentInfos;
+              if (dependentInfosFromRequest && dependentInfosFromRequest.length > 0) {
+                this.dependentInfos = dependentInfosFromRequest.map((dep) => ({
+                  relationship: dep.relationship ?? '',
+                  nameKanji: dep.nameKanji ?? '',
+                  nameKana: dep.nameKana ?? '',
+                  birthDate: dep.birthDate ?? '',
+                  gender: dep.gender ?? '',
+                  personalNumber: dep.personalNumber ?? '',
+                  basicPensionNumber: dep.basicPensionNumber ?? '',
+                  cohabitationType: dep.cohabitationType ?? '',
+                  address: dep.address ?? '',
+                  occupation: dep.occupation ?? '',
+                  annualIncome: dep.annualIncome ?? null,
+                  dependentStartDate: dep.dependentStartDate ?? '',
+                  thirdCategoryFlag: dep.thirdCategoryFlag ?? false,
+                }));
+              } else if (result.data.employeeData.dependentInfo) {
+                // 後方互換：従来の単一オブジェクト形式を配列に変換
+                this.dependentInfos = [{
+                  relationship: result.data.employeeData.dependentInfo.relationship ?? '',
+                  nameKanji: result.data.employeeData.dependentInfo.nameKanji ?? '',
+                  nameKana: result.data.employeeData.dependentInfo.nameKana ?? '',
+                  birthDate: result.data.employeeData.dependentInfo.birthDate ?? '',
+                  gender: result.data.employeeData.dependentInfo.gender ?? '',
+                  personalNumber: result.data.employeeData.dependentInfo.personalNumber ?? '',
+                  basicPensionNumber: result.data.employeeData.dependentInfo.basicPensionNumber ?? '',
+                  cohabitationType: result.data.employeeData.dependentInfo.cohabitationType ?? '',
+                  address: result.data.employeeData.dependentInfo.address ?? '',
+                  occupation: result.data.employeeData.dependentInfo.occupation ?? '',
+                  annualIncome: result.data.employeeData.dependentInfo.annualIncome ?? null,
+                  dependentStartDate: result.data.employeeData.dependentInfo.dependentStartDate ?? '',
+                  thirdCategoryFlag: result.data.employeeData.dependentInfo.thirdCategoryFlag ?? false,
+                }];
+              } else {
+                this.dependentInfos = [];
+              }
               this.editMode = false; // 閲覧モードで表示
               this.isViewModeFromApproval = true; // 承認詳細から遷移した閲覧モード
               console.log('読み込んだbasicInfo:', this.basicInfo);
@@ -192,8 +240,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
               console.warn('employeeDataが見つかりませんでした。承認リクエスト:', result.data);
             }
           } else if (result.type === 'employee' && result.data) {
-            // 既存社員データを読み込む
-            this.loadEmployeeData(result.data);
+            // 既存社員データは既にloadEmployeeDataで読み込まれている
             this.cdr.detectChanges();
           }
         });
@@ -204,7 +251,10 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       this.destroy$.complete();
     }
 
-    private loadEmployeeData(employee: ShahoEmployee) {
+    private async loadEmployeeData(employee: ShahoEmployee) {
+      // 既存データを保存
+      this.originalEmployee = { ...employee };
+      
       // 性別のマッピング（データベースの「男」「女」をフォームの「男性」「女性」に変換）
       const normalizeGenderForForm = (gender?: string): string => {
         if (!gender) return '';
@@ -252,21 +302,38 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         exemption: employee.exemption ?? false,
       };
     
-    this.dependentInfo = {
-      relationship: employee.dependentRelationship ?? '',
-      nameKanji: employee.dependentNameKanji ?? '',
-      nameKana: employee.dependentNameKana ?? '',
-      birthDate: this.formatDateForInput(employee.dependentBirthDate) || '',
-      gender: employee.dependentGender ?? '',
-      personalNumber: employee.dependentPersonalNumber ?? '',
-      basicPensionNumber: employee.dependentBasicPensionNumber ?? '',
-      cohabitationType: employee.dependentCohabitationType ?? '',
-      address: employee.dependentAddress ?? '',
-      occupation: employee.dependentOccupation ?? '',
-      annualIncome: employee.dependentAnnualIncome ?? null,
-      dependentStartDate: this.formatDateForInput(employee.dependentStartDate) || '',
-      thirdCategoryFlag: employee.dependentThirdCategoryFlag ?? false,
-    };
+      // 扶養情報をdependentsサブコレクションから読み込む
+      if (employee.id) {
+        try {
+          const dependents = await firstValueFrom(
+            this.employeesService.getDependents(employee.id).pipe(take(1))
+          );
+          this.dependentInfos = dependents.map((dependent) => ({
+            relationship: dependent.relationship ?? '',
+            nameKanji: dependent.nameKanji ?? '',
+            nameKana: dependent.nameKana ?? '',
+            birthDate: this.formatDateForInput(dependent.birthDate) || '',
+            gender: dependent.gender ?? '',
+            personalNumber: dependent.personalNumber ?? '',
+            basicPensionNumber: dependent.basicPensionNumber ?? '',
+            cohabitationType: dependent.cohabitationType ?? '',
+            address: dependent.address ?? '',
+            occupation: dependent.occupation ?? '',
+            annualIncome: dependent.annualIncome ?? null,
+            dependentStartDate: this.formatDateForInput(dependent.dependentStartDate) || '',
+            thirdCategoryFlag: dependent.thirdCategoryFlag ?? false,
+          }));
+          // 元の扶養情報を保存（配列のコピー）
+          this.originalDependentInfo = this.dependentInfos.length > 0 ? { ...this.dependentInfos[0] } : null;
+        } catch (error) {
+          console.error('扶養情報の読み込みに失敗しました:', error);
+          this.dependentInfos = [];
+          this.originalDependentInfo = null;
+        }
+      } else {
+        this.dependentInfos = [];
+        this.originalDependentInfo = null;
+      }
     }
 
     /**
@@ -293,7 +360,53 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     handleProceedApproval(form: NgForm) {
       this.submitAttempted = true;
       if (form.invalid) return;
+      if (this.employeeNoDuplicateError) return;
       void this.sendApprovalRequest();
+    }
+
+    /**
+     * 社員番号の重複チェック
+     */
+    async checkEmployeeNoDuplicate(): Promise<void> {
+      const employeeNo = this.basicInfo.employeeNo?.trim();
+      
+      // 空の場合はチェックしない
+      if (!employeeNo) {
+        this.employeeNoDuplicateError = null;
+        return;
+      }
+
+      // 編集モードで、現在の社員番号と同じ場合はチェックしない
+      if (this.isEditMode && this.originalEmployee?.employeeNo === employeeNo) {
+        this.employeeNoDuplicateError = null;
+        return;
+      }
+
+      this.checkingDuplicate = true;
+      this.employeeNoDuplicateError = null;
+
+      try {
+        const employees = await firstValueFrom(
+          this.employeesService.getEmployees().pipe(take(1))
+        );
+        
+        const duplicate = employees.find(
+          (emp) => emp.employeeNo?.trim() === employeeNo && emp.id !== this.employeeId
+        );
+
+        if (duplicate) {
+          this.employeeNoDuplicateError = 'この社員番号は既に使用されています。';
+        } else {
+          this.employeeNoDuplicateError = null;
+        }
+      } catch (error) {
+        console.error('社員番号の重複チェックに失敗しました:', error);
+        // エラーが発生してもユーザーをブロックしない
+        this.employeeNoDuplicateError = null;
+      } finally {
+        this.checkingDuplicate = false;
+        this.cdr.detectChanges();
+      }
     }
 
     onFileSelected(event: Event): void {
@@ -371,32 +484,36 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         }));
 
         const displayName = this.basicInfo.name || this.basicInfo.employeeNo || '新規社員';
+        const isEdit = this.isEditMode && this.originalEmployee && this.employeeId;
 
-        // 新規社員登録の差分情報を作成
+        // 差分情報を作成（編集モードの場合は既存データとの差分を計算）
         const employeeDiffs: ApprovalEmployeeDiff[] = [
           {
             employeeNo: this.basicInfo.employeeNo || '',
             name: this.basicInfo.name || '',
             status: 'ok',
-            isNew: true,
-            changes: this.createEmployeeChanges(),
+            isNew: !isEdit,
+            existingEmployeeId: isEdit && this.employeeId ? this.employeeId : undefined,
+            changes: isEdit ? this.createEmployeeChangesFromDiff() : this.createEmployeeChanges(),
           },
         ];
 
         // 一時保存用の社員データ
+        // dependentInfoは後方互換性のため残すが、dependentInfos配列も保存
         const employeeData = {
           basicInfo: { ...this.basicInfo },
           socialInsurance: { ...this.socialInsurance },
-          dependentInfo: { ...this.dependentInfo },
-        };
+          dependentInfo: this.dependentInfos.length > 0 ? { ...this.dependentInfos[0] } : undefined,
+          dependentInfos: this.dependentInfos.length > 0 ? this.dependentInfos : undefined,
+        } as any;
 
         const createdAt = new Date();
         const dueDate = new Date(createdAt);
         dueDate.setDate(dueDate.getDate() + 14);
 
         const request: ApprovalRequest = {
-          title: `社員新規登録（${displayName}）`,
-          category: '新規社員登録',
+          title: isEdit ? `社員情報更新（${displayName}）` : `社員新規登録（${displayName}）`,
+          category: isEdit ? '社員情報更新' : '新規社員登録',
           targetCount: 1,
           applicantId: this.applicantId,
           applicantName: this.applicantName,
@@ -404,7 +521,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           flowSnapshot: this.selectedFlow,
           status: 'pending',
           currentStep: this.selectedFlow.steps[0]?.order,
-          comment: this.requestComment || '入力内容を承認後に登録します。',
+          comment: this.requestComment || (isEdit ? '入力内容を承認後に更新します。' : '入力内容を承認後に登録します。'),
           steps,
           histories: [],
           attachments: [],
@@ -447,13 +564,193 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           histories: [applyHistory],
         });
 
-        this.approvalMessage = '承認依頼を送信しました。承認完了までお待ちください。';
         this.selectedFiles = [];
         this.validationErrors = [];
+
+        // 承認プロセスを開始
+        const result = await this.approvalWorkflowService.startApprovalProcess({
+          request: { ...saved, id: saved.id },
+          onApproved: async () => {
+            // 承認完了時に社員データを保存
+            if (!saved.id) return;
+            
+            // 承認依頼から最新のデータを取得
+            const approvedRequest = await firstValueFrom(
+              this.approvalWorkflowService.getRequest(saved.id).pipe(take(1))
+            );
+            
+            if (!approvedRequest?.employeeData) {
+              console.error('承認依頼にemployeeDataが見つかりません');
+              return;
+            }
+
+            const { basicInfo, socialInsurance, dependentInfo } = approvedRequest.employeeData;
+
+            // employeeDataをShahoEmployee形式に変換
+            const employeeData: ShahoEmployee = {
+              employeeNo: basicInfo.employeeNo || '',
+              name: basicInfo.name || '',
+              kana: basicInfo.kana || undefined,
+              gender: basicInfo.gender || undefined,
+              birthDate: basicInfo.birthDate || undefined,
+              postalCode: basicInfo.postalCode || undefined,
+              address: basicInfo.address || undefined,
+              department: basicInfo.department || undefined,
+              workPrefecture: basicInfo.workPrefecture || undefined,
+              personalNumber: basicInfo.myNumber || undefined,
+              basicPensionNumber: basicInfo.basicPensionNumber || undefined,
+              hasDependent: basicInfo.hasDependent || false,
+              standardMonthly: socialInsurance.standardMonthly || undefined,
+              healthInsuredNumber: socialInsurance.healthInsuredNumber || undefined,
+              pensionInsuredNumber: socialInsurance.pensionInsuredNumber || undefined,
+              careSecondInsured: socialInsurance.careSecondInsured || false,
+              healthAcquisition: socialInsurance.healthAcquisition || undefined,
+              pensionAcquisition: socialInsurance.pensionAcquisition || undefined,
+              childcareLeaveStart: socialInsurance.childcareLeaveStart || undefined,
+              childcareLeaveEnd: socialInsurance.childcareLeaveEnd || undefined,
+              maternityLeaveStart: socialInsurance.maternityLeaveStart || undefined,
+              maternityLeaveEnd: socialInsurance.maternityLeaveEnd || undefined,
+              exemption: socialInsurance.exemption || false,
+            };
+
+            // undefinedのフィールドを除外
+            const cleanedData = this.removeUndefinedFields(employeeData as unknown as Record<string, unknown>);
+
+            // 編集モードかどうかを判定
+            const isEdit = this.isEditMode && this.employeeId;
+            const updateData: Partial<ShahoEmployee> = cleanedData as unknown as Partial<ShahoEmployee>;
+
+            // 承認履歴から最新の承認者を取得
+            let approverDisplayName: string | undefined;
+            if (approvedRequest.histories) {
+              const approvalHistories = approvedRequest.histories.filter(
+                (h) => h.action === 'approve',
+              );
+              
+              if (approvalHistories.length > 0) {
+                // 最新の承認履歴を取得
+                const latestHistory = approvalHistories.sort((a, b) => {
+                  const aTime = a.createdAt?.toDate?.()?.getTime() || 0;
+                  const bTime = b.createdAt?.toDate?.()?.getTime() || 0;
+                  return bTime - aTime;
+                })[0];
+                
+                // app_usersから承認者のdisplayNameを取得
+                if (latestHistory.actorId) {
+                  try {
+                    const approver = await firstValueFrom(
+                      this.userDirectory.getUserByEmail(latestHistory.actorId)
+                    );
+                    approverDisplayName = approver?.displayName || latestHistory.actorId;
+                  } catch (error) {
+                    console.error('承認者情報の取得に失敗しました:', error);
+                    // エラーが発生しても処理は続行
+                  }
+                }
+              }
+            }
+
+            let employeeId: string | undefined;
+            if (isEdit && this.employeeId) {
+              // 編集モード：既存社員を更新
+              employeeId = this.employeeId;
+              if (approverDisplayName) {
+                updateData.approvedBy = approverDisplayName;
+              }
+              await this.employeesService.updateEmployee(this.employeeId, updateData);
+              this.approvalMessage = '承認が完了しました。社員データを更新しました。';
+            } else {
+              // 新規登録モード：新規社員を追加
+              const result = await this.employeesService.addEmployee(cleanedData as unknown as ShahoEmployee);
+              employeeId = result.id;
+              
+              // approvedByを更新
+              if (result.id && approverDisplayName) {
+                await this.employeesService.updateEmployee(result.id, {
+                  approvedBy: approverDisplayName,
+                });
+              }
+              
+              this.approvalMessage = '承認が完了しました。社員データを登録しました。';
+            }
+
+            // 扶養情報をdependentsサブコレクションに保存（複数件対応）
+            // 承認リクエストから最新のデータを取得して、dependentInfos配列を再構築
+            const latestRequest = await firstValueFrom(
+              this.approvalWorkflowService.getRequest(saved.id!).pipe(take(1))
+            );
+            
+            // 承認リクエストから扶養情報を取得（1件のみの可能性があるため、配列に変換）
+            // 実際の保存時には、承認リクエスト作成時のdependentInfos配列全体を使用
+            const dependentInfosToSave = this.dependentInfos.length > 0 
+              ? this.dependentInfos 
+              : (dependentInfo ? [dependentInfo] : []);
+            
+            if (employeeId && basicInfo.hasDependent) {
+              // 既存の扶養情報を取得
+              const existingDependents = await firstValueFrom(
+                this.employeesService.getDependents(employeeId).pipe(take(1))
+              );
+              
+              // 既存の扶養情報をすべて削除
+              for (const existing of existingDependents) {
+                if (existing.id) {
+                  await this.employeesService.deleteDependent(employeeId, existing.id);
+                }
+              }
+              
+              // 新しい扶養情報を保存
+              for (const depInfo of dependentInfosToSave) {
+                const hasDependentData = Object.values(depInfo).some(
+                  (value) => value !== '' && value !== null && value !== false && value !== undefined
+                );
+                
+                if (hasDependentData) {
+                  const dependentData: DependentData = {
+                    relationship: depInfo.relationship || undefined,
+                    nameKanji: depInfo.nameKanji || undefined,
+                    nameKana: depInfo.nameKana || undefined,
+                    birthDate: depInfo.birthDate || undefined,
+                    gender: depInfo.gender || undefined,
+                    personalNumber: depInfo.personalNumber || undefined,
+                    basicPensionNumber: depInfo.basicPensionNumber || undefined,
+                    cohabitationType: depInfo.cohabitationType || undefined,
+                    address: depInfo.address || undefined,
+                    occupation: depInfo.occupation || undefined,
+                    annualIncome: depInfo.annualIncome ?? undefined,
+                    dependentStartDate: depInfo.dependentStartDate || undefined,
+                    thirdCategoryFlag: depInfo.thirdCategoryFlag || false,
+                  };
+                  
+                  await this.employeesService.addOrUpdateDependent(employeeId, dependentData);
+                }
+              }
+            } else if (isEdit && employeeId && !basicInfo.hasDependent) {
+              // 編集モードで扶養の有無が「無」になった場合は既存の扶養情報を削除
+              const existingDependents = await firstValueFrom(
+                this.employeesService.getDependents(employeeId).pipe(take(1))
+              );
+              for (const existing of existingDependents) {
+                if (existing.id) {
+                  await this.employeesService.deleteDependent(employeeId, existing.id);
+                }
+              }
+            }
+          },
+          onFailed: () => {
+            this.approvalMessage = '承認が完了しませんでした。';
+          },
+          setMessage: (message) => (this.approvalMessage = message),
+          setLoading: (loading) => (this.sendingApproval = loading),
+        });
+
+        if (result) {
+          this.approvalMessage = '承認依頼を送信しました。承認完了後に自動で登録されます。';
         
         // 通知を送信
-        if (saved.id) {
-          this.pushApprovalNotifications({ ...saved, id: saved.id });
+          this.pushApprovalNotifications({ ...saved, id: result.requestId });
+        } else {
+          this.approvalMessage = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
         }
       } catch (error) {
         console.error(error);
@@ -466,6 +763,46 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     onFlowSelected(flow?: ApprovalFlow): void {
       this.selectedFlow = flow ?? undefined;
       this.selectedFlowId = flow?.id ?? null;
+    }
+
+    /**
+     * 新しい扶養情報を追加
+     */
+    addDependentInfo(): void {
+      this.dependentInfos.push({
+        relationship: '',
+        nameKanji: '',
+        nameKana: '',
+        birthDate: '',
+        gender: '',
+        personalNumber: '',
+        basicPensionNumber: '',
+        cohabitationType: '',
+        address: '',
+        occupation: '',
+        annualIncome: null,
+        dependentStartDate: '',
+        thirdCategoryFlag: false,
+      });
+    }
+
+    /**
+     * 扶養情報を削除
+     */
+    removeDependentInfo(index: number): void {
+      this.dependentInfos.splice(index, 1);
+    }
+
+    private removeUndefinedFields<T extends Record<string, unknown>>(obj: T): Partial<T> {
+      const cleaned: Partial<T> = {};
+      Object.keys(obj).forEach((key) => {
+        const value = obj[key];
+        // undefined と空文字列を除外
+        if (value !== undefined && value !== '') {
+          cleaned[key as keyof T] = value as T[keyof T];
+        }
+      });
+      return cleaned;
     }
 
     onFlowsUpdated(flows: ApprovalFlow[]): void {
@@ -558,51 +895,250 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       changes.push({ field: '保険料免除', oldValue: null, newValue: this.socialInsurance.exemption ? 'はい' : 'いいえ' });
     
       // 扶養情報
-      const hasDependentData =
-        this.basicInfo.hasDependent ||
-        Object.values(this.dependentInfo).some((value) => value !== '' && value !== null && value !== false);
-      if (hasDependentData) {
-        if (this.dependentInfo.relationship) {
-          changes.push({ field: '扶養 続柄', oldValue: null, newValue: this.dependentInfo.relationship });
+      if (this.basicInfo.hasDependent && this.dependentInfos.length > 0) {
+        this.dependentInfos.forEach((dependentInfo, index) => {
+          const prefix = this.dependentInfos.length > 1 ? `扶養${index + 1} ` : '扶養 ';
+          if (dependentInfo.relationship) {
+            changes.push({ field: `${prefix}続柄`, oldValue: null, newValue: dependentInfo.relationship });
         }
-        if (this.dependentInfo.nameKanji) {
-          changes.push({ field: '扶養 氏名(漢字)', oldValue: null, newValue: this.dependentInfo.nameKanji });
+          if (dependentInfo.nameKanji) {
+            changes.push({ field: `${prefix}氏名(漢字)`, oldValue: null, newValue: dependentInfo.nameKanji });
         }
-        if (this.dependentInfo.nameKana) {
-          changes.push({ field: '扶養 氏名(カナ)', oldValue: null, newValue: this.dependentInfo.nameKana });
+          if (dependentInfo.nameKana) {
+            changes.push({ field: `${prefix}氏名(カナ)`, oldValue: null, newValue: dependentInfo.nameKana });
         }
-        if (this.dependentInfo.birthDate) {
-          changes.push({ field: '扶養 生年月日', oldValue: null, newValue: this.dependentInfo.birthDate });
+          if (dependentInfo.birthDate) {
+            changes.push({ field: `${prefix}生年月日`, oldValue: null, newValue: dependentInfo.birthDate });
         }
-        if (this.dependentInfo.gender) {
-          changes.push({ field: '扶養 性別', oldValue: null, newValue: this.dependentInfo.gender });
+          if (dependentInfo.gender) {
+            changes.push({ field: `${prefix}性別`, oldValue: null, newValue: dependentInfo.gender });
         }
-        if (this.dependentInfo.personalNumber) {
-          changes.push({ field: '扶養 個人番号', oldValue: null, newValue: this.dependentInfo.personalNumber });
+          if (dependentInfo.personalNumber) {
+            changes.push({ field: `${prefix}個人番号`, oldValue: null, newValue: dependentInfo.personalNumber });
         }
-        if (this.dependentInfo.basicPensionNumber) {
-          changes.push({ field: '扶養 基礎年金番号', oldValue: null, newValue: this.dependentInfo.basicPensionNumber });
+          if (dependentInfo.basicPensionNumber) {
+            changes.push({ field: `${prefix}基礎年金番号`, oldValue: null, newValue: dependentInfo.basicPensionNumber });
         }
-        if (this.dependentInfo.cohabitationType) {
-          changes.push({ field: '扶養 同居区分', oldValue: null, newValue: this.dependentInfo.cohabitationType });
+          if (dependentInfo.cohabitationType) {
+            changes.push({ field: `${prefix}同居区分`, oldValue: null, newValue: dependentInfo.cohabitationType });
         }
-        if (this.dependentInfo.address) {
-          changes.push({ field: '扶養 住所', oldValue: null, newValue: this.dependentInfo.address });
+          if (dependentInfo.address) {
+            changes.push({ field: `${prefix}住所`, oldValue: null, newValue: dependentInfo.address });
         }
-        if (this.dependentInfo.occupation) {
-          changes.push({ field: '扶養 職業', oldValue: null, newValue: this.dependentInfo.occupation });
+          if (dependentInfo.occupation) {
+            changes.push({ field: `${prefix}職業`, oldValue: null, newValue: dependentInfo.occupation });
         }
-        if (this.dependentInfo.annualIncome !== null) {
-          changes.push({ field: '扶養 年収', oldValue: null, newValue: String(this.dependentInfo.annualIncome) });
+          if (dependentInfo.annualIncome !== null) {
+            changes.push({ field: `${prefix}年収`, oldValue: null, newValue: String(dependentInfo.annualIncome) });
         }
-        if (this.dependentInfo.dependentStartDate) {
-          changes.push({ field: '扶養 開始日', oldValue: null, newValue: this.dependentInfo.dependentStartDate });
+          if (dependentInfo.dependentStartDate) {
+            changes.push({ field: `${prefix}開始日`, oldValue: null, newValue: dependentInfo.dependentStartDate });
         }
         changes.push({
-          field: '扶養 第3号被保険者',
+            field: `${prefix}第3号被保険者`,
           oldValue: null,
-          newValue: this.dependentInfo.thirdCategoryFlag ? 'はい' : 'いいえ',
+            newValue: dependentInfo.thirdCategoryFlag ? 'はい' : 'いいえ',
+          });
         });
+      }
+
+      return changes;
+    }
+
+    /** 編集モード用：既存データとの差分を計算 */
+    private createEmployeeChangesFromDiff(): { field: string; oldValue: string | null; newValue: string | null }[] {
+      if (!this.originalEmployee) {
+        return this.createEmployeeChanges();
+      }
+
+      const changes: { field: string; oldValue: string | null; newValue: string | null }[] = [];
+      const original = this.originalEmployee;
+
+      // 性別の正規化関数
+      const normalizeGender = (gender?: string): string => {
+        if (!gender) return '';
+        const normalized = gender.trim();
+        if (normalized === '男' || normalized === '男性' || normalized.toLowerCase() === 'male') {
+          return '男性';
+        }
+        if (normalized === '女' || normalized === '女性' || normalized.toLowerCase() === 'female') {
+          return '女性';
+        }
+        return normalized;
+      };
+
+      // 基本情報の差分
+      if (original.employeeNo !== this.basicInfo.employeeNo) {
+        changes.push({ field: '社員番号', oldValue: original.employeeNo || null, newValue: this.basicInfo.employeeNo || null });
+      }
+      if (original.name !== this.basicInfo.name) {
+        changes.push({ field: '氏名(漢字)', oldValue: original.name || null, newValue: this.basicInfo.name || null });
+      }
+      if (original.kana !== this.basicInfo.kana) {
+        changes.push({ field: '氏名(カナ)', oldValue: original.kana || null, newValue: this.basicInfo.kana || null });
+      }
+      if (normalizeGender(original.gender) !== this.basicInfo.gender) {
+        changes.push({ field: '性別', oldValue: normalizeGender(original.gender) || null, newValue: this.basicInfo.gender || null });
+      }
+      const originalBirthDate = this.formatDateForInput(original.birthDate);
+      if (originalBirthDate !== this.basicInfo.birthDate) {
+        changes.push({ field: '生年月日', oldValue: originalBirthDate || null, newValue: this.basicInfo.birthDate || null });
+      }
+      if (original.department !== this.basicInfo.department) {
+        changes.push({ field: '部署', oldValue: original.department || null, newValue: this.basicInfo.department || null });
+      }
+      if (original.workPrefecture !== this.basicInfo.workPrefecture) {
+        changes.push({ field: '勤務都道府県', oldValue: original.workPrefecture || null, newValue: this.basicInfo.workPrefecture || null });
+      }
+      if (original.personalNumber !== this.basicInfo.myNumber) {
+        changes.push({ field: 'マイナンバー', oldValue: original.personalNumber || null, newValue: this.basicInfo.myNumber || null });
+      }
+      if (original.basicPensionNumber !== this.basicInfo.basicPensionNumber) {
+        changes.push({ field: '基礎年金番号', oldValue: original.basicPensionNumber || null, newValue: this.basicInfo.basicPensionNumber || null });
+      }
+      if ((original.hasDependent ?? false) !== this.basicInfo.hasDependent) {
+        changes.push({ field: '扶養の有無', oldValue: (original.hasDependent ?? false) ? '有' : '無', newValue: this.basicInfo.hasDependent ? '有' : '無' });
+      }
+      if (original.postalCode !== this.basicInfo.postalCode) {
+        changes.push({ field: '郵便番号', oldValue: original.postalCode || null, newValue: this.basicInfo.postalCode || null });
+      }
+      if (original.address !== this.basicInfo.address) {
+        changes.push({ field: '住所', oldValue: original.address || null, newValue: this.basicInfo.address || null });
+      }
+
+      // 社会保険情報の差分
+      if ((original.standardMonthly ?? 0) !== this.socialInsurance.standardMonthly) {
+        changes.push({ field: '標準報酬月額', oldValue: original.standardMonthly ? String(original.standardMonthly) : null, newValue: this.socialInsurance.standardMonthly ? String(this.socialInsurance.standardMonthly) : null });
+      }
+      if ((original.standardBonusAnnualTotal ?? 0) !== this.socialInsurance.healthCumulative) {
+        changes.push({ field: '標準賞与額累計', oldValue: original.standardBonusAnnualTotal ? String(original.standardBonusAnnualTotal) : null, newValue: this.socialInsurance.healthCumulative ? String(this.socialInsurance.healthCumulative) : null });
+      }
+      const originalHealthInsuredNumber = original.healthInsuredNumber || original.insuredNumber || '';
+      if (originalHealthInsuredNumber !== this.socialInsurance.healthInsuredNumber) {
+        changes.push({ field: '健康保険被保険者番号', oldValue: originalHealthInsuredNumber || null, newValue: this.socialInsurance.healthInsuredNumber || null });
+      }
+      if (original.pensionInsuredNumber !== this.socialInsurance.pensionInsuredNumber) {
+        changes.push({ field: '厚生年金被保険者番号', oldValue: original.pensionInsuredNumber || null, newValue: this.socialInsurance.pensionInsuredNumber || null });
+      }
+      if ((original.careSecondInsured ?? false) !== this.socialInsurance.careSecondInsured) {
+        changes.push({ field: '介護保険第2号被保険者', oldValue: (original.careSecondInsured ?? false) ? 'はい' : 'いいえ', newValue: this.socialInsurance.careSecondInsured ? 'はい' : 'いいえ' });
+      }
+      const originalHealthAcquisition = this.formatDateForInput(original.healthAcquisition);
+      if (originalHealthAcquisition !== this.socialInsurance.healthAcquisition) {
+        changes.push({ field: '健康保険取得年月日', oldValue: originalHealthAcquisition || null, newValue: this.socialInsurance.healthAcquisition || null });
+      }
+      const originalPensionAcquisition = this.formatDateForInput(original.pensionAcquisition);
+      if (originalPensionAcquisition !== this.socialInsurance.pensionAcquisition) {
+        changes.push({ field: '厚生年金取得年月日', oldValue: originalPensionAcquisition || null, newValue: this.socialInsurance.pensionAcquisition || null });
+      }
+      const originalChildcareLeaveStart = this.formatDateForInput(original.childcareLeaveStart);
+      if (originalChildcareLeaveStart !== this.socialInsurance.childcareLeaveStart) {
+        changes.push({ field: '育児休業開始日', oldValue: originalChildcareLeaveStart || null, newValue: this.socialInsurance.childcareLeaveStart || null });
+      }
+      const originalChildcareLeaveEnd = this.formatDateForInput(original.childcareLeaveEnd);
+      if (originalChildcareLeaveEnd !== this.socialInsurance.childcareLeaveEnd) {
+        changes.push({ field: '育児休業終了日', oldValue: originalChildcareLeaveEnd || null, newValue: this.socialInsurance.childcareLeaveEnd || null });
+      }
+      const originalMaternityLeaveStart = this.formatDateForInput(original.maternityLeaveStart);
+      if (originalMaternityLeaveStart !== this.socialInsurance.maternityLeaveStart) {
+        changes.push({ field: '産前産後休業開始日', oldValue: originalMaternityLeaveStart || null, newValue: this.socialInsurance.maternityLeaveStart || null });
+      }
+      const originalMaternityLeaveEnd = this.formatDateForInput(original.maternityLeaveEnd);
+      if (originalMaternityLeaveEnd !== this.socialInsurance.maternityLeaveEnd) {
+        changes.push({ field: '産前産後休業終了日', oldValue: originalMaternityLeaveEnd || null, newValue: this.socialInsurance.maternityLeaveEnd || null });
+      }
+      if ((original.exemption ?? false) !== this.socialInsurance.exemption) {
+        changes.push({ field: '保険料免除', oldValue: (original.exemption ?? false) ? 'はい' : 'いいえ', newValue: this.socialInsurance.exemption ? 'はい' : 'いいえ' });
+      }
+
+      // 扶養情報の差分（複数件対応）
+      const originalHasDependent = original.hasDependent ?? false;
+      const newHasDependent = this.basicInfo.hasDependent;
+      const hasDependentChanged = originalHasDependent !== newHasDependent;
+
+      if (hasDependentChanged || newHasDependent) {
+        // 既存の扶養情報を取得（編集モードの場合）
+        let originalDependents: Array<{
+          relationship: string;
+          nameKanji: string;
+          nameKana: string;
+          birthDate: string;
+          gender: string;
+          personalNumber: string;
+          basicPensionNumber: string;
+          cohabitationType: string;
+          address: string;
+          occupation: string;
+          annualIncome: number | null;
+          dependentStartDate: string;
+          thirdCategoryFlag: boolean;
+        }> = [];
+        
+        if (this.originalDependentInfo) {
+          originalDependents = [this.originalDependentInfo];
+        }
+
+        // 新しい扶養情報と既存の扶養情報を比較
+        const maxLength = Math.max(this.dependentInfos.length, originalDependents.length);
+        for (let i = 0; i < maxLength; i++) {
+          const prefix = maxLength > 1 ? `扶養${i + 1} ` : '扶養 ';
+          const newDep = this.dependentInfos[i];
+          const oldDep = originalDependents[i];
+
+          if (!oldDep && newDep) {
+            // 新規追加
+            if (newDep.relationship) changes.push({ field: `${prefix}続柄`, oldValue: null, newValue: newDep.relationship });
+            if (newDep.nameKanji) changes.push({ field: `${prefix}氏名(漢字)`, oldValue: null, newValue: newDep.nameKanji });
+            if (newDep.nameKana) changes.push({ field: `${prefix}氏名(カナ)`, oldValue: null, newValue: newDep.nameKana });
+            // ... 他のフィールドも同様に追加
+          } else if (oldDep && !newDep) {
+            // 削除
+            changes.push({ field: `${prefix}削除`, oldValue: oldDep.nameKanji || 'あり', newValue: null });
+          } else if (oldDep && newDep) {
+            // 変更
+            if (oldDep.relationship !== newDep.relationship) {
+              changes.push({ field: `${prefix}続柄`, oldValue: oldDep.relationship || null, newValue: newDep.relationship || null });
+        }
+            if (oldDep.nameKanji !== newDep.nameKanji) {
+              changes.push({ field: `${prefix}氏名(漢字)`, oldValue: oldDep.nameKanji || null, newValue: newDep.nameKanji || null });
+        }
+            if (oldDep.nameKana !== newDep.nameKana) {
+              changes.push({ field: `${prefix}氏名(カナ)`, oldValue: oldDep.nameKana || null, newValue: newDep.nameKana || null });
+        }
+            const oldBirthDate = this.formatDateForInput(oldDep.birthDate);
+            if (oldBirthDate !== newDep.birthDate) {
+              changes.push({ field: `${prefix}生年月日`, oldValue: oldBirthDate || null, newValue: newDep.birthDate || null });
+        }
+            if (oldDep.gender !== newDep.gender) {
+              changes.push({ field: `${prefix}性別`, oldValue: oldDep.gender || null, newValue: newDep.gender || null });
+        }
+            if (oldDep.personalNumber !== newDep.personalNumber) {
+              changes.push({ field: `${prefix}個人番号`, oldValue: oldDep.personalNumber || null, newValue: newDep.personalNumber || null });
+        }
+            if (oldDep.basicPensionNumber !== newDep.basicPensionNumber) {
+              changes.push({ field: `${prefix}基礎年金番号`, oldValue: oldDep.basicPensionNumber || null, newValue: newDep.basicPensionNumber || null });
+        }
+            if (oldDep.cohabitationType !== newDep.cohabitationType) {
+              changes.push({ field: `${prefix}同居区分`, oldValue: oldDep.cohabitationType || null, newValue: newDep.cohabitationType || null });
+        }
+            if (oldDep.address !== newDep.address) {
+              changes.push({ field: `${prefix}住所`, oldValue: oldDep.address || null, newValue: newDep.address || null });
+        }
+            if (oldDep.occupation !== newDep.occupation) {
+              changes.push({ field: `${prefix}職業`, oldValue: oldDep.occupation || null, newValue: newDep.occupation || null });
+        }
+            if ((oldDep.annualIncome ?? null) !== newDep.annualIncome) {
+              changes.push({ field: `${prefix}年収`, oldValue: oldDep.annualIncome !== null ? String(oldDep.annualIncome) : null, newValue: newDep.annualIncome !== null ? String(newDep.annualIncome) : null });
+        }
+            const oldStartDate = this.formatDateForInput(oldDep.dependentStartDate);
+            if (oldStartDate !== newDep.dependentStartDate) {
+              changes.push({ field: `${prefix}開始日`, oldValue: oldStartDate || null, newValue: newDep.dependentStartDate || null });
+        }
+            if ((oldDep.thirdCategoryFlag ?? false) !== newDep.thirdCategoryFlag) {
+              changes.push({ field: `${prefix}第3号被保険者`, oldValue: (oldDep.thirdCategoryFlag ?? false) ? 'はい' : 'いいえ', newValue: newDep.thirdCategoryFlag ? 'はい' : 'いいえ' });
+            }
+          }
+        }
       }
 
       return changes;

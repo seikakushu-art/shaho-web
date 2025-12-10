@@ -96,6 +96,39 @@
     box-sizing: border-box;
   }
 
+  // バリデーション状態の背景色を白のままにする
+  input:valid,
+  input:invalid,
+  input:valid:focus,
+  input:invalid:focus,
+  input:valid:not(:focus),
+  input:invalid:not(:focus) {
+    background: #fff !important;
+  }
+
+  // ブラウザのautofill機能による背景色の変更を防ぐ
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-box-shadow: 0 0 0 30px #fff inset !important;
+    box-shadow: 0 0 0 30px #fff inset !important;
+    -webkit-text-fill-color: #0f172a !important;
+  }
+
+  // 数値入力のスピナー（上下矢印）を非表示
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
   input.readonly,
   select:disabled {
     background: #f8fafc;

@@ -27,10 +27,17 @@
               [(ngModel)]="basicInfo.employeeNo"
               required
               [readonly]="!editMode"
+              (blur)="checkEmployeeNoDuplicate()"
               #employeeNoModel="ngModel"
             />
             <p class="error" *ngIf="employeeNoModel.invalid && (submitAttempted || employeeNoModel.touched)">
               社員番号は必須です。
+            </p>
+            <p class="error" *ngIf="employeeNoDuplicateError">
+              {{ employeeNoDuplicateError }}
+            </p>
+            <p class="hint" *ngIf="checkingDuplicate">
+              重複チェック中...
             </p>
           </div>
           <div>
@@ -151,12 +158,15 @@
             />
           </div>
           <div>
-            <label>標準賞与額年度累計</label>
+            <label style="display: flex; align-items: center; gap: 0.5rem;">
+              <span>標準賞与額年度累計</span>
+              <span class="hint" style="color: #94a3b8; font-size: 0.85rem; font-weight: normal;">自動集計になります。</span>
+            </label>
             <input
               type="number"
               name="healthCumulative"
               [(ngModel)]="socialInsurance.healthCumulative"
-              [readonly]="!editMode"
+              readonly
             />
           </div>
           <div>
@@ -271,13 +281,39 @@
           <div>
             <h2>扶養情報</h2>
           </div>
+          <button
+            *ngIf="basicInfo.hasDependent && editMode"
+            type="button"
+            class="ghost"
+            (click)="addDependentInfo()"
+          >
+            ＋扶養情報追加
+          </button>
         </div>
 
-        <div *ngIf="basicInfo.hasDependent; else noDependentNotice" class="grid three-col">
+        <div *ngIf="basicInfo.hasDependent; else noDependentNotice">
+          <div
+            *ngFor="let dependentInfo of dependentInfos; let i = index"
+            class="dependent-card"
+            style="margin-bottom: 1.5rem; padding: 1.5rem; border: 1px solid #e0e0e0; border-radius: 8px;"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+              <h3 style="margin: 0; font-size: 1.1rem;">扶養情報 {{ i + 1 }}</h3>
+              <button
+                *ngIf="editMode && dependentInfos.length > 1"
+                type="button"
+                class="ghost"
+                (click)="removeDependentInfo(i)"
+                style="color: #d32f2f;"
+              >
+                削除
+              </button>
+            </div>
+            <div class="grid three-col">
           <div>
             <label>続柄</label>
             <input
-              name="dependentRelationship"
+                  [name]="'dependentRelationship' + i"
               [(ngModel)]="dependentInfo.relationship"
               [readonly]="!editMode"
             />
@@ -285,7 +321,7 @@
           <div>
             <label>氏名（漢字）</label>
             <input
-              name="dependentNameKanji"
+                  [name]="'dependentNameKanji' + i"
               [(ngModel)]="dependentInfo.nameKanji"
               [readonly]="!editMode"
             />
@@ -293,7 +329,7 @@
           <div>
             <label>氏名（カナ）</label>
             <input
-              name="dependentNameKana"
+                  [name]="'dependentNameKana' + i"
               [(ngModel)]="dependentInfo.nameKana"
               [readonly]="!editMode"
             />
@@ -302,7 +338,7 @@
             <label>生年月日</label>
             <input
               type="date"
-              name="dependentBirthDate"
+                  [name]="'dependentBirthDate' + i"
               [(ngModel)]="dependentInfo.birthDate"
               [readonly]="!editMode"
             />
@@ -310,7 +346,7 @@
           <div>
             <label>性別</label>
             <select
-              name="dependentGender"
+                  [name]="'dependentGender' + i"
               [(ngModel)]="dependentInfo.gender"
               [disabled]="!editMode"
             >
@@ -322,7 +358,7 @@
           <div>
             <label>個人番号</label>
             <input
-              name="dependentPersonalNumber"
+                  [name]="'dependentPersonalNumber' + i"
               [(ngModel)]="dependentInfo.personalNumber"
               [readonly]="!editMode"
             />
@@ -330,7 +366,7 @@
           <div>
             <label>基礎年金番号</label>
             <input
-              name="dependentBasicPensionNumber"
+                  [name]="'dependentBasicPensionNumber' + i"
               [(ngModel)]="dependentInfo.basicPensionNumber"
               [readonly]="!editMode"
             />
@@ -338,7 +374,7 @@
           <div>
             <label>同居区分</label>
             <input
-              name="dependentCohabitationType"
+                  [name]="'dependentCohabitationType' + i"
               [(ngModel)]="dependentInfo.cohabitationType"
               [readonly]="!editMode"
             />
@@ -346,7 +382,7 @@
           <div>
             <label>住所（別居の場合のみ）</label>
             <input
-              name="dependentAddress"
+                  [name]="'dependentAddress' + i"
               [(ngModel)]="dependentInfo.address"
               [readonly]="!editMode"
             />
@@ -354,7 +390,7 @@
           <div>
             <label>職業</label>
             <input
-              name="dependentOccupation"
+                  [name]="'dependentOccupation' + i"
               [(ngModel)]="dependentInfo.occupation"
               [readonly]="!editMode"
             />
@@ -363,7 +399,7 @@
             <label>年収（見込み）</label>
             <input
               type="number"
-              name="dependentAnnualIncome"
+                  [name]="'dependentAnnualIncome' + i"
               [(ngModel)]="dependentInfo.annualIncome"
               [readonly]="!editMode"
             />
@@ -372,7 +408,7 @@
             <label>被扶養者になった日</label>
             <input
               type="date"
-              name="dependentStartDate"
+                  [name]="'dependentStartDate' + i"
               [(ngModel)]="dependentInfo.dependentStartDate"
               [readonly]="!editMode"
             />
@@ -382,12 +418,17 @@
             <label class="switch">
               <input
                 type="checkbox"
-                name="dependentThirdCategoryFlag"
+                    [name]="'dependentThirdCategoryFlag' + i"
                 [(ngModel)]="dependentInfo.thirdCategoryFlag"
                 [disabled]="!editMode"
               />
               <span></span>
             </label>
+              </div>
+            </div>
+          </div>
+          <div *ngIf="dependentInfos.length === 0 && editMode" style="text-align: center; padding: 2rem;">
+            <p class="hint">「＋扶養情報追加」ボタンから扶養情報を追加してください。</p>
           </div>
         </div>
         <ng-template #noDependentNotice>

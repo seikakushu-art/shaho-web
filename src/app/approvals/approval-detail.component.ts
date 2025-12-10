@@ -18,6 +18,7 @@ import { ApprovalWorkflowService } from './approval-workflow.service';
 import { RoleKey } from '../models/roles';
 import { UserDirectoryService } from '../auth/user-directory.service';
 import { InsuranceRatesService } from '../app/services/insurance-rates.service';
+import { DependentData, ShahoEmployee, ShahoEmployeesService } from '../app/services/shaho-employees.service';
 
 type EmployeeStatus = 'OK' | '警告' | 'エラー';
 
@@ -50,6 +51,7 @@ export class ApprovalDetailComponent implements OnDestroy {
   private authService = inject(AuthService);
   private userDirectory = inject(UserDirectoryService);
   private insuranceRatesService = inject(InsuranceRatesService);
+  private employeesService = inject(ShahoEmployeesService);
 
   approval?: ApprovalRequest;
   private subscription: Subscription;
@@ -106,11 +108,23 @@ export class ApprovalDetailComponent implements OnDestroy {
         this.employees = approval.employeeDiffs.map((diff) => {
           console.log('差分処理 - diff:', diff);
           console.log('差分処理 - diff.changes:', diff.changes);
+          
+          // 区分が「社員情報更新」の場合は、変更がある項目だけをフィルタリング
+          let filteredChanges = diff.changes;
+          if (approval.category === '社員情報更新') {
+            filteredChanges = diff.changes.filter((change) => {
+              // oldValueとnewValueが異なる場合のみ含める
+              const oldVal = change.oldValue ?? '';
+              const newVal = change.newValue ?? '';
+              return oldVal !== newVal;
+            });
+          }
+          
           return {
             employeeNo: diff.employeeNo,
             name: diff.name,
             status: diff.status === 'warning' ? '警告' : diff.status === 'error' ? 'エラー' : 'OK',
-            diffs: diff.changes.map((change) => ({
+            diffs: filteredChanges.map((change) => ({
               field: change.field,
               oldValue: change.oldValue ?? '',
               newValue: change.newValue ?? '',
@@ -251,6 +265,114 @@ export class ApprovalDetailComponent implements OnDestroy {
     });
   }
 
+  /**
+   * 承認済みの新規社員登録申請を社員コレクションへ反映
+   */
+  private async persistNewEmployee(request: ApprovalRequest): Promise<void> {
+    if (!request.employeeData) {
+      throw new Error('employeeData が見つかりません');
+    }
+
+    const { basicInfo, socialInsurance, dependentInfo, dependentInfos } = request.employeeData;
+    if (!basicInfo?.employeeNo || !basicInfo?.name) {
+      throw new Error('社員番号または氏名が不足しています');
+    }
+
+    const employeePayload: ShahoEmployee = {
+      employeeNo: basicInfo.employeeNo,
+      name: basicInfo.name,
+      kana: basicInfo.kana || undefined,
+      gender: basicInfo.gender || undefined,
+      birthDate: basicInfo.birthDate || undefined,
+      postalCode: basicInfo.postalCode || undefined,
+      address: basicInfo.address || undefined,
+      department: basicInfo.department || undefined,
+      workPrefecture: basicInfo.workPrefecture || undefined,
+      personalNumber: basicInfo.myNumber || undefined,
+      basicPensionNumber: basicInfo.basicPensionNumber || undefined,
+      hasDependent: basicInfo.hasDependent ?? false,
+      standardMonthly: socialInsurance?.standardMonthly || undefined,
+      standardBonusAnnualTotal: socialInsurance?.healthCumulative || undefined,
+      healthInsuredNumber: socialInsurance?.healthInsuredNumber || undefined,
+      pensionInsuredNumber: socialInsurance?.pensionInsuredNumber || undefined,
+      careSecondInsured: socialInsurance?.careSecondInsured || false,
+      healthAcquisition: socialInsurance?.healthAcquisition || undefined,
+      pensionAcquisition: socialInsurance?.pensionAcquisition || undefined,
+      childcareLeaveStart: socialInsurance?.childcareLeaveStart || undefined,
+      childcareLeaveEnd: socialInsurance?.childcareLeaveEnd || undefined,
+      maternityLeaveStart: socialInsurance?.maternityLeaveStart || undefined,
+      maternityLeaveEnd: socialInsurance?.maternityLeaveEnd || undefined,
+      exemption: socialInsurance?.exemption || false,
+    };
+
+    const cleanedEmployee = this.removeUndefinedFields(employeePayload) as ShahoEmployee;
+    const employeeRef = await this.employeesService.addEmployee(cleanedEmployee);
+    const employeeId = employeeRef.id;
+
+    // 扶養情報（複数件対応。従来の単一形式もフォールバック）
+    const dependentsSource =
+      dependentInfos && dependentInfos.length > 0
+        ? dependentInfos
+        : dependentInfo
+          ? [dependentInfo]
+          : [];
+
+    if (dependentsSource.length > 0) {
+      for (const dep of dependentsSource) {
+        const hasData = Object.values(dep).some(
+          (value) => value !== '' && value !== null && value !== false && value !== undefined,
+        );
+        if (!hasData) continue;
+
+        const dependentData: DependentData = {
+          relationship: dep.relationship || undefined,
+          nameKanji: dep.nameKanji || undefined,
+          nameKana: dep.nameKana || undefined,
+          birthDate: dep.birthDate || undefined,
+          gender: dep.gender || undefined,
+          personalNumber: dep.personalNumber || undefined,
+          basicPensionNumber: dep.basicPensionNumber || undefined,
+          cohabitationType: dep.cohabitationType || undefined,
+          address: dep.address || undefined,
+          occupation: dep.occupation || undefined,
+          annualIncome: dep.annualIncome ?? undefined,
+          dependentStartDate: dep.dependentStartDate || undefined,
+          thirdCategoryFlag: dep.thirdCategoryFlag || false,
+        };
+
+        const cleanedDependent = this.removeUndefinedFields(dependentData) as DependentData;
+        await this.employeesService.addOrUpdateDependent(employeeId, cleanedDependent);
+      }
+    }
+  }
+
+  private removeUndefinedFields<T extends object>(obj: T): T {
+    const cleaned: Partial<T> = {};
+    for (const key in obj) {
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+      const value = (obj as Record<string, unknown>)[key];
+      if (value === undefined) continue;
+
+      if (Array.isArray(value)) {
+        const normalized = value
+          .map((item) =>
+            item && typeof item === 'object' ? this.removeUndefinedFields(item as object) : item,
+          )
+          .filter((item) => item !== undefined);
+        if (normalized.length) {
+          (cleaned as Record<string, unknown>)[key] = normalized;
+        }
+      } else if (value && typeof value === 'object') {
+        const nested = this.removeUndefinedFields(value as object);
+        if (Object.keys(nested as object).length > 0) {
+          (cleaned as Record<string, unknown>)[key] = nested;
+        }
+      } else {
+        (cleaned as Record<string, unknown>)[key] = value;
+      }
+    }
+    return cleaned as T;
+  }
 
   addToast(message: string, type: 'info' | 'success' | 'warning' = 'info') {
     const toast = { message, type };
@@ -336,6 +458,17 @@ export class ApprovalDetailComponent implements OnDestroy {
       const actionText = action === 'approve' ? '承認しました' : '差戻しました';
       this.addToast(`申請を${actionText}（コメント: ${this.approvalComment || 'なし'}）`, 'success');
       this.approvalComment = '';
+
+      // 新規社員登録の最終承認時に社員データを保存
+      if (action === 'approve' && result.request.status === 'approved' && result.request.category === '新規社員登録') {
+        try {
+          await this.persistNewEmployee(result.request);
+          this.addToast('承認済みの社員データを登録しました。', 'success');
+        } catch (error) {
+          console.error('社員データの保存に失敗しました', error);
+          this.addToast('社員データの保存に失敗しました。', 'warning');
+        }
+      }
 
       // 保険料率更新の承認が完了した場合、データを保存
       if (action === 'approve' && result.request.status === 'approved' && result.request.category === '保険料率更新' && result.request.insuranceRateData) {

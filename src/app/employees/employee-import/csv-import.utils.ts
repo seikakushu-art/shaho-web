@@ -8,7 +8,7 @@ import {
     ValidatedRow,
   } from './csv-import.types';
   
-  const DATE_FIELDS = ['入社日', '生年月日', '賞与支給日', '扶養 生年月日', '扶養 被扶養者になった日'];
+const DATE_FIELDS = ['入社日', '生年月日', '賞与支給日', '扶養 生年月日', '扶養 被扶養者になった日'];
   const YEAR_MONTH_FIELDS = ['算定対象期間開始年月', '算定対象期間終了年月', '算定年度', '賞与支給年度', '月給支払月'];
   const NUMBER_FIELDS = [
     '標準報酬月額',
@@ -25,7 +25,24 @@ import {
   ];
   const POSTAL_CODE_FIELDS = ['郵便番号'];
   const ADDRESS_FIELDS = ['住所', '扶養 住所（別居の場合のみ入力）'];
-  const FLAG_FIELDS = ['介護保険第2号フラグ', '一時免除フラグ（健康保険料・厚生年金一時免除）', '扶養の有無', '扶養 国民年金第3号被保険者該当フラグ'];
+const FLAG_FIELDS = ['介護保険第2号フラグ', '一時免除フラグ（健康保険料・厚生年金一時免除）', '扶養の有無', '扶養 国民年金第3号被保険者該当フラグ'];
+
+// 扶養家族関連の基本フィールド（番号なしの形）
+const DEPENDENT_BASE_FIELDS = [
+  '扶養 続柄',
+  '扶養 氏名(漢字)',
+  '扶養 氏名(カナ)',
+  '扶養 生年月日',
+  '扶養 性別',
+  '扶養 個人番号',
+  '扶養 基礎年金番号',
+  '扶養 同居区分',
+  '扶養 住所（別居の場合のみ入力）',
+  '扶養 職業',
+  '扶養 年収（見込みでも可）',
+  '扶養 被扶養者になった日',
+  '扶養 国民年金第3号被保険者該当フラグ',
+];
   
   const REQUIRED_FIELDS: Record<TemplateType, string[]> = {
     new: [
@@ -172,14 +189,115 @@ import {
       return { data: record, rowIndex: index + rowOffset };
     });
   }
+
+// 扶養家族フィールドが「扶養 続柄1」のように番号付きで並んでいる場合、
+// 1行目に従業員情報＋最初の扶養家族、2行目以降に扶養家族のみの行を生成する
+export function expandDependentRows(parsedRows: ParsedRow[], headers: string[]): ParsedRow[] {
+  // ヘッダーに番号付きの扶養フィールドがあるかどうかを判定
+  const dependentIndexSet = new Set<number>();
+  const isNumberedDependentField = (field: string): { base: string; index: number } | null => {
+    const match = field.match(/^(扶養 .+?)(\d+)$/);
+    if (!match) return null;
+    const base = match[1];
+    const index = Number(match[2]);
+    if (!DEPENDENT_BASE_FIELDS.includes(base)) return null;
+    return { base, index };
+  };
+
+  headers.forEach((header) => {
+    const info = isNumberedDependentField(header);
+    if (info) {
+      dependentIndexSet.add(info.index);
+    }
+  });
+
+  const dependentIndexes = Array.from(dependentIndexSet).sort((a, b) => a - b);
+  if (dependentIndexes.length === 0) {
+    return parsedRows;
+  }
+
+  // 番号の付いていないフィールドを抽出（従業員基本情報など）
+  const baseHeaders = headers.filter((header) => !isNumberedDependentField(header));
+
+  const expanded: ParsedRow[] = [];
+
+  parsedRows.forEach((row) => {
+    const baseData: Record<string, string> = {};
+    baseHeaders.forEach((header) => {
+      baseData[header] = row.data[header] ?? '';
+    });
+
+    let hasMainRow = false;
+    let dependentCount = 0;
+
+    dependentIndexes.forEach((idx) => {
+      const dependentData: Record<string, string> = { ...baseData };
+      DEPENDENT_BASE_FIELDS.forEach((baseField) => {
+        const value = row.data[`${baseField}${idx}`];
+        if (value !== undefined) {
+          dependentData[baseField] = value;
+        }
+      });
+
+      // 扶養家族情報が1つも入っていなければスキップ
+      const hasDependentInfo = DEPENDENT_BASE_FIELDS.some((baseField) => {
+        return (dependentData[baseField] ?? '').trim().length > 0;
+      });
+      if (!hasDependentInfo) {
+        return;
+      }
+
+      if (!hasMainRow) {
+        // 1件目は従業員情報を残したまま
+        expanded.push({ data: dependentData, rowIndex: row.rowIndex });
+        hasMainRow = true;
+        dependentCount += 1;
+      } else {
+        // 2件目以降は扶養家族追加行として従業員情報を空にする（社員番号のみ残す）
+        const dependentOnlyData: Record<string, string> = { ...dependentData };
+        Object.keys(dependentOnlyData).forEach((key) => {
+          if (key === '社員番号') return;
+          if (DEPENDENT_BASE_FIELDS.includes(key) || key.startsWith('扶養 ')) return;
+          dependentOnlyData[key] = '';
+        });
+        const offset = dependentCount / 1000; // 行番号の衝突を避けるための微小な加算
+        const uniqueRowIndex = Number((row.rowIndex + offset).toFixed(3));
+        expanded.push({ data: dependentOnlyData, rowIndex: uniqueRowIndex });
+        dependentCount += 1;
+      }
+    });
+
+    // 番号付きの扶養データが1件もなかった場合は元の行をそのまま使う
+    if (!hasMainRow) {
+      expanded.push({ data: { ...row.data }, rowIndex: row.rowIndex });
+    }
+  });
+
+  return expanded;
+}
   
   export function validateRequiredFields(
     row: ParsedRow,
     templateType: TemplateType,
     existingEmployees?: ExistingEmployee[],
   ): ValidationError[] {
+    // 2行目以降（扶養家族追加行）かどうかを判定
+    // 従業員情報（氏名）が空で、扶養家族情報がある場合は扶養家族追加行とみなす
+    const hasEmployeeInfo = !!(row.data['氏名(漢字)'] || row.data['氏名漢字']);
+    const hasDependentInfo = !!(
+      row.data['扶養 続柄'] ||
+      row.data['扶養 氏名(漢字)'] ||
+      row.data['扶養 氏名(カナ)']
+    );
+    const isDependentOnlyRow = !hasEmployeeInfo && hasDependentInfo && !!(row.data['社員番号']);
+    
     let requiredFields = REQUIRED_FIELDS[templateType];
     
+    // 2行目以降（扶養家族追加行）の場合は、従業員情報の必須フィールドチェックをスキップ
+    if (isDependentOnlyRow) {
+      // 社員番号のみ必須
+      requiredFields = ['社員番号'];
+    } else {
     // 新規登録/一括更新用テンプレートの場合、既存社員の有無で必須項目を変更
     if (templateType === 'new' && existingEmployees) {
       const employeeNo = row.data['社員番号'] || '';
@@ -191,6 +309,7 @@ import {
         requiredFields = ['社員番号', '氏名(漢字)'];
       }
       // 既存社員が見つからない場合 → 新規登録モード（現在の必須項目のまま）
+      }
     }
     
     const errors: ValidationError[] = [];
@@ -449,17 +568,55 @@ import {
       return errors;
     }
 
-    // 社員番号の重複チェック
-    const employeeNos = new Map<string, number>();
+    // 社員番号の重複チェック（複数の扶養家族を追加する場合は同じ社員番号で複数行が許可される）
+    const employeeNos = new Map<string, number[]>();
     rows.forEach((row) => {
       const employeeNo = row.data['社員番号'];
       if (!employeeNo) return;
-      if (employeeNos.has(employeeNo)) {
+      
+      if (!employeeNos.has(employeeNo)) {
+        employeeNos.set(employeeNo, []);
+      }
+      employeeNos.get(employeeNo)!.push(row.rowIndex);
+    });
+
+    // 同じ社員番号の行がある場合、最初の行に従業員情報（氏名など）が必要かチェック
+    employeeNos.forEach((rowIndices, employeeNo) => {
+      if (rowIndices.length > 1) {
+        // 複数行ある場合、最初の行に従業員情報が必要
+        const firstRow = rows.find((r) => r.rowIndex === rowIndices[0]);
+        if (firstRow) {
+          const hasEmployeeInfo = firstRow.data['氏名(漢字)'] || firstRow.data['氏名漢字'];
+          if (!hasEmployeeInfo) {
         errors.push(
-          buildError(row.rowIndex, '社員番号', `社員番号 ${employeeNo} が重複しています`, templateType),
+              buildError(
+                rowIndices[0],
+                '氏名(漢字)',
+                `社員番号 ${employeeNo} の最初の行には従業員情報（氏名など）が必要です`,
+                templateType,
+              ),
         );
-      } else {
-        employeeNos.set(employeeNo, row.rowIndex);
+          }
+        }
+        
+        // 2行目以降は扶養家族情報のみでOK（従業員情報の列は空でも可）
+        // ただし、扶養情報が入力されていることを確認
+        for (let i = 1; i < rowIndices.length; i++) {
+          const row = rows.find((r) => r.rowIndex === rowIndices[i]);
+          if (row) {
+            const hasDependentInfo = row.data['扶養 続柄'] || row.data['扶養 氏名(漢字)'];
+            if (!hasDependentInfo) {
+              errors.push(
+                buildError(
+                  rowIndices[i],
+                  '扶養情報',
+                  `社員番号 ${employeeNo} の${i + 1}行目には扶養家族情報が必要です`,
+                  templateType,
+                ),
+              );
+            }
+          }
+        }
       }
     });
 
@@ -492,18 +649,15 @@ import {
   
     const fileLevelErrors = validateFileLevelRules(rows, templateType);
     if (fileLevelErrors.length > 0) {
-      const errorMap = new Map<number, ValidationError[]>();
-      validatedRows.forEach((validated) => {
-        errorMap.set(validated.parsedRow.rowIndex, validated.errors);
-      });
-      fileLevelErrors.forEach((error) => {
-        const existing = errorMap.get(error.rowIndex) ?? [];
-        existing.push(error);
-        errorMap.set(error.rowIndex, existing);
-      });
-      validatedRows.forEach((validated) => {
-        validated.errors = errorMap.get(validated.parsedRow.rowIndex) ?? validated.errors;
-      });
+    // 同じ行番号が複数存在するケース（同一行に複数扶養家族を持つ形式）にも対応できるよう、
+    // Map ではなく単純なループで付与する
+    fileLevelErrors.forEach((error) => {
+      validatedRows
+        .filter((validated) => validated.parsedRow.rowIndex === error.rowIndex)
+        .forEach((validated) => {
+          validated.errors = [...validated.errors, error];
+        });
+    });
     }
   
     return validatedRows;
@@ -552,8 +706,9 @@ import {
     const headers = normalizeHeaders(rawHeaders);
     const templateType = detectTemplateType(headers);
     const dataRows = matrix.slice(1);
-    const parsedRows = convertToRecordArray(dataRows, headers);
-    const validatedRows = validateAllRows(parsedRows, templateType);
+  const parsedRows = convertToRecordArray(dataRows, headers);
+  const expandedRows = expandDependentRows(parsedRows, headers);
+  const validatedRows = validateAllRows(expandedRows, templateType);
     const errors = organizeErrors(validatedRows.flatMap((row) => row.errors));
   
     return {
@@ -641,6 +796,16 @@ import {
     templateType: TemplateType,
   ): DifferenceCalculationResult {
     const employeeNo = parsedRow.data['社員番号'] || '';
+    
+    // 2行目以降（扶養家族追加行）かどうかを判定
+    // 従業員情報（氏名）が空で、扶養家族情報がある場合は扶養家族追加行とみなす
+    const hasEmployeeInfo = !!(parsedRow.data['氏名(漢字)'] || parsedRow.data['氏名漢字']);
+    const hasDependentInfo = !!(
+      parsedRow.data['扶養 続柄'] ||
+      parsedRow.data['扶養 氏名(漢字)'] ||
+      parsedRow.data['扶養 氏名(カナ)']
+    );
+    const isDependentOnlyRow = !hasEmployeeInfo && hasDependentInfo && !!employeeNo;
 
     const errors: ValidationError[] = [];
     let existingEmployee: ExistingEmployee | null = null;
@@ -718,6 +883,54 @@ import {
         existingEmployee: null,
         errors,
         changes: [],
+      };
+    }
+
+    // 2行目以降（扶養家族追加行）の場合は、従業員情報の差分計算をスキップ
+    // ただし、扶養家族情報の差分は計算する
+    if (isDependentOnlyRow) {
+      // 既存社員が見つかった場合はその情報を使用、見つからなくてもエラーにしない
+      // （新規登録の場合、同じCSVファイル内の最初の行で従業員情報が登録される予定）
+      
+      // 扶養家族情報の差分を計算
+      const changes: ChangeField[] = [];
+      const csvData = parsedRow.data;
+      
+      // 扶養家族情報のフィールドをチェック
+      const dependentFields = [
+        '扶養 続柄',
+        '扶養 氏名(漢字)',
+        '扶養 氏名(カナ)',
+        '扶養 生年月日',
+        '扶養 性別',
+        '扶養 個人番号',
+        '扶養 基礎年金番号',
+        '扶養 同居区分',
+        '扶養 住所（別居の場合のみ入力）',
+        '扶養 職業',
+        '扶養 年収（見込みでも可）',
+        '扶養 被扶養者になった日',
+        '扶養 国民年金第3号被保険者該当フラグ',
+      ];
+      
+      dependentFields.forEach((csvField) => {
+        const csvValue = csvData[csvField];
+        if (!csvValue || csvValue.trim() === '') return;
+        
+        // 扶養家族情報は常に新規追加として扱う
+        changes.push({
+          fieldName: csvField,
+          oldValue: null, // 新規追加なので既存値はなし
+          newValue: csvValue.trim(),
+        });
+      });
+      
+      return {
+        isNew: false,
+        isUpdate: false, // 従業員情報は更新しない
+        existingEmployee: foundByEmployeeNo || null,
+        errors: [],
+        changes: changes, // 扶養家族情報の変更を返す
       };
     }
 
@@ -827,6 +1040,21 @@ import {
           return dateStr.replace(/-/g, '/');
         };
         
+        // フラグ値を0/1に正規化して比較しやすくする
+        const normalizeFlagValue = (value: unknown): string => {
+          if (value === undefined || value === null) return '';
+          const normalized = String(value).trim().toLowerCase();
+          if (['1', 'true', 'yes', 'on', '有'].includes(normalized)) return '1';
+          if (['0', 'false', 'no', 'off', '無'].includes(normalized)) return '0';
+          return normalized;
+        };
+        
+        // フラグフィールドのリスト
+        const flagFields = [
+          '扶養の有無',
+          '扶養 国民年金第3号被保険者該当フラグ',
+        ];
+        
         // 数値フィールドの比較
         if (csvField === '標準報酬月額' || csvField === '扶養 年収（見込みでも可）') {
           const csvNum = Number(csvValue.replace(/,/g, ''));
@@ -853,6 +1081,18 @@ import {
               fieldName: csvField,
               oldValue: normalizedExistingValue || null,
               newValue: normalizedCsvValue || null,
+            });
+          }
+        } else if (flagFields.includes(csvField)) {
+          // フラグフィールドの比較（正規化して比較）
+          const normalizedCsvFlag = normalizeFlagValue(csvValue);
+          const normalizedExistingFlag = normalizeFlagValue(existingValue);
+
+          if (normalizedCsvFlag !== normalizedExistingFlag) {
+            changes.push({
+              fieldName: csvField,
+              oldValue: normalizedExistingFlag || null,
+              newValue: normalizedCsvFlag || null,
             });
           }
         } else {

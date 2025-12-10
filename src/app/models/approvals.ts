@@ -4,6 +4,7 @@ import { InsuranceRatePayload } from '../app/services/insurance-rates.service';
 
 type ApprovalCategory =
   | '新規社員登録'
+  | '社員情報更新'
   | '保険料率更新'
   | '法人情報更新'
   | '社員情報一括更新'
@@ -189,8 +190,31 @@ export interface ApprovalRequest {
       dependentStartDate: string;
       thirdCategoryFlag: boolean;
     };
+    // 複数扶養に対応するための配列（dependentInfoは後方互換用に保持）
+    dependentInfos?: Array<{
+      relationship: string;
+      nameKanji: string;
+      nameKana: string;
+      birthDate: string;
+      gender: string;
+      personalNumber: string;
+      basicPensionNumber: string;
+      cohabitationType: string;
+      address: string;
+      occupation: string;
+      annualIncome: number | null;
+      dependentStartDate: string;
+      thirdCategoryFlag: boolean;
+    }>;
   };
   insuranceRateData?: InsuranceRatePayload;
+  importEmployeeData?: Array<{
+    employeeNo: string;
+    csvData: Record<string, string>;
+    isNew: boolean;
+    existingEmployeeId?: string;
+    templateType: string;
+  }>;
 }
 
 export interface ApprovalNotification {

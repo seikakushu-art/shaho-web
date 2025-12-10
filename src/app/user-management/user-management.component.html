@@ -32,9 +32,12 @@
 
         <label>
           <span>表示名</span>
-          <input type="text" formControlName="displayName" placeholder="yamada taro" [disabled]="!(canEdit$ | async)" />
+          <input type="text" formControlName="displayName" placeholder="yamada taro" [disabled]="!(canEdit$ | async) || isExistingUser" />
           <p class="error" *ngIf="submitted && form.controls['displayName'].hasError('required')">
             表示名を入力してください。
+          </p>
+          <p class="error" *ngIf="form.controls['displayName'].hasError('displayNameDuplicate')">
+            {{ form.controls['displayName'].getError('displayNameDuplicate')?.message }}
           </p>
         </label>
 

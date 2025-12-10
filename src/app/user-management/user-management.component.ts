@@ -1,6 +1,6 @@
 import { Component, inject, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AbstractControl, FormBuilder, FormGroup, ReactiveFormsModule, ValidationErrors, Validators, AsyncValidatorFn } from '@angular/forms';
 import { ROLE_DEFINITIONS, RoleDefinition, RoleKey } from '../models/roles';
 import { UserDirectoryService, AppUser } from '../auth/user-directory.service';
 import { debounceTime, distinctUntilChanged, firstValueFrom, map, Observable, of, Subject, switchMap, takeUntil } from 'rxjs';
@@ -26,12 +26,13 @@ export class UserManagementComponent implements OnDestroy {
 
   form: FormGroup = this.fb.group({
     email: ['', [Validators.required, Validators.email]],
-    displayName: ['', [Validators.required]],
+    displayName: ['', [Validators.required], [this.displayNameUniqueValidator()]],
     role: this.fb.control<RoleKey>(RoleKey.Guest, [Validators.required]),
   });
 
   statusMessage = '';
   submitted = false;
+  isExistingUser = false;
 
   constructor() {
     this.setupEmailPrefill();
@@ -39,8 +40,14 @@ export class UserManagementComponent implements OnDestroy {
 
   resetForm() {
     this.form.reset({ email: '', displayName: '', role: RoleKey.Guest });
+    this.isExistingUser = false;
     this.submitted = false;
     this.statusMessage = '';
+    // 表示名フィールドを有効化
+    const displayControl = this.form.get('displayName');
+    if (displayControl) {
+      displayControl.enable();
+    }
   }
 
   async saveUser() {
@@ -51,16 +58,42 @@ export class UserManagementComponent implements OnDestroy {
       return;
     }
 
+    // バリデーションを実行
+    const displayControl = this.form.get('displayName');
+    if (displayControl) {
+      displayControl.markAsTouched();
+      await displayControl.updateValueAndValidity();
+    }
+
     if (this.form.invalid || !this.form.value.role) {
-      this.statusMessage = 'メール・表示名を正しく入力してください';
+      if (displayControl?.hasError('displayNameDuplicate')) {
+        this.statusMessage = 'この表示名は既に使用されています';
+      } else {
+        this.statusMessage = 'メール・表示名を正しく入力してください';
+      }
       return;
     }
 
     const email = this.form.value.email?.trim().toLowerCase();
     const existingUser = await firstValueFrom(this.userDirectory.getUserByEmail(email));
 
+    // 新規登録の場合、表示名の重複を再チェック
+    if (!existingUser) {
+      const users = await firstValueFrom(this.users$);
+      const displayName = this.form.value.displayName?.trim();
+      const duplicateUser = users.find(
+        (user) => user.displayName && user.displayName.trim() === displayName
+      );
+      if (duplicateUser) {
+        this.statusMessage = 'この表示名は既に使用されています';
+        return;
+      }
+    }
+
+    // 既存ユーザーの場合、表示名は変更しない（既存のdisplayNameを保持）
     const payload: AppUser = {
-      ...this.form.value,
+      email: this.form.value.email?.trim().toLowerCase(),
+      displayName: existingUser?.displayName || this.form.value.displayName,
       roles: [this.form.value.role ?? RoleKey.Guest],
     } as AppUser;
 
@@ -74,6 +107,7 @@ export class UserManagementComponent implements OnDestroy {
     
     // フォームのみリセット（メッセージは残す）
     this.form.reset({ email: '', displayName: '', role: RoleKey.Guest });
+    this.isExistingUser = false;
     this.submitted = false;
   }
 
@@ -111,7 +145,13 @@ export class UserManagementComponent implements OnDestroy {
     await this.userDirectory.deleteUser(email);
     this.statusMessage = `${email} を削除しました`;
     this.form.reset({ email: '', displayName: '', role: RoleKey.Guest });
+    this.isExistingUser = false;
     this.submitted = false;
+    // 表示名フィールドを有効化
+    const displayControl = this.form.get('displayName');
+    if (displayControl) {
+      displayControl.enable();
+    }
   }
 
   getRoleNames(roles: RoleKey[] | null | undefined): string {
@@ -130,6 +170,45 @@ export class UserManagementComponent implements OnDestroy {
     this.destroy$.complete();
   }
 
+  /** 表示名の重複チェック用バリデーター */
+  private displayNameUniqueValidator(): AsyncValidatorFn {
+    return (control: AbstractControl): Observable<ValidationErrors | null> => {
+      // 既存ユーザーの場合はバリデーションをスキップ
+      if (this.isExistingUser) {
+        return of(null);
+      }
+
+      const displayName = control.value?.trim();
+      if (!displayName) {
+        return of(null);
+      }
+
+      return this.users$.pipe(
+        debounceTime(300),
+        map((users) => {
+          // 現在編集中のユーザー（メールアドレスで判定）を除外
+          const emailControl = this.form.get('email');
+          const currentEmail = emailControl?.value?.trim().toLowerCase();
+          
+          const existingDisplayNames = users
+            .filter((user) => {
+              // 現在編集中のユーザーは除外
+              if (currentEmail && user.email.toLowerCase() === currentEmail) {
+                return false;
+              }
+              return user.displayName && user.displayName.trim() === displayName;
+            })
+            .map((user) => user.displayName);
+
+          if (existingDisplayNames.length > 0) {
+            return { displayNameDuplicate: { message: 'この表示名は既に使用されています' } };
+          }
+          return null;
+        }),
+      );
+    };
+  }
+
   private setupEmailPrefill() {
     const emailControl = this.form.get('email');
     const displayControl = this.form.get('displayName');
@@ -144,9 +223,21 @@ export class UserManagementComponent implements OnDestroy {
         takeUntil(this.destroy$),
       )
       .subscribe((user) => {
-        if (user?.displayName && !displayControl.value) {
+        this.isExistingUser = !!user;
+        if (user?.displayName) {
           displayControl.setValue(user.displayName);
+          // 既存ユーザーの場合、表示名フィールドを無効化
+          if (this.isExistingUser) {
+            displayControl.disable();
+          } else {
+            displayControl.enable();
+          }
+        } else {
+          // 新規ユーザーの場合、表示名フィールドを有効化
+          displayControl.enable();
         }
+        // バリデーションを再実行
+        displayControl.updateValueAndValidity();
       });
   }
 }

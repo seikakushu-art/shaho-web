@@ -4,13 +4,14 @@ import { Timestamp } from '@angular/fire/firestore';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subject, of, switchMap, takeUntil, firstValueFrom, combineLatest } from 'rxjs';
-import { ShahoEmployee, ShahoEmployeesService, PayrollData } from '../app/services/shaho-employees.service';
+import { ShahoEmployee, ShahoEmployeesService, PayrollData, DependentData } from '../app/services/shaho-employees.service';
 import { AuthService } from '../auth/auth.service';
 import { RoleKey } from '../models/roles';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
-import { ApprovalRequest, ApprovalHistory, ApprovalRequestStatus, ApprovalFlow, ApprovalEmployeeDiff, ApprovalAttachmentMetadata } from '../models/approvals';
+import { ApprovalRequest, ApprovalHistory, ApprovalRequestStatus, ApprovalFlow, ApprovalEmployeeDiff, ApprovalAttachmentMetadata, ApprovalNotification } from '../models/approvals';
 import { UserDirectoryService, AppUser } from '../auth/user-directory.service';
 import { ApprovalAttachmentService } from '../approvals/approval-attachment.service';
+import { ApprovalNotificationService } from '../approvals/approval-notification.service';
 import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.component';
 
 interface AuditInfo {
@@ -104,6 +105,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     private workflowService = inject(ApprovalWorkflowService);
     private userDirectory = inject(UserDirectoryService);
     readonly attachmentService = inject(ApprovalAttachmentService);
+    private notificationService = inject(ApprovalNotificationService);
     private destroy$ = new Subject<void>();
   deleteSubscription: any;
   tabs = [
@@ -171,21 +173,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     exemption: false,
   };
 
-  dependentInfo: DependentInfo = {
-    relationship: '',
-    nameKanji: '',
-    nameKana: '',
-    birthDate: '',
-    gender: '',
-    personalNumber: '',
-    basicPensionNumber: '',
-    cohabitationType: '',
-    address: '',
-    occupation: '',
-    annualIncome: null,
-    dependentStartDate: '',
-    thirdCategoryFlag: false,
-  };
+  dependentInfos: DependentInfo[] = [];
 
   insuranceHistoryFilter = {
     start: this.formatMonthForInput(this.addMonths(new Date(), -12)),
@@ -253,6 +241,10 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
         this.cachedUsers = users;
         this.rebuildApprovalHistory();
         this.rebuildChangeHistory();
+        // ユーザー情報が更新されたら、監査情報の表示名も更新
+        if (this.employee) {
+          this.updateAuditInfoDisplayNames();
+        }
       });
 
     this.route.paramMap
@@ -608,6 +600,10 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           this.deleteSubscription.unsubscribe();
         }
         this.deleteSubscription = result.subscription;
+        // 承認者に通知を送信
+        if (completeRequest.id) {
+          this.pushApprovalNotifications(completeRequest, completeRequest.id);
+        }
         this.showDeletePanel = false;
         this.selectedFiles = [];
         this.validationErrors = [];
@@ -867,6 +863,29 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     return this.calculateStandardBonusAnnualTotal();
   }
 
+  private loadDependentInfo(employeeId: string) {
+    this.employeesService
+      .getDependents(employeeId)
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((dependents) => {
+        this.dependentInfos = dependents.map((dependent) => ({
+          relationship: dependent.relationship ?? '',
+          nameKanji: dependent.nameKanji ?? '',
+          nameKana: dependent.nameKana ?? '',
+          birthDate: this.formatDateForInput(dependent.birthDate),
+          gender: dependent.gender ?? '',
+          personalNumber: dependent.personalNumber ?? '',
+          basicPensionNumber: dependent.basicPensionNumber ?? '',
+          cohabitationType: dependent.cohabitationType ?? '',
+          address: dependent.address ?? '',
+          occupation: dependent.occupation ?? '',
+          annualIncome: dependent.annualIncome ?? null,
+          dependentStartDate: this.formatDateForInput(dependent.dependentStartDate),
+          thirdCategoryFlag: dependent.thirdCategoryFlag ?? false,
+        }));
+      });
+  }
+
   private applyEmployeeData(employee: ShahoEmployee) {
     this.employee = employee;
     this.basicInfo = {
@@ -896,21 +915,13 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       exemption: employee.exemption ?? this.socialInsurance.exemption,
     };
 
-    this.dependentInfo = {
-      relationship: employee.dependentRelationship ?? '',
-      nameKanji: employee.dependentNameKanji ?? '',
-      nameKana: employee.dependentNameKana ?? '',
-      birthDate: this.formatDateForInput(employee.dependentBirthDate),
-      gender: employee.dependentGender ?? '',
-      personalNumber: employee.dependentPersonalNumber ?? '',
-      basicPensionNumber: employee.dependentBasicPensionNumber ?? '',
-      cohabitationType: employee.dependentCohabitationType ?? '',
-      address: employee.dependentAddress ?? '',
-      occupation: employee.dependentOccupation ?? '',
-      annualIncome: employee.dependentAnnualIncome ?? null,
-      dependentStartDate: this.formatDateForInput(employee.dependentStartDate),
-      thirdCategoryFlag: employee.dependentThirdCategoryFlag ?? false,
-    };
+    // 扶養情報をdependentsサブコレクションから読み込む
+    if (employee.id) {
+      this.loadDependentInfo(employee.id);
+    } else {
+      // employee.idがない場合は空の配列を設定
+      this.dependentInfos = [];
+    }
 
     // 監査情報を反映
     if (employee.createdAt || employee.updatedAt || employee.createdBy || employee.updatedBy || employee.approvedBy) {
@@ -926,12 +937,57 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
         return `${year}-${month}-${day} ${hours}:${minutes}`;
       };
 
+      // app_usersコレクションからdisplayNameを取得するためのマップを作成
+      const userMap = new Map<string, string>();
+      this.cachedUsers.forEach((u) => {
+        const emailKey = u.email.toLowerCase();
+        // app_usersのdisplayNameを優先的に使用（なければメールアドレス）
+        const displayName = u.displayName || u.email;
+        const localKey = u.email.includes('@') ? u.email.split('@')[0].toLowerCase() : '';
+        
+        // メールアドレスをキーに登録（app_usersのdisplayNameを値として）
+        userMap.set(emailKey, displayName);
+        // displayNameがある場合、それもキーとして登録
+        if (u.displayName) {
+          userMap.set(u.displayName.toLowerCase(), displayName);
+        }
+        // メールのローカル部分もキーとして登録
+        if (localKey) {
+          userMap.set(localKey, displayName);
+        }
+      });
+
+      const getDisplayName = (userId: string | undefined): string => {
+        if (!userId) return '—';
+        const normalizedId = userId.toLowerCase();
+        
+        // app_usersからdisplayNameを取得
+        const displayName = userMap.get(normalizedId);
+        if (displayName) return displayName;
+        
+        // マップにない場合、app_usersを直接検索（メールアドレスで）
+        if (userId.includes('@')) {
+          const user = this.cachedUsers.find(u => u.email.toLowerCase() === normalizedId);
+          if (user?.displayName) {
+            return user.displayName;
+          }
+          // displayNameがない場合、メールアドレスのローカル部分を返す
+          return userId.split('@')[0];
+        }
+        
+        // メールアドレスでない場合、そのまま返す
+        return userId;
+      };
+
+      // 承認履歴から最新の承認者を取得
+      const latestApprover = this.getLatestApproverDisplayName(employee);
+
       this.auditInfo = {
         registeredAt: formatDate(employee.createdAt) || this.auditInfo.registeredAt,
         updatedAt: formatDate(employee.updatedAt) || this.auditInfo.updatedAt,
-        createdBy: employee.createdBy || this.auditInfo.createdBy,
-        updatedBy: employee.updatedBy || this.auditInfo.updatedBy,
-        approvedBy: employee.approvedBy || this.auditInfo.approvedBy,
+        createdBy: getDisplayName(employee.createdBy) || this.auditInfo.createdBy,
+        updatedBy: getDisplayName(employee.updatedBy) || this.auditInfo.updatedBy,
+        approvedBy: latestApprover || getDisplayName(employee.approvedBy) || this.auditInfo.approvedBy,
       };
     }
 
@@ -1036,8 +1092,12 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           return bDate - aDate;
         });
 
-        const primaryHistory =
-          targetHistories.find((h) => h.action === 'approve') || targetHistories[0];
+        // 申請履歴を取得（操作者を決定するため）
+        const applyHistory = targetHistories.find((h) => h.action === 'apply');
+        // 承認履歴を取得（承認者を決定するため）
+        const approveHistory = targetHistories.find((h) => h.action === 'approve');
+        // 日付を決定するためのprimaryHistory（承認履歴を優先、なければ申請履歴）
+        const primaryHistory = approveHistory || applyHistory || targetHistories[0];
         if (!primaryHistory) return;
 
         const primaryDate =
@@ -1045,24 +1105,27 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
             ? primaryHistory.createdAt.toDate()
             : new Date(primaryHistory.createdAt as unknown as string);
 
-        const actor = this.resolveUserDisplayName(
+        // 操作者（申請者）を取得
+        const actor = applyHistory
+          ? this.resolveUserDisplayName(
+              applyHistory.actorId,
+              applyHistory.actorName,
+              userMap,
+            )
+          : this.resolveUserDisplayName(
           primaryHistory.actorId,
           primaryHistory.actorName,
           userMap,
         );
 
-        const approver =
-          primaryHistory.action === 'approve'
-            ? actor
-            : (() => {
-                const approved = targetHistories.find((h) => h.action === 'approve');
-                if (!approved) return '';
-                return this.resolveUserDisplayName(
-                  approved.actorId,
-                  approved.actorName,
+        // 承認者を取得
+        const approver = approveHistory
+          ? this.resolveUserDisplayName(
+              approveHistory.actorId,
+              approveHistory.actorName,
                   userMap,
-                );
-              })();
+            )
+          : '';
 
         const targetDiffs =
           req.employeeDiffs?.filter((diff) =>
@@ -1072,7 +1135,14 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           ) ?? [];
 
         targetDiffs.forEach((diff) => {
-          diff.changes.forEach((change, index) => {
+          diff.changes
+            .filter((change) => {
+              // 変更のある項目のみを表示（oldValueとnewValueが異なる場合）
+              const oldVal = change.oldValue ?? '';
+              const newVal = change.newValue ?? '';
+              return oldVal !== newVal;
+            })
+            .forEach((change, index) => {
             records.push({
               id: `${req.id ?? req.title}-hist-${primaryHistory.id}-${index}`,
               groupId: `${req.id ?? req.title}-group-${primaryHistory.id}`,
@@ -1113,6 +1183,138 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     return fallbackName || userId || '';
   }
 
+  /** キャッシュ済みユーザーで監査情報の表示名を更新 */
+  private updateAuditInfoDisplayNames(): void {
+    if (!this.employee) return;
+
+    // app_usersコレクションからdisplayNameを取得するためのマップを作成
+    const userMap = new Map<string, string>();
+    this.cachedUsers.forEach((u) => {
+      const emailKey = u.email.toLowerCase();
+      // app_usersのdisplayNameを優先的に使用（なければメールアドレス）
+      const displayName = u.displayName || u.email;
+      const localKey = u.email.includes('@') ? u.email.split('@')[0].toLowerCase() : '';
+      
+      // メールアドレスをキーに登録（app_usersのdisplayNameを値として）
+      userMap.set(emailKey, displayName);
+      // displayNameがある場合、それもキーとして登録
+      if (u.displayName) {
+        userMap.set(u.displayName.toLowerCase(), displayName);
+      }
+      // メールのローカル部分もキーとして登録
+      if (localKey) {
+        userMap.set(localKey, displayName);
+      }
+    });
+
+    const getDisplayName = (userId: string | undefined): string => {
+      if (!userId) return '—';
+      const normalizedId = userId.toLowerCase();
+      
+      // app_usersからdisplayNameを取得
+      const displayName = userMap.get(normalizedId);
+      if (displayName) return displayName;
+      
+      // マップにない場合、app_usersを直接検索（メールアドレスで）
+      if (userId.includes('@')) {
+        const user = this.cachedUsers.find(u => u.email.toLowerCase() === normalizedId);
+        if (user?.displayName) {
+          return user.displayName;
+        }
+        // displayNameがない場合、メールアドレスのローカル部分を返す
+        return userId.split('@')[0];
+      }
+      
+      // メールアドレスでない場合、そのまま返す
+      return userId;
+    };
+
+    const latestApprover = this.getLatestApproverDisplayName(this.employee);
+
+    this.auditInfo = {
+      ...this.auditInfo,
+      createdBy: getDisplayName(this.employee.createdBy) || this.auditInfo.createdBy,
+      updatedBy: getDisplayName(this.employee.updatedBy) || this.auditInfo.updatedBy,
+      approvedBy: latestApprover || getDisplayName(this.employee.approvedBy) || this.auditInfo.approvedBy,
+    };
+  }
+
+  /** 承認履歴から最新の承認者の表示名を取得 */
+  private getLatestApproverDisplayName(employee: ShahoEmployee): string | null {
+    // app_usersコレクションからdisplayNameを取得するためのマップを作成
+    const userMap = new Map<string, string>();
+    this.cachedUsers.forEach((u) => {
+      const emailKey = u.email.toLowerCase();
+      // app_usersのdisplayNameを優先的に使用（なければメールアドレス）
+      const displayName = u.displayName || u.email;
+      const localKey = u.email.includes('@') ? u.email.split('@')[0].toLowerCase() : '';
+      
+      // メールアドレスをキーに登録（app_usersのdisplayNameを値として）
+      userMap.set(emailKey, displayName);
+      // displayNameがある場合、それもキーとして登録
+      if (u.displayName) {
+        userMap.set(u.displayName.toLowerCase(), displayName);
+      }
+      // メールのローカル部分もキーとして登録
+      if (localKey) {
+        userMap.set(localKey, displayName);
+      }
+    });
+
+    // この社員に関連する承認依頼を取得
+    const relatedRequests = this.cachedApprovalRequests.filter((req) =>
+      this.matchesEmployee(req, employee),
+    );
+
+    // 承認済みの依頼から、最新の承認履歴を取得
+    const approvedRequests = relatedRequests.filter((req) => req.status === 'approved');
+    
+    if (approvedRequests.length === 0) {
+      return null;
+    }
+
+    // 最新の承認依頼を取得（作成日時でソート）
+    const latestRequest = approvedRequests.sort((a, b) => {
+      const aTime = a.createdAt?.toDate?.()?.getTime() || 0;
+      const bTime = b.createdAt?.toDate?.()?.getTime() || 0;
+      return bTime - aTime;
+    })[0];
+
+    // 承認履歴から最新の承認者を取得
+    const approvalHistories = (latestRequest.histories || []).filter(
+      (h) => h.action === 'approve',
+    );
+
+    if (approvalHistories.length === 0) {
+      return null;
+    }
+
+    // 最新の承認履歴を取得
+    const latestHistory = approvalHistories.sort((a, b) => {
+      const aTime = a.createdAt?.toDate?.()?.getTime() || 0;
+      const bTime = b.createdAt?.toDate?.()?.getTime() || 0;
+      return bTime - aTime;
+    })[0];
+
+    const actorId = latestHistory.actorId?.toLowerCase() || '';
+    
+    // app_usersからdisplayNameを取得
+    const displayName = userMap.get(actorId);
+    if (displayName) return displayName;
+    
+    // マップにない場合、app_usersを直接検索（メールアドレスで）
+    if (latestHistory.actorId && latestHistory.actorId.includes('@')) {
+      const user = this.cachedUsers.find(u => u.email.toLowerCase() === actorId);
+      if (user?.displayName) {
+        return user.displayName;
+      }
+      // displayNameがない場合、メールアドレスのローカル部分を返す
+      return latestHistory.actorId.split('@')[0];
+    }
+    
+    return latestHistory.actorName || latestHistory.actorId || null;
+  }
+
   private requestStatusLabel(status: ApprovalRequestStatus | undefined) {
     switch (status) {
       case 'approved':
@@ -1142,6 +1344,42 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
         return '失効';
       default:
         return history.action;
+    }
+  }
+
+  private pushApprovalNotifications(request: ApprovalRequest, requestId: string): void {
+    const notifications: ApprovalNotification[] = [];
+
+    const applicantNotification: ApprovalNotification = {
+      id: `ntf-${Date.now()}`,
+      requestId: requestId,
+      recipientId: request.applicantId,
+      message: `${request.title} を起票しました（${request.targetCount}件）。`,
+      unread: true,
+      createdAt: new Date(),
+      type: 'info',
+    };
+    notifications.push(applicantNotification);
+
+    const currentStep = request.steps.find((step) => step.stepOrder === request.currentStep);
+    const candidates = currentStep
+      ? request.flowSnapshot?.steps.find((step) => step.order === currentStep.stepOrder)?.candidates ?? []
+      : [];
+
+    candidates.forEach((candidate) => {
+      notifications.push({
+        id: `ntf-${Date.now()}-${candidate.id}`,
+        requestId: requestId,
+        recipientId: candidate.id,
+        message: `${request.title} の承認依頼が届いています。`,
+        unread: true,
+        createdAt: new Date(),
+        type: 'info',
+      });
+    });
+
+    if (notifications.length) {
+      this.notificationService.pushBatch(notifications);
     }
   }
   }

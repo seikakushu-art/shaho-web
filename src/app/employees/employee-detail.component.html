@@ -225,10 +225,10 @@
         </section>
 
         <section *ngIf="selectedTab === 'dependent'" class="tab-body">
-            <article class="card">
+            <article class="card" *ngFor="let dependentInfo of dependentInfos; let i = index" style="margin-bottom: 1.5rem;">
                 <div class="card-header">
                     <div>
-                        <h2>扶養情報</h2>
+                        <h2>扶養情報 {{ i + 1 }}</h2>
                     </div>
                 </div>
                 <div class="grid three-col">
@@ -285,6 +285,14 @@
                         <p class="value">{{ dependentInfo.thirdCategoryFlag ? 'ON' : 'OFF' }}</p>
                     </div>
                 </div>
+            </article>
+            <article class="card" *ngIf="dependentInfos.length === 0">
+                <div class="card-header">
+                    <div>
+                        <h2>扶養情報</h2>
+                    </div>
+                </div>
+                <p class="hint">扶養情報が登録されていません。</p>
             </article>
         </section>
 

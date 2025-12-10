@@ -190,9 +190,11 @@ export class ApprovalListComponent {
   readonly flows$ = this.workflowService.flows$;
   readonly categories: ApprovalRequest['category'][] = [
     '新規社員登録',
+    '社員情報更新',
     '保険料率更新',
     '法人情報更新',
     '社員情報一括更新',
+    '社員削除',
     '計算結果保存',
   ];
   readonly canApprove$ = this.authService.hasAnyRole([RoleKey.SystemAdmin, RoleKey.Approver]);
@@ -249,12 +251,16 @@ export class ApprovalListComponent {
     switch (category) {
       case '新規社員登録':
         return 'badge-new-employee';
+      case '社員情報更新':
+        return 'badge-employee-update';
       case '保険料率更新':
         return 'badge-insurance-rate';
       case '法人情報更新':
         return 'badge-corporate-info';
       case '社員情報一括更新':
         return 'badge-employee-bulk';
+      case '社員削除':
+        return 'badge-employee-delete';
       case '計算結果保存':
         return 'badge-calculation-result';
       default:
