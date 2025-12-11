@@ -455,8 +455,13 @@
                   (flowsUpdated)="onDeleteFlowsUpdated($event)"
                 />
                 <label class="field">
-                    <span>申請コメント</span>
-                    <textarea rows="4" [(ngModel)]="deleteComment" placeholder="例：退職に伴う削除です。"></textarea>
+                    <div class="field-header">
+                        <span>申請コメント</span>
+                        <span class="hint" [class.warning]="deleteComment.length >= 450">
+                            {{ deleteComment.length }}/500 文字
+                        </span>
+                    </div>
+                    <textarea rows="4" [(ngModel)]="deleteComment" placeholder="例：退職に伴う削除です。" maxlength="500"></textarea>
                 </label>
                 <div class="attachment-box">
                     <div class="attachment-header">

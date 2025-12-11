@@ -149,8 +149,13 @@
           (flowsUpdated)="onFlowsUpdated($event)"
         />
         <label class="field">
-          <span>申請コメント</span>
-          <textarea name="requestComment" rows="4" [(ngModel)]="requestComment" placeholder="例：標準報酬月額の計算結果を保存します。"></textarea>
+          <div class="field-header">
+            <span>申請コメント</span>
+            <span class="hint" [class.warning]="requestComment.length >= 450">
+              {{ requestComment.length }}/500 文字
+            </span>
+          </div>
+          <textarea name="requestComment" rows="4" [(ngModel)]="requestComment" placeholder="例：標準報酬月額の計算結果を保存します。" maxlength="500"></textarea>
         </label>
         <div class="attachment-box">
           <div class="attachment-header">

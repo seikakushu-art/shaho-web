@@ -228,8 +228,6 @@ export class ApprovalListComponent {
         return '差戻し';
       case 'expired':
         return '失効';
-      case 'draft':
-        return '下書き';
       default:
         return '承認待ち';
     }

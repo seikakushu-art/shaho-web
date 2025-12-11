@@ -192,6 +192,26 @@ const DEPENDENT_BASE_FIELDS = [
 
 // 扶養家族フィールドが「扶養 続柄1」のように番号付きで並んでいる場合、
 // 1行目に従業員情報＋最初の扶養家族、2行目以降に扶養家族のみの行を生成する
+/**
+ * 氏名を正規化（全ての空白文字を削除）
+ * 半角スペース、全角スペース、タブなどの空白文字を全て削除して比較用に正規化
+ */
+function normalizeNameForComparison(name: string): string {
+  if (!name) return '';
+  // 全ての空白文字（半角スペース、全角スペース、タブ、改行など）を削除
+  return name.replace(/\s+/g, '').trim();
+}
+
+/**
+ * 社員番号を正規化（全ての空白文字を削除）
+ * 半角スペース、全角スペース、タブなどの空白文字を全て削除して比較用に正規化
+ */
+function normalizeEmployeeNoForComparison(employeeNo: string): string {
+  if (!employeeNo) return '';
+  // 全ての空白文字（半角スペース、全角スペース、タブ、改行など）を削除
+  return employeeNo.replace(/\s+/g, '').trim();
+}
+
 export function expandDependentRows(parsedRows: ParsedRow[], headers: string[]): ParsedRow[] {
   // ヘッダーに番号付きの扶養フィールドがあるかどうかを判定
   const dependentIndexSet = new Set<number>();
@@ -301,7 +321,8 @@ export function expandDependentRows(parsedRows: ParsedRow[], headers: string[]):
     // 新規登録/一括更新用テンプレートの場合、既存社員の有無で必須項目を変更
     if (templateType === 'new' && existingEmployees) {
       const employeeNo = row.data['社員番号'] || '';
-      const existingEmployee = existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+      const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
+      const existingEmployee = existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === normalizedEmployeeNo);
       
       if (existingEmployee) {
         // 既存社員が見つかった場合 → 一括更新モード
@@ -569,15 +590,17 @@ export function expandDependentRows(parsedRows: ParsedRow[], headers: string[]):
     }
 
     // 社員番号の重複チェック（複数の扶養家族を追加する場合は同じ社員番号で複数行が許可される）
+    // スペースを無視して比較するため、正規化した社員番号をキーとして使用
     const employeeNos = new Map<string, number[]>();
     rows.forEach((row) => {
       const employeeNo = row.data['社員番号'];
       if (!employeeNo) return;
       
-      if (!employeeNos.has(employeeNo)) {
-        employeeNos.set(employeeNo, []);
+      const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
+      if (!employeeNos.has(normalizedEmployeeNo)) {
+        employeeNos.set(normalizedEmployeeNo, []);
       }
-      employeeNos.get(employeeNo)!.push(row.rowIndex);
+      employeeNos.get(normalizedEmployeeNo)!.push(row.rowIndex);
     });
 
     // 同じ社員番号の行がある場合、最初の行に従業員情報（氏名など）が必要かチェック
@@ -823,8 +846,9 @@ export function expandDependentRows(parsedRows: ParsedRow[], headers: string[]):
           templateType,
         });
       } else {
-        // 社員番号で既存社員を検索
-        const foundByEmployeeNo = existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+        // 社員番号で既存社員を検索（スペースを無視して比較）
+        const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
+        const foundByEmployeeNo = existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === normalizedEmployeeNo);
         if (!foundByEmployeeNo) {
           errors.push({
             rowIndex: parsedRow.rowIndex,
@@ -834,11 +858,11 @@ export function expandDependentRows(parsedRows: ParsedRow[], headers: string[]):
             templateType,
           });
         } else {
-          // 社員番号と氏名の整合性チェック
+          // 社員番号と氏名の整合性チェック（スペースを無視して比較）
           const csvName = parsedRow.data['氏名(漢字)'] || parsedRow.data['氏名漢字'] || '';
           const existingName = foundByEmployeeNo.name || '';
           
-          if (csvName && existingName && csvName.trim() !== existingName.trim()) {
+          if (csvName && existingName && normalizeNameForComparison(csvName) !== normalizeNameForComparison(existingName)) {
             errors.push({
               rowIndex: parsedRow.rowIndex,
               fieldName: '氏名(漢字)',
@@ -863,8 +887,9 @@ export function expandDependentRows(parsedRows: ParsedRow[], headers: string[]):
       };
     }
 
-    // 既存社員データを検索（社員番号で）
-    const foundByEmployeeNo = existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+    // 既存社員データを検索（社員番号で、スペースを無視して比較）
+    const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
+    const foundByEmployeeNo = existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === normalizedEmployeeNo);
 
     // 判定ロジック
     // 社員番号が存在しない場合はエラー
@@ -937,11 +962,11 @@ export function expandDependentRows(parsedRows: ParsedRow[], headers: string[]):
     // 社員番号で既存社員を検索
     if (foundByEmployeeNo) {
       // 社員番号が一致する場合 → 更新
-      // 社員番号と氏名の整合性チェック
+      // 社員番号と氏名の整合性チェック（スペースを無視して比較）
       const csvName = parsedRow.data['氏名(漢字)'] || parsedRow.data['氏名漢字'] || '';
       const existingName = foundByEmployeeNo.name || '';
       
-      if (csvName && existingName && csvName.trim() !== existingName.trim()) {
+      if (csvName && existingName && normalizeNameForComparison(csvName) !== normalizeNameForComparison(existingName)) {
         errors.push({
           rowIndex: parsedRow.rowIndex,
           fieldName: '氏名(漢字)',

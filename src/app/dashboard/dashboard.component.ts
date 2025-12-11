@@ -47,7 +47,6 @@ export class DashboardComponent {
     { status: 'approved', label: '承認済', count: 0 },
     { status: 'remanded', label: '差戻し', count: 0 },
     { status: 'expired', label: '失効', count: 0 },
-    { status: 'draft', label: '下書き', count: 0 },
   ];
 
   private recipientId$ = this.authService.user$.pipe(map((user) => user?.email ?? 'demo-approver'));
@@ -133,8 +132,6 @@ export class DashboardComponent {
         return '差戻し';
       case 'expired':
         return '失効';
-      case 'draft':
-        return '下書き';
       default:
         return '承認待ち';
     }
@@ -180,7 +177,6 @@ export class DashboardComponent {
 
   private buildStatusSummary(requests: ApprovalRequest[]): StatusSummary[] {
     const counts: Record<ApprovalRequestStatus, number> = {
-      draft: 0,
       pending: 0,
       approved: 0,
       remanded: 0,

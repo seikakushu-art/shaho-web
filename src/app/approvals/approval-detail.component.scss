@@ -45,6 +45,10 @@
     color: #94a3b8;
     font-size: 0.95rem;
   }
+
+  .hint.warning {
+    color: #dc2626;
+  }
   
   .card {
     background: #fff;
@@ -225,6 +229,21 @@
     font-weight: 600;
     color: #0f172a;
   }
+
+  .field-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 0.5rem;
+  }
+
+  .field-header .hint {
+    font-size: 0.85rem;
+    margin: 0;
+  }
   
   .field input[type='date'] {
     padding: 0.65rem 0.75rem;
@@ -377,6 +396,10 @@
   
   .action-card .section-header {
     margin-bottom: 0.5rem;
+  }
+
+  .action-card .hint {
+    font-size: 0.85rem;
   }
 
   .action-card textarea {

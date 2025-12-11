@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { Timestamp } from '@angular/fire/firestore';
 import { firstValueFrom, Subscription, take } from 'rxjs';
 import { AuthService } from '../../auth/auth.service';
@@ -63,6 +63,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
   private workflowService = inject(ApprovalWorkflowService);
   private notificationService = inject(ApprovalNotificationService);
   private authService = inject(AuthService);
+  private router = inject(Router);
   readonly attachmentService = inject(ApprovalAttachmentService);
   private existingEmployees: ExistingEmployee[] = [];
   private applicantId = 'demo-applicant';
@@ -542,6 +543,7 @@ private readFileAsText(file: File): Promise<string> {
         this.approvalSubscription = result.subscription;
         this.pushApprovalNotifications(saved);
         alert('承認依頼を送信しました。承認完了後に反映します。');
+        this.router.navigate(['/employees']);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '承認依頼の送信に失敗しました。';

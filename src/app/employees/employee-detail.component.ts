@@ -1323,8 +1323,6 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
         return '差戻し';
       case 'expired':
         return '失効';
-      case 'draft':
-        return '下書き';
       case 'pending':
         return '承認待ち';
       default:

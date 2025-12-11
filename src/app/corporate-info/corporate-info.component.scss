@@ -225,6 +225,18 @@
     color: #334155;
   }
 
+  .approval-form .field .field-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .approval-form .field .field-header .hint {
+    font-size: 0.85rem;
+    margin: 0;
+  }
+
   .approval-form textarea {
     width: 100%;
     padding: 0.6rem 0.75rem;

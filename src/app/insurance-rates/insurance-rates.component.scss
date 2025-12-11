@@ -258,6 +258,18 @@
         font-weight: 700;
         color: #334155;
 
+        .field-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .field-header .hint {
+          font-size: 0.85rem;
+          margin: 0;
+        }
+
         span {
           font-size: 14px;
         }

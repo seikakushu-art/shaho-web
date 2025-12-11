@@ -651,7 +651,10 @@ export class ShahoEmployeesService {
       createdBy: dependentData.createdBy || userId,
     };
 
-    return setDoc(dependentRef, data, { merge: true });
+    // undefinedのフィールドを除外（Firestoreはundefinedを許可しない）
+    const cleanedData = this.removeUndefinedFields(data);
+
+    return setDoc(dependentRef, cleanedData, { merge: true });
   }
 
   /**

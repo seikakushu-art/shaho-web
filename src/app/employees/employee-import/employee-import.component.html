@@ -120,7 +120,6 @@
             <p>✅ 検証が完了しました。エラーはありませんでした。</p>
             <p class="hint">すべてのレコードが正常に検証されました。次のステップで差分確認に進みます。</p>
         </div>
-        <p class="hint" *ngIf="summary.errorCount > 0">上記のエラーは差分確認に進みません。CSVを修正して再取込するか、エラー以外の行のみで続行してください。</p>
         <div class="navigation">
             <button type="button" class="ghost" (click)="prevStep()">戻る</button>
             <button type="button" class="primary" (click)="nextStep()">差分確認へ進む</button>
@@ -228,8 +227,13 @@
                   (flowsUpdated)="onFlowsUpdated($event)"
                 />
                 <label class="field">
-                    <span>申請コメント</span>
-                    <textarea rows="4" [(ngModel)]="requestComment" placeholder="例：給与改定に伴う更新です。"></textarea>
+                    <div class="field-header">
+                        <span>申請コメント</span>
+                        <span class="hint" [class.warning]="requestComment.length >= 450">
+                            {{ requestComment.length }}/500 文字
+                        </span>
+                    </div>
+                    <textarea rows="4" [(ngModel)]="requestComment" placeholder="例：給与改定に伴う更新です。" maxlength="500"></textarea>
                 </label>
                 <div class="attachment-box">
                     <div class="attachment-header">

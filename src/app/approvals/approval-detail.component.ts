@@ -227,8 +227,6 @@ export class ApprovalDetailComponent implements OnDestroy {
         return '差戻し';
       case 'expired':
         return '失効';
-      case 'draft':
-        return '下書き';
       default:
         return '承認待ち';
     }
@@ -408,8 +406,6 @@ export class ApprovalDetailComponent implements OnDestroy {
         return '承認済';
       case 'remanded':
         return '差戻し';
-      case 'skipped':
-        return '自動スキップ';
       default:
         return '承認待ち';
     }

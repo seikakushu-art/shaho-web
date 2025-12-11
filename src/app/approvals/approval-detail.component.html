@@ -220,11 +220,18 @@
       </div>
     </header>
 
+    <div class="field-header">
+      <span>コメント</span>
+      <span class="hint" [class.warning]="approvalComment.length >= 450">
+        {{ approvalComment.length }}/500 文字
+      </span>
+    </div>
     <textarea
       [(ngModel)]="approvalComment"
       rows="4"
       placeholder="確認内容や差戻し理由を入力してください"
       [disabled]="current.status !== 'pending' || !(canApprove$ | async)"
+      maxlength="500"
     ></textarea>
 
     <div class="action-buttons">

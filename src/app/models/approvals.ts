@@ -12,13 +12,12 @@ type ApprovalCategory =
   | '計算結果保存';
 
 export type ApprovalRequestStatus =
-  | 'draft'
   | 'pending'
   | 'approved'
   | 'remanded'
   | 'expired';
 
-export type ApprovalStepStatus = 'waiting' | 'approved' | 'remanded' | 'skipped';
+export type ApprovalStepStatus = 'waiting' | 'approved' | 'remanded';
 
 export interface ApprovalAttachmentMetadata {
     id: string;

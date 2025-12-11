@@ -284,23 +284,29 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         address: employee.address || '',
       };
 
-      // 社会保険情報を設定
+      // 社会保険情報を設定（詳細画面と同じロジック）
       this.socialInsurance = {
+        ...this.socialInsurance,
         pensionOffice: '',
         officeName: '',
         standardMonthly: employee.standardMonthly ?? 0,
         healthCumulative: employee.standardBonusAnnualTotal ?? 0,
         healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
         pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
-        careSecondInsured: employee.careSecondInsured ?? false,
+        careSecondInsured: employee.careSecondInsured ?? this.socialInsurance.careSecondInsured,
         healthAcquisition: this.formatDateForInput(employee.healthAcquisition) || '',
         pensionAcquisition: this.formatDateForInput(employee.pensionAcquisition) || '',
         childcareLeaveStart: this.formatDateForInput(employee.childcareLeaveStart) || '',
         childcareLeaveEnd: this.formatDateForInput(employee.childcareLeaveEnd) || '',
         maternityLeaveStart: this.formatDateForInput(employee.maternityLeaveStart) || '',
         maternityLeaveEnd: this.formatDateForInput(employee.maternityLeaveEnd) || '',
-        exemption: employee.exemption ?? false,
+        exemption: employee.exemption ?? this.socialInsurance.exemption,
       };
+
+      // 介護保険第2号被保険者フラグを年齢に基づいて自動計算（詳細画面と同じロジック）
+      if (employee.birthDate) {
+        this.recalcCareFlag();
+      }
     
       // 扶養情報をdependentsサブコレクションから読み込む
       if (employee.id) {
@@ -334,6 +340,30 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         this.dependentInfos = [];
         this.originalDependentInfo = null;
       }
+    }
+
+    /**
+     * 年齢を計算
+     */
+    private calculateAge(birthDate: Date): number {
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const m = today.getMonth() - birthDate.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      return age;
+    }
+
+    /**
+     * 介護保険第2号被保険者フラグを年齢に基づいて自動計算
+     */
+    private recalcCareFlag(): void {
+      if (!this.basicInfo.birthDate) return;
+      const birthDate = new Date(this.basicInfo.birthDate);
+      if (isNaN(birthDate.getTime())) return;
+      const age = this.calculateAge(birthDate);
+      this.socialInsurance.careSecondInsured = age >= 40 && age < 65;
     }
 
     /**
@@ -504,8 +534,13 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           basicInfo: { ...this.basicInfo },
           socialInsurance: { ...this.socialInsurance },
           dependentInfo: this.dependentInfos.length > 0 ? { ...this.dependentInfos[0] } : undefined,
-          dependentInfos: this.dependentInfos.length > 0 ? this.dependentInfos : undefined,
+          // dependentInfosは空の配列でも保存する（undefinedではなく空配列として保存）
+          dependentInfos: this.dependentInfos.length > 0 ? this.dependentInfos : (this.basicInfo.hasDependent ? [] : undefined),
         } as any;
+        
+        console.log('承認リクエスト作成時のemployeeData:', JSON.stringify(employeeData, null, 2));
+        console.log('this.dependentInfos:', JSON.stringify(this.dependentInfos, null, 2));
+        console.log('this.basicInfo.hasDependent:', this.basicInfo.hasDependent);
 
         const createdAt = new Date();
         const dueDate = new Date(createdAt);
@@ -584,7 +619,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
               return;
             }
 
-            const { basicInfo, socialInsurance, dependentInfo } = approvedRequest.employeeData;
+            const { basicInfo, socialInsurance, dependentInfo, dependentInfos } = approvedRequest.employeeData;
 
             // employeeDataをShahoEmployee形式に変換
             const employeeData: ShahoEmployee = {
@@ -675,66 +710,80 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             }
 
             // 扶養情報をdependentsサブコレクションに保存（複数件対応）
-            // 承認リクエストから最新のデータを取得して、dependentInfos配列を再構築
-            const latestRequest = await firstValueFrom(
-              this.approvalWorkflowService.getRequest(saved.id!).pipe(take(1))
-            );
+            // 承認リクエストから扶養情報を取得（dependentInfos配列を優先、なければdependentInfoから配列を作成）
+            // dependentInfosが存在する場合はそれを使用（空配列でも可）、なければdependentInfoから配列を作成
+            let dependentInfosToSave: Array<any> = [];
+            if (dependentInfos && Array.isArray(dependentInfos)) {
+              // dependentInfosが配列として存在する場合はそれを使用（空配列でも可）
+              dependentInfosToSave = dependentInfos;
+            } else if (dependentInfo) {
+              // dependentInfoが存在する場合は配列に変換
+              dependentInfosToSave = [dependentInfo];
+            }
             
-            // 承認リクエストから扶養情報を取得（1件のみの可能性があるため、配列に変換）
-            // 実際の保存時には、承認リクエスト作成時のdependentInfos配列全体を使用
-            const dependentInfosToSave = this.dependentInfos.length > 0 
-              ? this.dependentInfos 
-              : (dependentInfo ? [dependentInfo] : []);
+            console.log('承認完了時の扶養情報保存処理開始');
+            console.log('employeeId:', employeeId);
+            console.log('basicInfo.hasDependent:', basicInfo.hasDependent);
+            console.log('dependentInfosToSave:', JSON.stringify(dependentInfosToSave, null, 2));
+            console.log('dependentInfos:', JSON.stringify(dependentInfos, null, 2));
+            console.log('dependentInfo:', JSON.stringify(dependentInfo, null, 2));
             
-            if (employeeId && basicInfo.hasDependent) {
+            if (employeeId) {
               // 既存の扶養情報を取得
               const existingDependents = await firstValueFrom(
                 this.employeesService.getDependents(employeeId).pipe(take(1))
               );
+              console.log('既存の扶養情報:', existingDependents);
               
               // 既存の扶養情報をすべて削除
               for (const existing of existingDependents) {
                 if (existing.id) {
+                  console.log('既存の扶養情報を削除:', existing.id);
                   await this.employeesService.deleteDependent(employeeId, existing.id);
                 }
               }
               
               // 新しい扶養情報を保存
-              for (const depInfo of dependentInfosToSave) {
-                const hasDependentData = Object.values(depInfo).some(
-                  (value) => value !== '' && value !== null && value !== false && value !== undefined
-                );
-                
-                if (hasDependentData) {
-                  const dependentData: DependentData = {
-                    relationship: depInfo.relationship || undefined,
-                    nameKanji: depInfo.nameKanji || undefined,
-                    nameKana: depInfo.nameKana || undefined,
-                    birthDate: depInfo.birthDate || undefined,
-                    gender: depInfo.gender || undefined,
-                    personalNumber: depInfo.personalNumber || undefined,
-                    basicPensionNumber: depInfo.basicPensionNumber || undefined,
-                    cohabitationType: depInfo.cohabitationType || undefined,
-                    address: depInfo.address || undefined,
-                    occupation: depInfo.occupation || undefined,
-                    annualIncome: depInfo.annualIncome ?? undefined,
-                    dependentStartDate: depInfo.dependentStartDate || undefined,
-                    thirdCategoryFlag: depInfo.thirdCategoryFlag || false,
-                  };
+              // dependentInfosToSaveにデータがある場合は、hasDependentの値に関わらず保存する
+              if (dependentInfosToSave.length > 0) {
+                console.log('新しい扶養情報を保存します。件数:', dependentInfosToSave.length);
+                for (const depInfo of dependentInfosToSave) {
+                  const hasDependentData = Object.values(depInfo).some(
+                    (value) => value !== '' && value !== null && value !== false && value !== undefined
+                  );
                   
-                  await this.employeesService.addOrUpdateDependent(employeeId, dependentData);
+                  console.log('扶養情報データ:', JSON.stringify(depInfo, null, 2));
+                  console.log('hasDependentData:', hasDependentData);
+                  
+                  if (hasDependentData) {
+                    const dependentData: DependentData = {
+                      relationship: depInfo.relationship || undefined,
+                      nameKanji: depInfo.nameKanji || undefined,
+                      nameKana: depInfo.nameKana || undefined,
+                      birthDate: depInfo.birthDate || undefined,
+                      gender: depInfo.gender || undefined,
+                      personalNumber: depInfo.personalNumber || undefined,
+                      basicPensionNumber: depInfo.basicPensionNumber || undefined,
+                      cohabitationType: depInfo.cohabitationType || undefined,
+                      address: depInfo.address || undefined,
+                      occupation: depInfo.occupation || undefined,
+                      annualIncome: depInfo.annualIncome ?? undefined,
+                      dependentStartDate: depInfo.dependentStartDate || undefined,
+                      thirdCategoryFlag: depInfo.thirdCategoryFlag || false,
+                    };
+                    
+                    console.log('保存する扶養情報:', JSON.stringify(dependentData, null, 2));
+                    await this.employeesService.addOrUpdateDependent(employeeId, dependentData);
+                    console.log('扶養情報を保存しました');
+                  } else {
+                    console.log('扶養情報に有効なデータがないためスキップ');
+                  }
                 }
+              } else {
+                console.log('dependentInfosToSaveが空のため、扶養情報は保存しません');
               }
-            } else if (isEdit && employeeId && !basicInfo.hasDependent) {
-              // 編集モードで扶養の有無が「無」になった場合は既存の扶養情報を削除
-              const existingDependents = await firstValueFrom(
-                this.employeesService.getDependents(employeeId).pipe(take(1))
-              );
-              for (const existing of existingDependents) {
-                if (existing.id) {
-                  await this.employeesService.deleteDependent(employeeId, existing.id);
-                }
-              }
+            } else {
+              console.error('employeeIdが取得できませんでした');
             }
           },
           onFailed: () => {
@@ -745,10 +794,18 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         });
 
         if (result) {
-          this.approvalMessage = '承認依頼を送信しました。承認完了後に自動で登録されます。';
+          this.approvalMessage = '承認依頼を送信しました。';
         
         // 通知を送信
           this.pushApprovalNotifications({ ...saved, id: result.requestId });
+          
+          // 編集モードの場合は社員詳細画面に遷移
+          if (this.isEditMode && this.employeeId) {
+            // メッセージを表示してから少し待ってから遷移
+            setTimeout(() => {
+              this.router.navigate(['/employees', this.employeeId]);
+            }, 1000);
+          }
         } else {
           this.approvalMessage = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
         }

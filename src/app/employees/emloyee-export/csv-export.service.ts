@@ -148,9 +148,13 @@ export class CsvExportService {
         { header: '氏名(漢字)', value: (employee) => employee.name },
         { header: '氏名(カナ)', value: (employee) => employee.kana },
         { header: '部署', value: (employee) => employee.department },
-        { header: '郵便番号', value: (employee) => employee.postalCode },
+        { header: '勤務地都道府県', value: (employee) => employee.workPrefecture },
         { header: '生年月日', value: (employee) => this.formatDate(employee.birthDate) },
+        { header: '郵便番号', value: (employee) => employee.postalCode },
         { header: '住所', value: (employee) => employee.address },
+        { header: '個人番号', value: (employee) => employee.personalNumber },
+        { header: '基礎年金番号', value: (employee) => employee.basicPensionNumber },
+        { header: '扶養の有無', value: (employee) => (employee.hasDependent ? 'はい' : 'いいえ') },
       );
     }
 
