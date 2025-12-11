@@ -386,7 +386,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       const date = record.changedAt.slice(0, 10);
       if (this.historyFilters.from && date < this.historyFilters.from) return false;
       if (this.historyFilters.to && date > this.historyFilters.to) return false;
-      if (this.historyFilters.field && record.field !== this.historyFilters.field)
+      if (this.historyFilters.field && !record.field.includes(this.historyFilters.field))
         return false;
       if (
         this.historyFilters.actor &&

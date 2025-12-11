@@ -30,7 +30,7 @@ import {
     convertToRecordArray,
     detectTemplateType,
     ExistingEmployee,
-    expandDependentRows,
+    normalizeEmployeeNoForComparison,
     normalizeHeaders,
     organizeErrors,
     parseCSV,
@@ -110,11 +110,29 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
   selectedChangeId: number | null = null;
 
   async ngOnInit(): Promise<void> {
-    const [employees, flows, user] = await Promise.all([
-      firstValueFrom(this.employeesService.getEmployees()),
+    const [flows, user] = await Promise.all([
       firstValueFrom(this.workflowService.flows$.pipe(take(1))),
       firstValueFrom(this.authService.user$.pipe(take(1))),
     ]);
+    
+    // 既存社員データを取得
+    await this.loadExistingEmployees();
+    
+    this.approvalFlows = flows;
+    this.selectedFlowId = flows[0]?.id ?? null;
+    this.selectedFlow = flows.find((flow) => flow.id === this.selectedFlowId);
+    if (user?.email) {
+      this.applicantId = user.email;
+      this.applicantName = user.displayName ?? user.email;
+    }
+  }
+
+  /**
+   * Firestoreから既存社員データを取得して更新する
+   * CSVアップロード時やデータ更新後に最新データで比較するために使用
+   */
+  private async loadExistingEmployees(): Promise<void> {
+    const employees = await firstValueFrom(this.employeesService.getEmployees());
     
     // 各社員の扶養家族情報を取得
     const employeesWithDependents = await Promise.all(
@@ -130,6 +148,24 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     this.existingEmployees = employeesWithDependents.map(({ emp, dependents }) => {
       // 最初の扶養家族情報を取得（CSVの1行目に含まれる扶養家族情報と比較するため）
       const firstDependent = dependents.length > 0 ? dependents[0] : null;
+      
+      // 全ての扶養家族情報をExistingDependent形式に変換
+      const existingDependents = dependents.map((dep) => ({
+        id: dep.id,
+        relationship: dep.relationship,
+        nameKanji: dep.nameKanji,
+        nameKana: dep.nameKana,
+        birthDate: dep.birthDate,
+        gender: dep.gender,
+        personalNumber: dep.personalNumber,
+        basicPensionNumber: dep.basicPensionNumber,
+        cohabitationType: dep.cohabitationType,
+        address: dep.address,
+        occupation: dep.occupation,
+        annualIncome: dep.annualIncome ?? null,
+        dependentStartDate: dep.dependentStartDate,
+        thirdCategoryFlag: dep.thirdCategoryFlag,
+      }));
       
       return {
         id: emp.id,
@@ -158,6 +194,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         dependentAnnualIncome: firstDependent?.annualIncome ?? undefined,
         dependentStartDate: firstDependent?.dependentStartDate,
         dependentThirdCategoryFlag: firstDependent?.thirdCategoryFlag,
+        dependents: existingDependents, // 全ての扶養家族情報
         standardMonthly: emp.standardMonthly,
         standardBonusAnnualTotal: emp.standardBonusAnnualTotal,
         healthInsuredNumber: emp.healthInsuredNumber,
@@ -173,13 +210,6 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         exemption: emp.exemption,
       };
     });
-    this.approvalFlows = flows;
-    this.selectedFlowId = flows[0]?.id ?? null;
-    this.selectedFlow = flows.find((flow) => flow.id === this.selectedFlowId);
-    if (user?.email) {
-      this.applicantId = user.email;
-      this.applicantName = user.displayName ?? user.email;
-    }
   }
 
   async onFileSelect(event: Event): Promise<void> {
@@ -193,6 +223,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     this.isLoading = true;
 
     try {
+      // CSVファイルを読み込む前に、最新の既存社員データを取得
+      await this.loadExistingEmployees();
+
       const csvText = await this.readFileAsText(file);
       const parsedMatrix = parseCSV(csvText);
       if (parsedMatrix.length === 0) {
@@ -201,34 +234,20 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       }
 
     // すべてのテンプレートで1行目が入力制限、2行目がヘッダー行の形式
-    // 2行目がヘッダー行かどうかを判定
-    let headerRowIndex = 0;
-    if (parsedMatrix.length > 1) {
-      const secondRow = parsedMatrix[1] || [];
-      const secondRowNormalized = normalizeHeaders(secondRow);
-      const secondRowHeaders = new Set(secondRowNormalized.map((h) => h.toLowerCase()));
-      
-      // 2行目がヘッダー行かどうかを判定（特定のヘッダー名が含まれる）
-      if (
-        secondRowHeaders.has('社員番号') ||
-        secondRowHeaders.has('氏名(漢字)') ||
-        secondRowHeaders.has('氏名漢字') ||
-        secondRowHeaders.has('生年月日') ||
-        secondRowHeaders.has('賞与支給日') ||
-        secondRowHeaders.has('算定年度')
-      ) {
-        headerRowIndex = 1;
-      }
+    // 2行目をヘッダー行として扱う
+    if (parsedMatrix.length < 2) {
+      this.handleParseFailure('CSVファイルは1行目が入力制限、2行目がヘッダー行の形式である必要があります');
+      return;
     }
     
+    const headerRowIndex = 1;
     const rawHeaders = parsedMatrix[headerRowIndex];
     const headers = normalizeHeaders(rawHeaders);
     this.templateType = detectTemplateType(headers);
     const dataRows = parsedMatrix.slice(headerRowIndex + 1);
-    // 行番号オフセット：ヘッダー行の次の行からデータが始まるため、headerRowIndex + 2（1行目が1、2行目が2...）
-    const parsedRows = convertToRecordArray(dataRows, headers, headerRowIndex + 2);
-    const expandedRows = expandDependentRows(parsedRows, headers);
-    this.parsedRows = expandedRows;
+    // 行番号オフセット：1行目が入力制限、2行目がヘッダー、3行目からデータが始まるため、3行目が行番号3
+    const parsedRows = convertToRecordArray(dataRows, headers, 3);
+    this.parsedRows = parsedRows;
 
     const validationErrors: ValidationError[] = [];
     if (this.templateType === 'unknown') {
@@ -241,7 +260,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       });
     }
 
-    const validatedRows = validateAllRows(expandedRows, this.templateType, this.existingEmployees);
+    const validatedRows = validateAllRows(parsedRows, this.templateType, this.existingEmployees);
     const rowErrors = validatedRows.flatMap((row) => row.errors);
     const allErrors = organizeErrors([...validationErrors, ...rowErrors]);
     this.errors = this.attachRowContext(allErrors);
@@ -754,7 +773,7 @@ private readFileAsText(file: File): Promise<string> {
             };
             
             const employeeDataRaw: Partial<ShahoEmployee> = {
-              employeeNo: csvData['社員番号'] || '',
+              employeeNo: normalizeEmployeeNoForComparison(csvData['社員番号'] || ''),
               name: csvData['氏名(漢字)'] || csvData['氏名漢字'] || '',
               kana: csvData['氏名(カナ)'] || undefined,
               gender: csvData['性別'] || undefined,
@@ -861,8 +880,8 @@ private readFileAsText(file: File): Promise<string> {
 
           // 月給/賞与支払額同期用テンプレート（payrollテンプレート）の処理
           if (this.templateType === 'payroll') {
-            const employeeNo = csvData['社員番号'] || '';
-            const existingEmployee = this.existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+            const employeeNo = normalizeEmployeeNoForComparison(csvData['社員番号'] || '');
+            const existingEmployee = this.existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === employeeNo);
             
             if (!existingEmployee || !existingEmployee.id) {
               throw new Error(`社員番号 ${employeeNo} の社員が見つかりません`);
@@ -969,68 +988,10 @@ private readFileAsText(file: File): Promise<string> {
       if (failureCount === 0) {
         alert(`${successCount}件の社員データを正常に更新しました。`);
         // 既存社員データを再取得（差分計算に必要なすべてのフィールドを含める）
-        const employees = await firstValueFrom(this.employeesService.getEmployees());
-        
-        // 各社員の扶養家族情報を取得
-        const employeesWithDependents = await Promise.all(
-          employees.map(async (emp) => {
-            if (!emp.id) return { emp, dependents: [] };
-            const dependents = await firstValueFrom(
-              this.employeesService.getDependents(emp.id).pipe(take(1))
-            );
-            return { emp, dependents };
-          })
-        );
-        
-        this.existingEmployees = employeesWithDependents.map(({ emp, dependents }) => {
-          // 最初の扶養家族情報を取得（CSVの1行目に含まれる扶養家族情報と比較するため）
-          const firstDependent = dependents.length > 0 ? dependents[0] : null;
-          
-          return {
-            id: emp.id,
-            employeeNo: emp.employeeNo,
-            name: emp.name,
-            kana: emp.kana,
-            gender: emp.gender,
-            birthDate: emp.birthDate,
-            postalCode: emp.postalCode,
-            address: emp.address,
-            department: emp.department,
-            workPrefecture: emp.workPrefecture,
-            personalNumber: emp.personalNumber,
-            basicPensionNumber: emp.basicPensionNumber,
-            hasDependent: emp.hasDependent,
-            dependentRelationship: firstDependent?.relationship,
-            dependentNameKanji: firstDependent?.nameKanji,
-            dependentNameKana: firstDependent?.nameKana,
-            dependentBirthDate: firstDependent?.birthDate,
-            dependentGender: firstDependent?.gender,
-            dependentPersonalNumber: firstDependent?.personalNumber,
-            dependentBasicPensionNumber: firstDependent?.basicPensionNumber,
-            dependentCohabitationType: firstDependent?.cohabitationType,
-            dependentAddress: firstDependent?.address,
-            dependentOccupation: firstDependent?.occupation,
-            dependentAnnualIncome: firstDependent?.annualIncome ?? undefined,
-            dependentStartDate: firstDependent?.dependentStartDate,
-            dependentThirdCategoryFlag: firstDependent?.thirdCategoryFlag,
-            standardMonthly: emp.standardMonthly,
-            standardBonusAnnualTotal: emp.standardBonusAnnualTotal,
-            healthInsuredNumber: emp.healthInsuredNumber,
-            pensionInsuredNumber: emp.pensionInsuredNumber,
-            insuredNumber: emp.insuredNumber,
-            careSecondInsured: emp.careSecondInsured,
-            healthAcquisition: emp.healthAcquisition,
-            pensionAcquisition: emp.pensionAcquisition,
-            childcareLeaveStart: emp.childcareLeaveStart,
-            childcareLeaveEnd: emp.childcareLeaveEnd,
-            maternityLeaveStart: emp.maternityLeaveStart,
-            maternityLeaveEnd: emp.maternityLeaveEnd,
-            exemption: emp.exemption,
-          };
-        });
+        await this.loadExistingEmployees();
         // 差分を再計算
         const validatedRows = validateAllRows(this.parsedRows, this.templateType, this.existingEmployees);
-        this.calculateDifferences(validatedRows);
+        await this.calculateDifferences(validatedRows);
       } else {
         const errors = results
           .filter((r) => r.status === 'rejected')
@@ -1117,10 +1078,10 @@ private readFileAsText(file: File): Promise<string> {
 
           if (templateType === 'payroll') {
             // payrollテンプレートの場合は既存社員のIDを取得
-            const employeeNo = csvData['社員番号'] || '';
+            const employeeNo = normalizeEmployeeNoForComparison(csvData['社員番号'] || '');
             // 既存社員データを再取得
             const employees = await firstValueFrom(this.employeesService.getEmployees());
-            const existingEmployee = employees.find((emp) => emp.employeeNo === employeeNo);
+            const existingEmployee = employees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === employeeNo);
 
             if (!existingEmployee || !existingEmployee.id) {
               throw new Error(`社員番号 ${employeeNo} の社員が見つかりません`);
@@ -1130,7 +1091,7 @@ private readFileAsText(file: File): Promise<string> {
           } else {
             // その他のテンプレートの場合は社員情報を更新
             const employeeDataRaw: Partial<ShahoEmployee> = {
-              employeeNo: csvData['社員番号'] || '',
+              employeeNo: normalizeEmployeeNoForComparison(csvData['社員番号'] || ''),
               name: csvData['氏名(漢字)'] || csvData['氏名漢字'] || '',
               kana: csvData['氏名(カナ)'] || undefined,
               gender: csvData['性別'] || undefined,
@@ -1237,9 +1198,9 @@ private readFileAsText(file: File): Promise<string> {
 
           // 月給/賞与支払額同期用テンプレート（payrollテンプレート）の処理
           if (templateType === 'payroll') {
-            const employeeNo = csvData['社員番号'] || '';
+            const employeeNo = normalizeEmployeeNoForComparison(csvData['社員番号'] || '');
             const employees = await firstValueFrom(this.employeesService.getEmployees());
-            const existingEmployee = employees.find((emp) => emp.employeeNo === employeeNo);
+            const existingEmployee = employees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === employeeNo);
 
             if (!existingEmployee || !existingEmployee.id) {
               throw new Error(`社員番号 ${employeeNo} の社員が見つかりません`);
@@ -1589,8 +1550,8 @@ private readFileAsText(file: File): Promise<string> {
   }
 
   downloadNewEmployeeTemplate(): void {
-    // 扶養家族を1行内で複数セット入力できるよう、同じカラム群を3セット用意
-    const baseHeaders = [
+    // 複数の扶養家族がある場合は、同じ社員番号で複数行に分けて記入する形式
+    const headers = [
       '社員番号',
       '氏名(漢字)',
       '氏名(カナ)',
@@ -1612,9 +1573,22 @@ private readFileAsText(file: File): Promise<string> {
       '産休開始日',
       '産休終了日',
       '扶養の有無',
+      '扶養 続柄',
+      '扶養 氏名(漢字)',
+      '扶養 氏名(カナ)',
+      '扶養 生年月日',
+      '扶養 性別',
+      '扶養 個人番号',
+      '扶養 基礎年金番号',
+      '扶養 同居区分',
+      '扶養 住所（別居の場合のみ入力）',
+      '扶養 職業',
+      '扶養 年収（見込みでも可）',
+      '扶養 被扶養者になった日',
+      '扶養 国民年金第3号被保険者該当フラグ',
     ];
 
-    const baseRestrictions = [
+    const restrictions = [
       '(必須)',
       '(必須)',
       '',
@@ -1636,25 +1610,6 @@ private readFileAsText(file: File): Promise<string> {
       'YYYY/MM/DD',
       'YYYY/MM/DD',
       '有/無/0/1/true/false',
-    ];
-
-    const dependentHeaders = [
-      '扶養 続柄',
-      '扶養 氏名(漢字)',
-      '扶養 氏名(カナ)',
-      '扶養 生年月日',
-      '扶養 性別',
-      '扶養 個人番号',
-      '扶養 基礎年金番号',
-      '扶養 同居区分',
-      '扶養 住所（別居の場合のみ入力）',
-      '扶養 職業',
-      '扶養 年収（見込みでも可）',
-      '扶養 被扶養者になった日',
-      '扶養 国民年金第3号被保険者該当フラグ',
-    ];
-
-    const dependentRestrictions = [
       '',
       '',
       '',
@@ -1669,19 +1624,6 @@ private readFileAsText(file: File): Promise<string> {
       'YYYY/MM/DD',
       '0/1/true/false',
     ];
-
-    const maxDependents = 3;
-    const expandedDependentHeaders: string[] = [];
-    const expandedDependentRestrictions: string[] = [];
-    for (let i = 1; i <= maxDependents; i += 1) {
-      dependentHeaders.forEach((header, idx) => {
-        expandedDependentHeaders.push(`${header}${i}`);
-        expandedDependentRestrictions.push(dependentRestrictions[idx] ?? '');
-      });
-    }
-
-    const headers = [...baseHeaders, ...expandedDependentHeaders];
-    const restrictions = [...baseRestrictions, ...expandedDependentRestrictions];
     
     // CSVコンテンツを作成（UTF-8 BOM付きでExcel互換性を確保）
     const csvContent = '\uFEFF' + restrictions.join(',') + '\n' + headers.join(',') + '\n';

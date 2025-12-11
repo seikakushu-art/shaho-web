@@ -314,10 +314,12 @@
                     </div>
                     <div>
                         <label>項目名</label>
-                        <select [(ngModel)]="historyFilters.field">
-                            <option value="">すべて</option>
-                            <option *ngFor="let field of historyFields" [value]="field">{{ field }}</option>
-                        </select>
+                        <input 
+                            type="text" 
+                            [(ngModel)]="historyFilters.field" 
+                            placeholder="項目名を入力してください"
+                            autocomplete="off"
+                        />
                     </div>
                     <div>
                         <label>操作者</label>
