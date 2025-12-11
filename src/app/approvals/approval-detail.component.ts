@@ -145,16 +145,23 @@ export class ApprovalDetailComponent implements OnDestroy {
     this.approval$,
   ]).pipe(
     map(([roleAllowed, user, approval]) => {
-      if (!roleAllowed || !approval?.currentStep) return false;
+      if (!roleAllowed || !approval?.flowSnapshot) return false;
       const email = user?.email?.toLowerCase();
       if (!email) return false;
 
-      const flowStep = approval.flowSnapshot?.steps.find((s) => s.order === approval.currentStep);
-      const candidateIds = flowStep?.candidates?.map((c) => c.id.toLowerCase()) ?? [];
-      const currentStepState = approval.steps.find((s) => s.stepOrder === approval.currentStep);
-      const assignedApprover = currentStepState?.approverId?.toLowerCase();
+      // いずれかのステップの承認候補者であればボタンを押せるようにする
+      // 実際の承認処理で前のステップのチェックを行う
+      for (const step of approval.flowSnapshot.steps) {
+        const candidateIds = step.candidates?.map((c) => c.id.toLowerCase()) ?? [];
+        const stepState = approval.steps.find((s) => s.stepOrder === step.order);
+        const assignedApprover = stepState?.approverId?.toLowerCase();
+        
+        if (candidateIds.includes(email) || assignedApprover === email) {
+          return true;
+        }
+      }
 
-      return candidateIds.includes(email) || assignedApprover === email;
+      return false;
     }),
   );
   readonly isOperator$ = this.authService.hasAnyRole([RoleKey.Operator]);
@@ -746,6 +753,40 @@ export class ApprovalDetailComponent implements OnDestroy {
       return;
     }
 
+    // ユーザーがどのステップの候補者かを確認
+    const userEmail = user?.email?.toLowerCase();
+    if (!userEmail) return;
+
+    let userStepOrder: number | undefined;
+    for (const step of this.approval.flowSnapshot?.steps ?? []) {
+      const candidateIds = step.candidates?.map((c) => c.id.toLowerCase()) ?? [];
+      const stepState = this.approval.steps.find((s) => s.stepOrder === step.order);
+      const assignedApprover = stepState?.approverId?.toLowerCase();
+      
+      if (candidateIds.includes(userEmail) || assignedApprover === userEmail) {
+        userStepOrder = step.order;
+        break;
+      }
+    }
+
+    if (userStepOrder === undefined) {
+      this.addToast('承認候補者ではないため操作できません。', 'warning');
+      return;
+    }
+
+    // 前のステップが承認されているかチェック
+    if (userStepOrder > 1) {
+      for (let i = 1; i < userStepOrder; i++) {
+        const previousStep = this.approval.steps.find((s) => s.stepOrder === i);
+        if (!previousStep || previousStep.status !== 'approved') {
+          const previousFlowStep = this.approval.flowSnapshot?.steps.find((s) => s.order === i);
+          const stepName = previousFlowStep?.name || `ステップ${i}`;
+          this.addToast(`ステップ${i}（${stepName}）が承認されていないため、ステップ${userStepOrder}を承認できません。`, 'warning');
+          return;
+        }
+      }
+    }
+
     // 承認処理前に現在のステップ番号を保存
     const approvedStep = this.approval.currentStep;
 
@@ -861,7 +902,8 @@ export class ApprovalDetailComponent implements OnDestroy {
       this.notificationService.pushBatch([applicantNotification, ...nextStepNotifications]);
     } catch (error) {
       console.error('approval action failed', error);
-      this.addToast('承認処理中にエラーが発生しました。', 'warning');
+      const errorMessage = error instanceof Error ? error.message : '承認処理中にエラーが発生しました。';
+      this.addToast(errorMessage, 'warning');
     }
   }
 

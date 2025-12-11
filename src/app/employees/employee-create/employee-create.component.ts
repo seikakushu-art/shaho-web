@@ -38,7 +38,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     isEditMode = false;
     employeeId: string | null = null;
     originalEmployee: ShahoEmployee | null = null; // 編集前の既存データを保存
-    originalDependentInfo: {
+    originalDependentInfos: Array<{
       relationship: string;
       nameKanji: string;
       nameKana: string;
@@ -52,7 +52,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       annualIncome: number | null;
       dependentStartDate: string;
       thirdCategoryFlag: boolean;
-    } | null = null; // 編集前の扶養情報を保存
+    }> = []; // 編集前の扶養情報を保存（複数件対応）
     isLoading = false;
     sendingApproval = false;
     approvalMessage = '';
@@ -330,15 +330,15 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             thirdCategoryFlag: dependent.thirdCategoryFlag ?? false,
           }));
           // 元の扶養情報を保存（配列のコピー）
-          this.originalDependentInfo = this.dependentInfos.length > 0 ? { ...this.dependentInfos[0] } : null;
+          this.originalDependentInfos = this.dependentInfos.map(dep => ({ ...dep }));
         } catch (error) {
           console.error('扶養情報の読み込みに失敗しました:', error);
           this.dependentInfos = [];
-          this.originalDependentInfo = null;
+          this.originalDependentInfos = [];
         }
       } else {
         this.dependentInfos = [];
-        this.originalDependentInfo = null;
+        this.originalDependentInfos = [];
       }
     }
 
@@ -1113,28 +1113,16 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       const newHasDependent = this.basicInfo.hasDependent;
       const hasDependentChanged = originalHasDependent !== newHasDependent;
 
-      if (hasDependentChanged || newHasDependent) {
-        // 既存の扶養情報を取得（編集モードの場合）
-        let originalDependents: Array<{
-          relationship: string;
-          nameKanji: string;
-          nameKana: string;
-          birthDate: string;
-          gender: string;
-          personalNumber: string;
-          basicPensionNumber: string;
-          cohabitationType: string;
-          address: string;
-          occupation: string;
-          annualIncome: number | null;
-          dependentStartDate: string;
-          thirdCategoryFlag: boolean;
-        }> = [];
-        
-        if (this.originalDependentInfo) {
-          originalDependents = [this.originalDependentInfo];
-        }
+      // 既存の扶養情報を取得（編集モードの場合）
+      const originalDependents = [...this.originalDependentInfos];
 
+      // 扶養の有無が変更された場合のみ差分を追加
+      if (hasDependentChanged) {
+        changes.push({ field: '扶養の有無', oldValue: originalHasDependent ? '有' : '無', newValue: newHasDependent ? '有' : '無' });
+      }
+
+      // 扶養情報が存在する場合のみ、実際の変更をチェック
+      if (newHasDependent || originalHasDependent) {
         // 新しい扶養情報と既存の扶養情報を比較
         const maxLength = Math.max(this.dependentInfos.length, originalDependents.length);
         for (let i = 0; i < maxLength; i++) {
@@ -1143,54 +1131,79 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           const oldDep = originalDependents[i];
 
           if (!oldDep && newDep) {
-            // 新規追加
-            if (newDep.relationship) changes.push({ field: `${prefix}続柄`, oldValue: null, newValue: newDep.relationship });
-            if (newDep.nameKanji) changes.push({ field: `${prefix}氏名(漢字)`, oldValue: null, newValue: newDep.nameKanji });
-            if (newDep.nameKana) changes.push({ field: `${prefix}氏名(カナ)`, oldValue: null, newValue: newDep.nameKana });
-            // ... 他のフィールドも同様に追加
+            // 新規追加：有効なデータがある場合のみ差分を追加
+            const hasNewData = Object.values(newDep).some(
+              (value) => value !== '' && value !== null && value !== false && value !== undefined
+            );
+            if (hasNewData) {
+              if (newDep.relationship) changes.push({ field: `${prefix}続柄`, oldValue: null, newValue: newDep.relationship });
+              if (newDep.nameKanji) changes.push({ field: `${prefix}氏名(漢字)`, oldValue: null, newValue: newDep.nameKanji });
+              if (newDep.nameKana) changes.push({ field: `${prefix}氏名(カナ)`, oldValue: null, newValue: newDep.nameKana });
+              if (newDep.birthDate) changes.push({ field: `${prefix}生年月日`, oldValue: null, newValue: newDep.birthDate });
+              if (newDep.gender) changes.push({ field: `${prefix}性別`, oldValue: null, newValue: newDep.gender });
+              if (newDep.personalNumber) changes.push({ field: `${prefix}個人番号`, oldValue: null, newValue: newDep.personalNumber });
+              if (newDep.basicPensionNumber) changes.push({ field: `${prefix}基礎年金番号`, oldValue: null, newValue: newDep.basicPensionNumber });
+              if (newDep.cohabitationType) changes.push({ field: `${prefix}同居区分`, oldValue: null, newValue: newDep.cohabitationType });
+              if (newDep.address) changes.push({ field: `${prefix}住所`, oldValue: null, newValue: newDep.address });
+              if (newDep.occupation) changes.push({ field: `${prefix}職業`, oldValue: null, newValue: newDep.occupation });
+              if (newDep.annualIncome !== null && newDep.annualIncome !== undefined) {
+                changes.push({ field: `${prefix}年収`, oldValue: null, newValue: String(newDep.annualIncome) });
+              }
+              if (newDep.dependentStartDate) changes.push({ field: `${prefix}開始日`, oldValue: null, newValue: newDep.dependentStartDate });
+              changes.push({
+                field: `${prefix}第3号被保険者`,
+                oldValue: null,
+                newValue: newDep.thirdCategoryFlag ? 'はい' : 'いいえ',
+              });
+            }
           } else if (oldDep && !newDep) {
-            // 削除
-            changes.push({ field: `${prefix}削除`, oldValue: oldDep.nameKanji || 'あり', newValue: null });
+            // 削除：有効なデータがあった場合のみ差分を追加
+            const hasOldData = Object.values(oldDep).some(
+              (value) => value !== '' && value !== null && value !== false && value !== undefined
+            );
+            if (hasOldData) {
+              changes.push({ field: `${prefix}削除`, oldValue: oldDep.nameKanji || 'あり', newValue: null });
+            }
           } else if (oldDep && newDep) {
-            // 変更
+            // 変更：実際に値が異なる場合のみ差分を追加
             if (oldDep.relationship !== newDep.relationship) {
               changes.push({ field: `${prefix}続柄`, oldValue: oldDep.relationship || null, newValue: newDep.relationship || null });
-        }
+            }
             if (oldDep.nameKanji !== newDep.nameKanji) {
               changes.push({ field: `${prefix}氏名(漢字)`, oldValue: oldDep.nameKanji || null, newValue: newDep.nameKanji || null });
-        }
+            }
             if (oldDep.nameKana !== newDep.nameKana) {
               changes.push({ field: `${prefix}氏名(カナ)`, oldValue: oldDep.nameKana || null, newValue: newDep.nameKana || null });
-        }
+            }
             const oldBirthDate = this.formatDateForInput(oldDep.birthDate);
             if (oldBirthDate !== newDep.birthDate) {
               changes.push({ field: `${prefix}生年月日`, oldValue: oldBirthDate || null, newValue: newDep.birthDate || null });
-        }
+            }
             if (oldDep.gender !== newDep.gender) {
               changes.push({ field: `${prefix}性別`, oldValue: oldDep.gender || null, newValue: newDep.gender || null });
-        }
+            }
             if (oldDep.personalNumber !== newDep.personalNumber) {
               changes.push({ field: `${prefix}個人番号`, oldValue: oldDep.personalNumber || null, newValue: newDep.personalNumber || null });
-        }
+            }
             if (oldDep.basicPensionNumber !== newDep.basicPensionNumber) {
               changes.push({ field: `${prefix}基礎年金番号`, oldValue: oldDep.basicPensionNumber || null, newValue: newDep.basicPensionNumber || null });
-        }
+            }
             if (oldDep.cohabitationType !== newDep.cohabitationType) {
               changes.push({ field: `${prefix}同居区分`, oldValue: oldDep.cohabitationType || null, newValue: newDep.cohabitationType || null });
-        }
+            }
             if (oldDep.address !== newDep.address) {
               changes.push({ field: `${prefix}住所`, oldValue: oldDep.address || null, newValue: newDep.address || null });
-        }
+            }
             if (oldDep.occupation !== newDep.occupation) {
               changes.push({ field: `${prefix}職業`, oldValue: oldDep.occupation || null, newValue: newDep.occupation || null });
-        }
+            }
             if ((oldDep.annualIncome ?? null) !== newDep.annualIncome) {
               changes.push({ field: `${prefix}年収`, oldValue: oldDep.annualIncome !== null ? String(oldDep.annualIncome) : null, newValue: newDep.annualIncome !== null ? String(newDep.annualIncome) : null });
-        }
+            }
             const oldStartDate = this.formatDateForInput(oldDep.dependentStartDate);
             if (oldStartDate !== newDep.dependentStartDate) {
               changes.push({ field: `${prefix}開始日`, oldValue: oldStartDate || null, newValue: newDep.dependentStartDate || null });
-        }
+            }
             if ((oldDep.thirdCategoryFlag ?? false) !== newDep.thirdCategoryFlag) {
               changes.push({ field: `${prefix}第3号被保険者`, oldValue: (oldDep.thirdCategoryFlag ?? false) ? 'はい' : 'いいえ', newValue: newDep.thirdCategoryFlag ? 'はい' : 'いいえ' });
             }

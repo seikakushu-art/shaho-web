@@ -40,6 +40,10 @@
     padding: 10px 8px;
     border-bottom: 1px solid #e1e4e8;
   }
+
+  th:nth-child(2) {
+    white-space: nowrap;
+  }
   
   tr.active {
     background: #f0f9ff;

@@ -169,7 +169,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       
       return {
         id: emp.id,
-        employeeNo: emp.employeeNo,
+        employeeNo: normalizeEmployeeNoForComparison(emp.employeeNo || ''),
         name: emp.name,
         kana: emp.kana,
         gender: emp.gender,
@@ -743,7 +743,8 @@ private readFileAsText(file: File): Promise<string> {
           if (this.templateType === 'payroll') {
             // payrollテンプレートの場合は既存社員のIDを取得
             const employeeNo = csvData['社員番号'] || '';
-            const existingEmployee = this.existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+            const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
+            const existingEmployee = this.existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === normalizedEmployeeNo);
             
             if (!existingEmployee || !existingEmployee.id) {
               throw new Error(`社員番号 ${employeeNo} の社員が見つかりません`);
@@ -881,7 +882,7 @@ private readFileAsText(file: File): Promise<string> {
           // 月給/賞与支払額同期用テンプレート（payrollテンプレート）の処理
           if (this.templateType === 'payroll') {
             const employeeNo = normalizeEmployeeNoForComparison(csvData['社員番号'] || '');
-            const existingEmployee = this.existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === employeeNo);
+            const existingEmployee = this.existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === employeeNo);
             
             if (!existingEmployee || !existingEmployee.id) {
               throw new Error(`社員番号 ${employeeNo} の社員が見つかりません`);
@@ -1341,7 +1342,8 @@ private readFileAsText(file: File): Promise<string> {
       // payrollテンプレートの場合は給与データの差分も計算
       if (this.templateType === 'payroll' && diffResult.existingEmployee) {
         const employeeNo = parsedRow.data['社員番号'] || '';
-        const existingEmployee = this.existingEmployees.find((emp) => emp.employeeNo === employeeNo);
+        const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
+        const existingEmployee = this.existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === normalizedEmployeeNo);
         if (existingEmployee?.id) {
           const payrollChanges = await this.calculatePayrollDifferences(parsedRow, existingEmployee.id);
           diffResult = {
@@ -1398,10 +1400,10 @@ private readFileAsText(file: File): Promise<string> {
         status = 'ok';
       }
 
-      // 既存社員のIDを取得
+      // 既存社員のIDを取得（正規化された社員番号で比較）
           const existingEmployeeId = diffResult.existingEmployee
             ? this.existingEmployees.find(
-                (emp) => emp.employeeNo === diffResult.existingEmployee?.employeeNo,
+                (emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === normalizeEmployeeNoForComparison(diffResult.existingEmployee?.employeeNo || ''),
               )?.['id'] as string | undefined
             : undefined;
 

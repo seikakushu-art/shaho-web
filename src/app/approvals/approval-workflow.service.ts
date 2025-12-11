@@ -342,8 +342,20 @@ export class ApprovalWorkflowService {
       approvedAt: Timestamp.fromDate(new Date()),
     };
 
-    const nextStep = steps[currentIndex + 1];
-    const isFinalStep = !nextStep;
+    // 最終ステップかどうかをflowSnapshot.stepsの長さで判定
+    const flowSteps = request.flowSnapshot.steps;
+    const currentFlowStepIndex = flowSteps.findIndex((s) => s.order === request.currentStep);
+    const isFinalStep = currentFlowStepIndex >= 0 && currentFlowStepIndex === flowSteps.length - 1;
+
+    // 次のステップをflowSnapshotから取得
+    const nextFlowStep = currentFlowStepIndex >= 0 && currentFlowStepIndex < flowSteps.length - 1
+      ? flowSteps[currentFlowStepIndex + 1]
+      : undefined;
+    
+    // 次のステップのステップ状態を取得
+    const nextStep = nextFlowStep
+      ? steps.find((s) => s.stepOrder === nextFlowStep.order)
+      : undefined;
 
     const status: ApprovalRequestStatus =
       action === 'remand' ? 'remanded' : isFinalStep ? 'approved' : 'pending';
@@ -357,7 +369,7 @@ export class ApprovalWorkflowService {
       ...request,
       steps,
       status,
-      currentStep: status === 'pending' ? nextStep.stepOrder : undefined,
+      currentStep: status === 'pending' && nextFlowStep ? nextFlowStep.order : undefined,
       updatedAt: Timestamp.fromDate(new Date()),
       attachments: [...(request.attachments ?? []), ...attachments],
       histories,
@@ -366,10 +378,10 @@ export class ApprovalWorkflowService {
     const saved = await this.saveRequest(updatedRequest);
 
     const nextAssignees =
-      status === 'pending'
+      status === 'pending' && nextFlowStep
         ? nextStep?.approverId
           ? [nextStep.approverId]
-          : request.flowSnapshot.steps[currentIndex + 1]?.candidates.map((c) => c.id) ?? []
+          : nextFlowStep.candidates.map((c) => c.id) ?? []
         : [];
 
     return { request: saved, nextAssignees };

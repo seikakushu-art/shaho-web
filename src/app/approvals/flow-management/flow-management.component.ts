@@ -158,7 +158,7 @@ export class FlowManagementComponent implements OnInit, OnDestroy {
 
   async deleteFlow(flow: ApprovalFlow) {
     if (!flow.id) return;
-    if (!confirm('この承認フローを削除しますか？関連申請は参照できなくなります。')) return;
+    if (!confirm('この承認フローを削除しますか？')) return;
 
     this.loading = true;
     try {

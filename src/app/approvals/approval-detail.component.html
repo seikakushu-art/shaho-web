@@ -230,7 +230,7 @@
       [(ngModel)]="approvalComment"
       rows="4"
       placeholder="確認内容や差戻し理由を入力してください"
-      [disabled]="current.status !== 'pending' || !(canApprove$ | async)"
+      [disabled]="current.status !== 'pending'"
       maxlength="500"
     ></textarea>
 
@@ -239,7 +239,7 @@
         type="button"
         class="ghost"
         (click)="saveApproval('remand')"
-        [disabled]="current.status !== 'pending' || !(canApprove$ | async)"
+        [disabled]="current.status !== 'pending'"
       >
         差戻し
       </button>
@@ -247,7 +247,7 @@
         type="button"
         class="primary"
         (click)="saveApproval('approve')"
-        [disabled]="current.status !== 'pending' || !(canApprove$ | async)"
+        [disabled]="current.status !== 'pending'"
       >
         承認
       </button>
