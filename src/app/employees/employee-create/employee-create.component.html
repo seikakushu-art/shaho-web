@@ -149,11 +149,20 @@
   
         <div class="grid three-col">
           <div>
-            <label>標準報酬月額</label>
+            <label>健保標準報酬月額</label>
             <input
               type="number"
-              name="standardMonthly"
-              [(ngModel)]="socialInsurance.standardMonthly"
+              name="healthStandardMonthly"
+              [(ngModel)]="socialInsurance.healthStandardMonthly"
+              [readonly]="!editMode"
+            />
+          </div>
+          <div>
+            <label>厚年標準報酬月額</label>
+            <input
+              type="number"
+              name="welfareStandardMonthly"
+              [(ngModel)]="socialInsurance.welfareStandardMonthly"
               [readonly]="!editMode"
             />
           </div>

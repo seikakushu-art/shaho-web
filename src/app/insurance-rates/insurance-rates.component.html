@@ -55,6 +55,9 @@
           <div>
             <h2>都道府県別健康保険料率</h2>
           </div>
+          <div *ngIf="selectedHealthType === '組合健保'">
+            <p class="hint" style="color: #94a3b8;">組合健保の場合は、加入している健康保険組合ごとに保険料率が異なるため、利用者が自社の料率を登録します。</p>
+          </div>
         </div>
         <div class="table" formArrayName="healthInsuranceRates">
           <div class="table-row header">

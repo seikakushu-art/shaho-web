@@ -194,10 +194,14 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
                 hasDependent: result.data.employeeData.basicInfo?.hasDependent ?? false,
                 postalCode: result.data.employeeData.basicInfo?.postalCode ?? '',
               };
+              const incomingInsurance = result.data.employeeData.socialInsurance;
+              const healthStandardMonthly = incomingInsurance.healthStandardMonthly ?? incomingInsurance.standardMonthly ?? 0;
+              const welfareStandardMonthly = incomingInsurance.welfareStandardMonthly ?? healthStandardMonthly;
               this.socialInsurance = {
-                ...result.data.employeeData.socialInsurance,
-                healthStandardMonthly: result.data.employeeData.socialInsurance.healthStandardMonthly ?? result.data.employeeData.socialInsurance.standardMonthly ?? 0,
-                welfareStandardMonthly: result.data.employeeData.socialInsurance.welfareStandardMonthly ?? result.data.employeeData.socialInsurance.healthStandardMonthly ?? result.data.employeeData.socialInsurance.standardMonthly ?? 0,
+                ...incomingInsurance,
+                healthStandardMonthly,
+                welfareStandardMonthly,
+                standardMonthly: healthStandardMonthly,
               };
               // 承認リクエストの扶養情報を読み込み（複数件に対応）
               const dependentInfosFromRequest = result.data.employeeData.dependentInfos;
@@ -291,17 +295,15 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       };
 
       // 社会保険情報を設定（詳細画面と同じロジック）
+      const healthStandardMonthly = employee.healthStandardMonthly ?? employee.standardMonthly ?? 0;
+    const welfareStandardMonthly = employee.welfareStandardMonthly ?? healthStandardMonthly;
     this.socialInsurance = {
       ...this.socialInsurance,
       pensionOffice: '',
       officeName: '',
-      standardMonthly: employee.healthStandardMonthly ?? employee.standardMonthly ?? 0,
-      healthStandardMonthly: employee.healthStandardMonthly ?? employee.standardMonthly ?? 0,
-      welfareStandardMonthly:
-        employee.welfareStandardMonthly ??
-        employee.healthStandardMonthly ??
-        employee.standardMonthly ??
-        0,
+      standardMonthly: healthStandardMonthly,
+      healthStandardMonthly,
+      welfareStandardMonthly,
       healthCumulative: employee.standardBonusAnnualTotal ?? 0,
       healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
       pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
@@ -542,23 +544,17 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
 
         // 一時保存用の社員データ
         // dependentInfoは後方互換性のため残すが、dependentInfos配列も保存
+        const healthStandardMonthly =
+        this.socialInsurance.healthStandardMonthly || this.socialInsurance.standardMonthly || 0;
+      const welfareStandardMonthly =
+        this.socialInsurance.welfareStandardMonthly || healthStandardMonthly;
         const employeeData = {
           basicInfo: { ...this.basicInfo },
           socialInsurance: {
             ...this.socialInsurance,
-            healthStandardMonthly:
-              this.socialInsurance.healthStandardMonthly ||
-              this.socialInsurance.standardMonthly ||
-              0,
-            welfareStandardMonthly:
-              this.socialInsurance.welfareStandardMonthly ||
-              this.socialInsurance.healthStandardMonthly ||
-              this.socialInsurance.standardMonthly ||
-              0,
-            standardMonthly:
-              this.socialInsurance.healthStandardMonthly ||
-              this.socialInsurance.standardMonthly ||
-              0,
+            healthStandardMonthly,
+            welfareStandardMonthly,
+            standardMonthly: healthStandardMonthly,
           },
           dependentInfo: this.dependentInfos.length > 0 ? { ...this.dependentInfos[0] } : undefined,
           // dependentInfosは空の配列でも保存する（undefinedではなく空配列として保存）
@@ -647,6 +643,10 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             }
 
             const { basicInfo, socialInsurance, dependentInfo, dependentInfos } = approvedRequest.employeeData;
+            const healthStandardMonthly =
+              socialInsurance.healthStandardMonthly ?? socialInsurance.standardMonthly;
+            const welfareStandardMonthly =
+              socialInsurance.welfareStandardMonthly ?? healthStandardMonthly;
 
             // employeeDataをShahoEmployee形式に変換
             const employeeData: ShahoEmployee = {
@@ -662,12 +662,9 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
               personalNumber: basicInfo.myNumber || undefined,
               basicPensionNumber: basicInfo.basicPensionNumber || undefined,
               hasDependent: basicInfo.hasDependent || false,
-              healthStandardMonthly:
-              socialInsurance.healthStandardMonthly || socialInsurance.standardMonthly || undefined,
-            welfareStandardMonthly:
-              socialInsurance.welfareStandardMonthly || socialInsurance.healthStandardMonthly || socialInsurance.standardMonthly || undefined,
-            standardMonthly:
-              socialInsurance.healthStandardMonthly || socialInsurance.standardMonthly || undefined,
+              healthStandardMonthly: healthStandardMonthly || undefined,
+              welfareStandardMonthly: welfareStandardMonthly || undefined,
+              standardMonthly: healthStandardMonthly || undefined,
               healthInsuredNumber: socialInsurance.healthInsuredNumber || undefined,
               pensionInsuredNumber: socialInsurance.pensionInsuredNumber || undefined,
               careSecondInsured: socialInsurance.careSecondInsured || false,
@@ -950,8 +947,11 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       if (this.socialInsurance.officeName) {
         changes.push({ field: '事業所名', oldValue: null, newValue: this.socialInsurance.officeName });
       }
-      if (this.socialInsurance.standardMonthly !== 0) {
-        changes.push({ field: '標準報酬月額', oldValue: null, newValue: String(this.socialInsurance.standardMonthly) });
+      if (this.socialInsurance.healthStandardMonthly !== 0) {
+        changes.push({ field: '健保標準報酬月額', oldValue: null, newValue: String(this.socialInsurance.healthStandardMonthly) });
+      }
+      if (this.socialInsurance.welfareStandardMonthly !== 0) {
+        changes.push({ field: '厚年標準報酬月額', oldValue: null, newValue: String(this.socialInsurance.welfareStandardMonthly) });
       }
       if (this.socialInsurance.healthCumulative !== 0) {
         changes.push({ field: '標準賞与額累計', oldValue: null, newValue: String(this.socialInsurance.healthCumulative) });
@@ -1096,8 +1096,24 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       }
 
       // 社会保険情報の差分
-      if ((original.standardMonthly ?? 0) !== this.socialInsurance.standardMonthly) {
-        changes.push({ field: '標準報酬月額', oldValue: original.standardMonthly ? String(original.standardMonthly) : null, newValue: this.socialInsurance.standardMonthly ? String(this.socialInsurance.standardMonthly) : null });
+      const originalHealthStandardMonthly = original.healthStandardMonthly ?? original.standardMonthly ?? 0;
+      const originalWelfareStandardMonthly = original.welfareStandardMonthly ?? originalHealthStandardMonthly;
+      const newHealthStandardMonthly = this.socialInsurance.healthStandardMonthly ?? this.socialInsurance.standardMonthly ?? 0;
+      const newWelfareStandardMonthly = this.socialInsurance.welfareStandardMonthly ?? newHealthStandardMonthly;
+
+      if (originalHealthStandardMonthly !== newHealthStandardMonthly) {
+        changes.push({
+          field: '健保標準報酬月額',
+          oldValue: originalHealthStandardMonthly ? String(originalHealthStandardMonthly) : null,
+          newValue: newHealthStandardMonthly ? String(newHealthStandardMonthly) : null,
+        });
+      }
+      if (originalWelfareStandardMonthly !== newWelfareStandardMonthly) {
+        changes.push({
+          field: '厚年標準報酬月額',
+          oldValue: originalWelfareStandardMonthly ? String(originalWelfareStandardMonthly) : null,
+          newValue: newWelfareStandardMonthly ? String(newWelfareStandardMonthly) : null,
+        });
       }
       if ((original.standardBonusAnnualTotal ?? 0) !== this.socialInsurance.healthCumulative) {
         changes.push({ field: '標準賞与額累計', oldValue: original.standardBonusAnnualTotal ? String(original.standardBonusAnnualTotal) : null, newValue: this.socialInsurance.healthCumulative ? String(this.socialInsurance.healthCumulative) : null });

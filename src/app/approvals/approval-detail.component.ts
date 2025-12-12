@@ -290,6 +290,9 @@ export class ApprovalDetailComponent implements OnDestroy {
       throw new Error('社員番号または氏名が不足しています');
     }
 
+    const healthStandardMonthly = socialInsurance?.healthStandardMonthly ?? socialInsurance?.standardMonthly;
+    const welfareStandardMonthly = socialInsurance?.welfareStandardMonthly ?? healthStandardMonthly;
+
     const employeePayload: ShahoEmployee = {
       employeeNo: basicInfo.employeeNo,
       name: basicInfo.name,
@@ -303,7 +306,9 @@ export class ApprovalDetailComponent implements OnDestroy {
       personalNumber: basicInfo.myNumber || undefined,
       basicPensionNumber: basicInfo.basicPensionNumber || undefined,
       hasDependent: basicInfo.hasDependent ?? false,
-      standardMonthly: socialInsurance?.standardMonthly || undefined,
+      healthStandardMonthly: healthStandardMonthly || undefined,
+      welfareStandardMonthly: welfareStandardMonthly || undefined,
+      standardMonthly: healthStandardMonthly || undefined,
       standardBonusAnnualTotal: socialInsurance?.healthCumulative || undefined,
       healthInsuredNumber: socialInsurance?.healthInsuredNumber || undefined,
       pensionInsuredNumber: socialInsurance?.pensionInsuredNumber || undefined,
@@ -443,6 +448,8 @@ export class ApprovalDetailComponent implements OnDestroy {
             employeeId = existingEmployee.id;
           } else {
             // その他のテンプレートの場合は社員情報を更新
+            const healthStandardMonthly = toNumber(csvData['健保標準報酬月額'] || csvData['標準報酬月額']);
+            const welfareStandardMonthly = toNumber(csvData['厚年標準報酬月額']) ?? healthStandardMonthly;
             const employeeDataRaw: Partial<ShahoEmployee> = {
               employeeNo: normalizeEmployeeNoForComparison(csvData['社員番号'] || ''),
               name: csvData['氏名(漢字)'] || csvData['氏名漢字'] || '',
@@ -455,7 +462,9 @@ export class ApprovalDetailComponent implements OnDestroy {
               workPrefecture: csvData['勤務地都道府県名'] || undefined,
               personalNumber: csvData['個人番号'] || undefined,
               basicPensionNumber: csvData['基礎年金番号'] || undefined,
-              standardMonthly: toNumber(csvData['標準報酬月額']),
+              healthStandardMonthly,
+              welfareStandardMonthly,
+              standardMonthly: healthStandardMonthly,
               healthInsuredNumber: csvData['被保険者番号（健康保険)'] || undefined,
               pensionInsuredNumber: csvData['被保険者番号（厚生年金）'] || undefined,
               healthAcquisition: csvData['健康保険 資格取得日'] || csvData['健康保険資格取得日'] || undefined,
