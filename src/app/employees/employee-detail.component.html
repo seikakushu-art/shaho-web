@@ -113,8 +113,12 @@
                 </div>
                 <div class="grid two-col insurance-form">
                     <div>
-                        <label>標準報酬月額</label>
-                        <p class="value">{{ displayAmount(socialInsurance.standardMonthly) }}</p>
+                        <label>健保標準報酬月額</label>
+                        <p class="value">{{ displayAmount(socialInsurance.healthStandardMonthly) }}</p>
+                    </div>
+                    <div>
+                        <label>厚年標準報酬月額</label>
+                        <p class="value">{{ displayAmount(socialInsurance.welfareStandardMonthly) }}</p>
                     </div>
                     <div>
                         <label>標準賞与額年度累計</label>

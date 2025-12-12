@@ -35,6 +35,8 @@ export interface ShahoEmployee {
   personalNumber?: string;
   basicPensionNumber?: string;
   hasDependent?: boolean;
+  healthStandardMonthly?: number;
+  welfareStandardMonthly?: number;
   standardMonthly?: number;
   standardBonusAnnualTotal?: number;
   healthInsuredNumber?: string;
@@ -72,6 +74,8 @@ export type ExternalEmployeeRecord = {
   kana?: string;
   department?: string;
   workPrefecture?: string;
+  healthStandardMonthly?: number | string;
+  welfareStandardMonthly?: number | string;
   standardMonthly?: number | string;
   birthDate?: string;
   payrolls?: ExternalPayrollRecord[]; // 給与データ配列
@@ -97,6 +101,9 @@ export interface PayrollData {
   yearMonth: string; // 2025-04 形式
   workedDays?: number; // 支払基礎日数（賞与データの場合は不要）
   amount?: number; // 報酬額（月給支払額、オプション）
+  standardMonthly?: number;
+  healthStandardMonthly?: number;
+  welfareStandardMonthly?: number;
   healthInsuranceMonthly?: number;
   careInsuranceMonthly?: number;
   pensionMonthly?: number;
@@ -230,6 +237,22 @@ export class ShahoEmployeesService {
     }
 
     if (
+      record.healthStandardMonthly !== undefined &&
+      record.healthStandardMonthly !== null &&
+      isNaN(Number(record.healthStandardMonthly))
+    ) {
+      return '標準報酬月額（健保）が数値ではありません';
+    }
+
+    if (
+      record.welfareStandardMonthly !== undefined &&
+      record.welfareStandardMonthly !== null &&
+      isNaN(Number(record.welfareStandardMonthly))
+    ) {
+      return '標準報酬月額（厚年）が数値ではありません';
+    }
+
+    if (
       record.standardMonthly !== undefined &&
       record.standardMonthly !== null &&
       isNaN(Number(record.standardMonthly))
@@ -296,8 +319,22 @@ export class ShahoEmployeesService {
         department: record.department?.trim(),
         workPrefecture: record.workPrefecture?.trim(),
         birthDate: record.birthDate?.trim(),
-        standardMonthly:
-          record.standardMonthly === undefined
+        healthStandardMonthly:
+        record.healthStandardMonthly !== undefined
+          ? Number(record.healthStandardMonthly)
+          : record.standardMonthly !== undefined
+            ? Number(record.standardMonthly)
+            : undefined,
+      welfareStandardMonthly:
+        record.welfareStandardMonthly !== undefined
+          ? Number(record.welfareStandardMonthly)
+          : record.standardMonthly !== undefined
+            ? Number(record.standardMonthly)
+            : undefined,
+      standardMonthly:
+        record.healthStandardMonthly !== undefined
+          ? Number(record.healthStandardMonthly)
+          : record.standardMonthly === undefined
             ? undefined
             : Number(record.standardMonthly),
       };

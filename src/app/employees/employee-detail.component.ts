@@ -24,6 +24,8 @@ interface AuditInfo {
 
 interface SocialInsuranceInfo {
   standardMonthly: number | null;
+  healthStandardMonthly: number | null;
+  welfareStandardMonthly: number | null;
   standardBonusAnnualTotal: number | null;
   healthInsuredNumber: string;
   pensionInsuredNumber: string;
@@ -79,6 +81,8 @@ type ApprovalHistoryEntry = {
 interface SocialInsuranceHistoryData {
   monthlySalary?: number;
   workedDays?: number;
+  healthStandardMonthly?: number;
+  welfareStandardMonthly?: number;
   healthInsuranceMonthly?: number;
   careInsuranceMonthly?: number;
   pensionMonthly?: number;
@@ -162,6 +166,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
 
   socialInsurance: SocialInsuranceInfo = {
     standardMonthly: null,
+    healthStandardMonthly: null,
+    welfareStandardMonthly: null,
     standardBonusAnnualTotal: null,
     healthInsuredNumber: '',
     pensionInsuredNumber: '',
@@ -193,6 +199,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   }[] = [
     { key: 'monthlySalary', label: '月給支払額', category: 'monthly' },
     { key: 'workedDays', label: '支払基礎日数', category: 'monthly' },
+    { key: 'healthStandardMonthly', label: '健保標準報酬月額', category: 'monthly' },
+    { key: 'welfareStandardMonthly', label: '厚年標準報酬月額', category: 'monthly' },
     { key: 'healthInsuranceMonthly', label: '健康保険（月給）', category: 'monthly' },
     { key: 'careInsuranceMonthly', label: '介護保険（月給）', category: 'monthly' },
     { key: 'pensionMonthly', label: '厚生年金（月給）', category: 'monthly' },
@@ -644,6 +652,11 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           const monthlyData: SocialInsuranceHistoryData = {
             monthlySalary: payroll.amount,
             workedDays: payroll.workedDays,
+            healthStandardMonthly: payroll.healthStandardMonthly ?? payroll.standardMonthly,
+            welfareStandardMonthly:
+              payroll.welfareStandardMonthly ??
+              payroll.healthStandardMonthly ??
+              payroll.standardMonthly,
             healthInsuranceMonthly: payroll.healthInsuranceMonthly,
             careInsuranceMonthly: payroll.careInsuranceMonthly,
             pensionMonthly: payroll.pensionMonthly,
@@ -908,6 +921,12 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     this.socialInsurance = {
       ...this.socialInsurance,
       standardMonthly: employee.standardMonthly ?? null,
+      healthStandardMonthly: employee.healthStandardMonthly ?? employee.standardMonthly ?? null,
+      welfareStandardMonthly:
+        employee.welfareStandardMonthly ??
+        employee.healthStandardMonthly ??
+        employee.standardMonthly ??
+        null,
       standardBonusAnnualTotal: employee.standardBonusAnnualTotal ?? null,
       healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
       pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
