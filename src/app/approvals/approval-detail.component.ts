@@ -18,6 +18,7 @@ import { ApprovalWorkflowService } from './approval-workflow.service';
 import { RoleKey } from '../models/roles';
 import { UserDirectoryService } from '../auth/user-directory.service';
 import { InsuranceRatesService } from '../app/services/insurance-rates.service';
+import { CorporateInfoService } from '../app/services/corporate-info.service';
 import { DependentData, PayrollData, ShahoEmployee, ShahoEmployeesService } from '../app/services/shaho-employees.service';
 import { normalizeEmployeeNoForComparison } from '../employees/employee-import/csv-import.utils';
 import { CalculationDataService, CalculationRow, CalculationQueryParams } from '../calculations/calculation-data.service';
@@ -55,6 +56,7 @@ export class ApprovalDetailComponent implements OnDestroy {
   private authService = inject(AuthService);
   private userDirectory = inject(UserDirectoryService);
   private insuranceRatesService = inject(InsuranceRatesService);
+  private corporateInfoService = inject(CorporateInfoService);
   private employeesService = inject(ShahoEmployeesService);
   private calculationDataService = inject(CalculationDataService);
 
@@ -836,6 +838,37 @@ export class ApprovalDetailComponent implements OnDestroy {
         } catch (error) {
           console.error('CSVインポートデータの保存に失敗しました', error);
           this.addToast('CSVインポートデータの保存に失敗しました。', 'warning');
+        }
+      }
+
+      // 法人情報更新の承認が完了した場合、データを保存
+      if (action === 'approve' && result.request.status === 'approved' && result.request.category === '法人情報更新' && result.request.corporateInfoData) {
+        try {
+          // 最終承認者の名前を取得
+          const finalApproverHistory = result.request.histories
+            ?.filter(h => h.action === 'approve')
+            .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0];
+          
+          // ユーザー表示名を取得
+          let approverDisplayName = approverName;
+          if (finalApproverHistory) {
+            const users = await firstValueFrom(this.userDirectory.getUsers());
+            const userMap = new Map(users.map(u => [u.email.toLowerCase(), u.displayName || u.email]));
+            approverDisplayName = userMap.get(finalApproverHistory.actorId.toLowerCase()) 
+              || finalApproverHistory.actorName 
+              || finalApproverHistory.actorId;
+          }
+
+          // 承認者名を含めて保存
+          const payloadWithApprover = {
+            ...result.request.corporateInfoData,
+            approvedBy: approverDisplayName,
+          };
+          await this.corporateInfoService.saveCorporateInfo(payloadWithApprover);
+          this.addToast('法人情報のデータを保存しました。', 'success');
+        } catch (error) {
+          console.error('法人情報の保存に失敗しました', error);
+          this.addToast('法人情報の保存に失敗しました。', 'warning');
         }
       }
 

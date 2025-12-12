@@ -1,5 +1,5 @@
 import { Timestamp } from '@angular/fire/firestore';
-import { HealthInsuranceType } from '../app/services/corporate-info.service';
+import { HealthInsuranceType, CorporateInfoPayload } from '../app/services/corporate-info.service';
 import { InsuranceRatePayload } from '../app/services/insurance-rates.service';
 
 type ApprovalCategory =
@@ -162,6 +162,8 @@ export interface ApprovalRequest {
       pensionOffice: string;
       officeName: string;
       standardMonthly: number;
+      healthStandardMonthly?: number;
+      welfareStandardMonthly?: number;
       healthCumulative: number;
       healthInsuredNumber: string;
       pensionInsuredNumber: string;
@@ -207,6 +209,7 @@ export interface ApprovalRequest {
     }>;
   };
   insuranceRateData?: InsuranceRatePayload;
+  corporateInfoData?: CorporateInfoPayload;
   importEmployeeData?: Array<{
     employeeNo: string;
     csvData: Record<string, string>;

@@ -128,20 +128,15 @@
           </div>
           <div class="field">
             <label>登録者</label>
-            <p class="value">{{ info?.registeredBy || '—' }}</p>
+            <p class="value">{{ info?.registeredByDisplayName || '—' }}</p>
           </div>
           <div class="field">
             <label>更新者</label>
-            <p class="value">{{ info?.updatedBy || '—' }}</p>
+            <p class="value">{{ info?.updatedByDisplayName || '—' }}</p>
           </div>
           <div class="field">
             <label>承認者</label>
-            <ng-container *ngIf="editMode; else approvedDisplay">
-              <input type="text" formControlName="approvedBy" placeholder="承認者の氏名やメールアドレス" />
-            </ng-container>
-            <ng-template #approvedDisplay>
-              <p class="value">{{ info?.approvedBy || '—' }}</p>
-            </ng-template>
+            <p class="value">{{ info?.approvedByDisplayName || '—' }}</p>
           </div>
         </div>
       </article>

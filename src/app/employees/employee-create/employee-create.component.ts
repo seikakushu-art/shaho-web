@@ -87,6 +87,8 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       officeName: '',
       standardMonthly: 0,
       healthCumulative: 0,
+      healthStandardMonthly: 0,
+      welfareStandardMonthly: 0,
       healthInsuredNumber: '',
       pensionInsuredNumber: '',
       careSecondInsured: false,
@@ -192,7 +194,11 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
                 hasDependent: result.data.employeeData.basicInfo?.hasDependent ?? false,
                 postalCode: result.data.employeeData.basicInfo?.postalCode ?? '',
               };
-              this.socialInsurance = { ...result.data.employeeData.socialInsurance };
+              this.socialInsurance = {
+                ...result.data.employeeData.socialInsurance,
+                healthStandardMonthly: result.data.employeeData.socialInsurance.healthStandardMonthly ?? result.data.employeeData.socialInsurance.standardMonthly ?? 0,
+                welfareStandardMonthly: result.data.employeeData.socialInsurance.welfareStandardMonthly ?? result.data.employeeData.socialInsurance.healthStandardMonthly ?? result.data.employeeData.socialInsurance.standardMonthly ?? 0,
+              };
               // 承認リクエストの扶養情報を読み込み（複数件に対応）
               const dependentInfosFromRequest = result.data.employeeData.dependentInfos;
               if (dependentInfosFromRequest && dependentInfosFromRequest.length > 0) {
@@ -285,14 +291,20 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       };
 
       // 社会保険情報を設定（詳細画面と同じロジック）
-      this.socialInsurance = {
-        ...this.socialInsurance,
-        pensionOffice: '',
-        officeName: '',
-        standardMonthly: employee.standardMonthly ?? 0,
-        healthCumulative: employee.standardBonusAnnualTotal ?? 0,
-        healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
-        pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
+    this.socialInsurance = {
+      ...this.socialInsurance,
+      pensionOffice: '',
+      officeName: '',
+      standardMonthly: employee.healthStandardMonthly ?? employee.standardMonthly ?? 0,
+      healthStandardMonthly: employee.healthStandardMonthly ?? employee.standardMonthly ?? 0,
+      welfareStandardMonthly:
+        employee.welfareStandardMonthly ??
+        employee.healthStandardMonthly ??
+        employee.standardMonthly ??
+        0,
+      healthCumulative: employee.standardBonusAnnualTotal ?? 0,
+      healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
+      pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
         careSecondInsured: employee.careSecondInsured ?? this.socialInsurance.careSecondInsured,
         healthAcquisition: this.formatDateForInput(employee.healthAcquisition) || '',
         pensionAcquisition: this.formatDateForInput(employee.pensionAcquisition) || '',
@@ -532,7 +544,22 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         // dependentInfoは後方互換性のため残すが、dependentInfos配列も保存
         const employeeData = {
           basicInfo: { ...this.basicInfo },
-          socialInsurance: { ...this.socialInsurance },
+          socialInsurance: {
+            ...this.socialInsurance,
+            healthStandardMonthly:
+              this.socialInsurance.healthStandardMonthly ||
+              this.socialInsurance.standardMonthly ||
+              0,
+            welfareStandardMonthly:
+              this.socialInsurance.welfareStandardMonthly ||
+              this.socialInsurance.healthStandardMonthly ||
+              this.socialInsurance.standardMonthly ||
+              0,
+            standardMonthly:
+              this.socialInsurance.healthStandardMonthly ||
+              this.socialInsurance.standardMonthly ||
+              0,
+          },
           dependentInfo: this.dependentInfos.length > 0 ? { ...this.dependentInfos[0] } : undefined,
           // dependentInfosは空の配列でも保存する（undefinedではなく空配列として保存）
           dependentInfos: this.dependentInfos.length > 0 ? this.dependentInfos : (this.basicInfo.hasDependent ? [] : undefined),
@@ -635,7 +662,12 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
               personalNumber: basicInfo.myNumber || undefined,
               basicPensionNumber: basicInfo.basicPensionNumber || undefined,
               hasDependent: basicInfo.hasDependent || false,
-              standardMonthly: socialInsurance.standardMonthly || undefined,
+              healthStandardMonthly:
+              socialInsurance.healthStandardMonthly || socialInsurance.standardMonthly || undefined,
+            welfareStandardMonthly:
+              socialInsurance.welfareStandardMonthly || socialInsurance.healthStandardMonthly || socialInsurance.standardMonthly || undefined,
+            standardMonthly:
+              socialInsurance.healthStandardMonthly || socialInsurance.standardMonthly || undefined,
               healthInsuredNumber: socialInsurance.healthInsuredNumber || undefined,
               pensionInsuredNumber: socialInsurance.pensionInsuredNumber || undefined,
               careSecondInsured: socialInsurance.careSecondInsured || false,
