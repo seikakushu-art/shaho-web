@@ -8,7 +8,29 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  color: #4b5563;
+  padding: 0.875rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+
+  .meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.95rem;
+
+    .meta-label {
+      font-weight: 600;
+      color: #64748b;
+      white-space: nowrap;
+    }
+
+    .meta-value {
+      font-weight: 600;
+      color: #1e293b;
+      white-space: nowrap;
+    }
+  }
 }
 
 .card {
@@ -230,6 +252,7 @@ th.money {
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   padding: 1rem;
+  min-width: 0;
 }
 
 .approval-form .field {
@@ -239,6 +262,7 @@ th.money {
   margin-bottom: 1rem;
   font-weight: 700;
   color: #334155;
+  min-width: 0;
 }
 
 .approval-form .field .field-header {
@@ -246,6 +270,16 @@ th.money {
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
+  
+  span:first-child {
+    flex-shrink: 0;
+  }
+  
+  .hint {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 }
 
 .approval-form .field .field-header .hint {
@@ -261,6 +295,7 @@ th.money {
   font-size: 0.95rem;
   font-family: inherit;
   resize: vertical;
+  box-sizing: border-box;
 }
 
 .attachment-box {

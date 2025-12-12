@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { PayrollData, ShahoEmployeesService } from '../../app/services/shaho-employees.service';
+import { normalizeToYearMonth } from '../calculation-utils';
 
 type CalculationType = 'standard' | 'bonus' | 'insurance';
 type StandardCalculationMethod = '定時決定' | '随時決定' | '年間平均' | '資格取得時' | '育休復帰時';
@@ -16,6 +17,7 @@ interface EmployeeCandidate {
   method: string;
   bonusPaidOn?: string;
   standardMonthly?: number;
+  careSecondInsured?: boolean;
 }
 
 @Component({
@@ -56,9 +58,9 @@ export class CalculationTargetComponent implements OnInit {
     '育休復帰時',
   ];
   readonly insuranceLabels: Record<InsuranceKey, string> = {
-    health: '健康',
+    health: '健康保険',
     welfare: '厚生年金',
-    nursing: '介護',
+    nursing: '介護保険',
   };
 
   employeeBonusDates: Record<string, string> = {};
@@ -143,7 +145,15 @@ export class CalculationTargetComponent implements OnInit {
   }
 
   get isAdHocDecision() {
-    return this.isStandardCalculation && this.standardCalculationMethod === '随時決定';
+    return this.isStandardCalculation && (this.standardCalculationMethod === '随時決定' || this.standardCalculationMethod === '育休復帰時');
+  }
+
+  get isAnnualAverage() {
+    return this.isStandardCalculation && this.standardCalculationMethod === '年間平均';
+  }
+
+  get isAcquisitionDecision() {
+    return this.isStandardCalculation && this.standardCalculationMethod === '資格取得時';
   }
 
   get targetYear(): number {
@@ -173,6 +183,14 @@ export class CalculationTargetComponent implements OnInit {
 
   onCalculationTypeChange(type: string) {
     this.calculationType = type as CalculationType;
+    // 標準報酬月額計算または標準賞与額計算の場合は保険種別の選択をクリア
+    if (this.calculationType === 'standard' || this.calculationType === 'bonus') {
+      this.insuranceSelections = {
+        health: false,
+        welfare: false,
+        nursing: false,
+      };
+    }
   }
 
   private restoreInsuranceSelections(queryInsurances: string | null) {
@@ -198,6 +216,7 @@ export class CalculationTargetComponent implements OnInit {
           method: '自動算出',
           bonusPaidOn: this.extractLatestBonusPaidOn((emp as any).payrolls ?? []),
           standardMonthly: emp.standardMonthly,
+          careSecondInsured: emp.careSecondInsured,
         } as EmployeeCandidate));
 
       this.mergeCandidates(enriched);
@@ -253,8 +272,16 @@ export class CalculationTargetComponent implements OnInit {
       .map((key) => this.insuranceLabels[key as InsuranceKey])
       .join(',');
 
-    // targetMonthが空の場合は、定時決定の場合は現在の年-01、それ以外は現在の年月を設定
+    // 標準賞与額計算の場合は、bonusPaymentDateから年月を抽出
     let targetMonth = this.targetMonth;
+    if (this.calculationType === 'bonus' && this.bonusPaymentDate) {
+      const normalized = normalizeToYearMonth(this.bonusPaymentDate);
+      if (normalized) {
+        targetMonth = normalized;
+      }
+    }
+    
+    // targetMonthが空の場合は、定時決定の場合は現在の年-01、それ以外は現在の年月を設定
     if (!targetMonth || targetMonth.trim() === '') {
       const now = new Date();
       const year = now.getFullYear();

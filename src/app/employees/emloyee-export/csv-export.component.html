@@ -56,7 +56,7 @@
           </option>
         </select>
       </div>
-      <div class="filter-field">
+      <div class="filter-field" *ngIf="selectedSections.has('payrollHistory')">
         <label for="payrollStartMonth">給与履歴 開始年月</label>
         <input
           id="payrollStartMonth"
@@ -65,7 +65,7 @@
           (ngModelChange)="onPayrollRangeChange()"
         />
       </div>
-      <div class="filter-field">
+      <div class="filter-field" *ngIf="selectedSections.has('payrollHistory')">
         <label for="payrollEndMonth">給与履歴 終了年月</label>
         <input
           id="payrollEndMonth"
@@ -78,10 +78,10 @@
     <p class="hint" *ngIf="!canSelectItems">
       まず部署と勤務地を選択してください。選択後に出力項目を設定できます。
     </p>
-    <p class="hint" *ngIf="canSelectItems && isPayrollRangeIncomplete">
+    <p class="hint" *ngIf="canSelectItems && selectedSections.has('payrollHistory') && isPayrollRangeIncomplete">
       給与履歴の開始年月と終了年月を指定してください。
     </p>
-    <p class="hint" *ngIf="payrollStartMonth && payrollEndMonth && payrollStartMonth > payrollEndMonth">
+    <p class="hint" *ngIf="selectedSections.has('payrollHistory') && payrollStartMonth && payrollEndMonth && payrollStartMonth > payrollEndMonth">
       開始年月は終了年月以前を指定してください。
     </p>
 
@@ -109,7 +109,7 @@
     >
       <div class="panel-header">
         <div>
-          <p class="hint">すべて当時の計算結果のデータになります。最新の情報ではありません。</p>
+          <p class="hint">※表示されている金額は、計算結果の履歴であり、最新の情報ではありません。</p>
         </div>
         <div class="actions">
           <button type="button" class="ghost" [disabled]="!canSelectItems" (click)="initializeCalculationFields()">

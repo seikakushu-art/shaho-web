@@ -84,7 +84,9 @@ interface SocialInsuranceHistoryData {
   pensionMonthly?: number;
   bonusPaidOn?: string;
   bonusTotal?: number;
-  standardBonus?: number;
+  standardBonus?: number; // 後方互換性のため残す
+  standardHealthBonus?: number; // 標準賞与額（健・介）
+  standardWelfareBonus?: number; // 標準賞与額（厚生年金）
   healthInsuranceBonus?: number;
   careInsuranceBonus?: number;
   pensionBonus?: number;
@@ -196,7 +198,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     { key: 'pensionMonthly', label: '厚生年金（月給）', category: 'monthly' },
     { key: 'bonusPaidOn', label: '賞与支給日', category: 'bonus' },
     { key: 'bonusTotal', label: '賞与総支給額', category: 'bonus' },
-    { key: 'standardBonus', label: '標準賞与額', category: 'bonus' },
+    { key: 'standardHealthBonus', label: '標準賞与額（健・介）', category: 'bonus' },
+    { key: 'standardWelfareBonus', label: '標準賞与額（厚生年金）', category: 'bonus' },
     { key: 'healthInsuranceBonus', label: '健康保険（賞与）', category: 'bonus' },
     { key: 'careInsuranceBonus', label: '介護保険（賞与）', category: 'bonus' },
     { key: 'pensionBonus', label: '厚生年金（賞与）', category: 'bonus' },
@@ -665,7 +668,10 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
               const bonusData: SocialInsuranceHistoryData = {
                 bonusPaidOn: this.formatDateForInput(payroll.bonusPaidOn),
                 bonusTotal: payroll.bonusTotal,
-                standardBonus: payroll.standardBonus,
+                standardHealthBonus: payroll.standardHealthBonus,
+                standardWelfareBonus: payroll.standardWelfareBonus,
+                // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
+                standardBonus: payroll.standardHealthBonus || payroll.standardWelfareBonus || payroll.standardBonus,
                 healthInsuranceBonus: payroll.healthInsuranceBonus,
                 careInsuranceBonus: payroll.careInsuranceBonus,
                 pensionBonus: payroll.pensionBonus,

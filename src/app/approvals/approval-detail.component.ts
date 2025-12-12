@@ -20,6 +20,9 @@ import { UserDirectoryService } from '../auth/user-directory.service';
 import { InsuranceRatesService } from '../app/services/insurance-rates.service';
 import { DependentData, PayrollData, ShahoEmployee, ShahoEmployeesService } from '../app/services/shaho-employees.service';
 import { normalizeEmployeeNoForComparison } from '../employees/employee-import/csv-import.utils';
+import { CalculationDataService, CalculationRow, CalculationQueryParams } from '../calculations/calculation-data.service';
+import { StandardCalculationMethod } from '../calculations/calculation-types';
+import { normalizeToYearMonth } from '../calculations/calculation-utils';
 
 type EmployeeStatus = 'OK' | '警告' | 'エラー';
 
@@ -53,6 +56,7 @@ export class ApprovalDetailComponent implements OnDestroy {
   private userDirectory = inject(UserDirectoryService);
   private insuranceRatesService = inject(InsuranceRatesService);
   private employeesService = inject(ShahoEmployeesService);
+  private calculationDataService = inject(CalculationDataService);
 
   approval?: ApprovalRequest;
   private subscription: Subscription;
@@ -851,6 +855,59 @@ export class ApprovalDetailComponent implements OnDestroy {
         }
       }
 
+      // 計算結果保存の承認が完了した場合、データを保存
+      if (action === 'approve' && result.request.status === 'approved' && result.request.category === '計算結果保存' && result.request.calculationResultRows && result.request.calculationQueryParams) {
+        try {
+          const queryParams = result.request.calculationQueryParams;
+          if (!queryParams.type || (queryParams.type !== 'standard' && queryParams.type !== 'bonus' && queryParams.type !== 'insurance')) {
+            throw new Error('計算種別が不正です');
+          }
+          const validQuery: CalculationQueryParams = {
+            type: queryParams.type as 'standard' | 'bonus' | 'insurance',
+            targetMonth: queryParams.targetMonth || '',
+            method: queryParams.method || '',
+            standardMethod: (queryParams.standardMethod as StandardCalculationMethod) || '定時決定',
+            insurances: queryParams.insurances || [],
+            includeBonusInMonth: queryParams.includeBonusInMonth,
+            department: queryParams.department,
+            location: queryParams.location,
+            employeeNo: queryParams.employeeNo,
+            bonusPaidOn: queryParams.bonusPaidOn,
+          };
+          const validRows: CalculationRow[] = result.request.calculationResultRows.map(row => ({
+            employeeNo: row.employeeNo,
+            name: row.name,
+            department: row.department,
+            location: row.location,
+            month: row.month,
+            monthlySalary: row.monthlySalary,
+            standardMonthly: row.standardMonthly,
+            healthEmployeeMonthly: row.healthEmployeeMonthly,
+            healthEmployerMonthly: row.healthEmployerMonthly,
+            nursingEmployeeMonthly: row.nursingEmployeeMonthly,
+            nursingEmployerMonthly: row.nursingEmployerMonthly,
+            welfareEmployeeMonthly: row.welfareEmployeeMonthly,
+            welfareEmployerMonthly: row.welfareEmployerMonthly,
+            bonusPaymentDate: row.bonusPaymentDate,
+            bonusTotalPay: row.bonusTotalPay,
+            healthEmployeeBonus: row.healthEmployeeBonus,
+            healthEmployerBonus: row.healthEmployerBonus,
+            nursingEmployeeBonus: row.nursingEmployeeBonus,
+            nursingEmployerBonus: row.nursingEmployerBonus,
+            welfareEmployeeBonus: row.welfareEmployeeBonus,
+            welfareEmployerBonus: row.welfareEmployerBonus,
+            standardHealthBonus: row.standardHealthBonus,
+            standardWelfareBonus: row.standardWelfareBonus,
+            error: row.error,
+          }));
+          await this.persistCalculationResults(validRows, validQuery);
+          this.addToast('計算結果を保存しました。', 'success');
+        } catch (error) {
+          console.error('計算結果の保存に失敗しました', error);
+          this.addToast('計算結果の保存に失敗しました。', 'warning');
+        }
+      }
+
       // 計算結果保存の場合は、計算種別を含めたタイトルを生成
       let requestTitle = result.request.title || result.request.flowSnapshot?.name || result.request.id || '申請';
       const category = result.request.category || this.approval?.category;
@@ -958,6 +1015,117 @@ export class ApprovalDetailComponent implements OnDestroy {
       console.error('resubmit failed', error);
       const errorMessage = error instanceof Error ? error.message : '再申請処理中にエラーが発生しました。';
       this.addToast(errorMessage, 'warning');
+    }
+  }
+
+  private async persistCalculationResults(
+    validRows: CalculationRow[],
+    query: CalculationQueryParams,
+  ): Promise<void> {
+    try {
+      const employees = await firstValueFrom(
+        this.employeesService.getEmployeesWithPayrolls(),
+      );
+      const employeeMap = new Map<string, string>();
+      employees.forEach((emp) => {
+        if (emp.id && emp.employeeNo) {
+          employeeMap.set(emp.employeeNo, emp.id);
+        }
+      });
+
+      const savePromises = validRows
+        .filter((row) => !row.error)
+        .map(async (row) => {
+          const employeeId = employeeMap.get(row.employeeNo);
+          if (!employeeId) {
+            console.warn(`社員番号 ${row.employeeNo} の社員IDが見つかりません`);
+            return;
+          }
+
+          const healthMonthlyTotal =
+            (row.healthEmployeeMonthly || 0) + (row.healthEmployerMonthly || 0);
+          const careMonthlyTotal =
+            (row.nursingEmployeeMonthly || 0) + (row.nursingEmployerMonthly || 0);
+          const pensionMonthlyTotal =
+            (row.welfareEmployeeMonthly || 0) + (row.welfareEmployerMonthly || 0);
+          const healthBonusTotal =
+            (row.healthEmployeeBonus || 0) + (row.healthEmployerBonus || 0);
+          const careBonusTotal =
+            (row.nursingEmployeeBonus || 0) + (row.nursingEmployerBonus || 0);
+          const pensionBonusTotal =
+            (row.welfareEmployeeBonus || 0) + (row.welfareEmployerBonus || 0);
+
+          // 賞与データがある場合は、bonusPaidOnから年月を抽出してyearMonthを設定
+          let yearMonth = row.month;
+          if (row.bonusPaymentDate) {
+            const normalized = normalizeToYearMonth(row.bonusPaymentDate);
+            if (normalized) {
+              yearMonth = normalized;
+            }
+          }
+
+          const payrollData: any = {
+            yearMonth: yearMonth,
+            amount: row.monthlySalary || undefined,
+            bonusPaidOn: row.bonusPaymentDate || undefined,
+            bonusTotal: row.bonusTotalPay || undefined,
+            standardHealthBonus:
+              row.standardHealthBonus > 0 ? row.standardHealthBonus : undefined,
+            standardWelfareBonus:
+              row.standardWelfareBonus > 0 ? row.standardWelfareBonus : undefined,
+            // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
+            standardBonus:
+              row.standardHealthBonus || row.standardWelfareBonus || undefined,
+            healthInsuranceMonthly:
+              healthMonthlyTotal > 0 ? healthMonthlyTotal : undefined,
+            careInsuranceMonthly:
+              careMonthlyTotal > 0 ? careMonthlyTotal : undefined,
+            pensionMonthly:
+              pensionMonthlyTotal > 0 ? pensionMonthlyTotal : undefined,
+            healthInsuranceBonus:
+              healthBonusTotal > 0 ? healthBonusTotal : undefined,
+            careInsuranceBonus: careBonusTotal > 0 ? careBonusTotal : undefined,
+            pensionBonus: pensionBonusTotal > 0 ? pensionBonusTotal : undefined,
+          };
+
+          Object.keys(payrollData).forEach((key) => {
+            if (payrollData[key] === undefined) {
+              delete payrollData[key];
+            }
+          });
+
+          await this.employeesService.addOrUpdatePayroll(
+            employeeId,
+            yearMonth,
+            payrollData,
+          );
+
+          if (row.standardMonthly && row.standardMonthly > 0) {
+            await this.employeesService.updateEmployee(employeeId, {
+              standardMonthly: row.standardMonthly,
+            });
+          }
+        });
+
+      await Promise.all(savePromises);
+      
+      const calculationTypeLabels: Record<string, string> = {
+        standard: '標準報酬月額',
+        bonus: '標準賞与額',
+        insurance: '社会保険料',
+      };
+      const calculationTypeLabel = calculationTypeLabels[query.type] || query.type.toUpperCase();
+      
+      await this.calculationDataService.saveCalculationHistory(
+        query,
+        validRows.filter((row) => !row.error),
+        {
+          title: calculationTypeLabel,
+        },
+      );
+    } catch (error) {
+      console.error('計算結果の保存エラー:', error);
+      throw error;
     }
   }
 }

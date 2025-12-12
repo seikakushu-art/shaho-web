@@ -743,6 +743,7 @@ private readFileAsText(file: File): Promise<string> {
           if (this.templateType === 'payroll') {
             // payrollテンプレートの場合は既存社員のIDを取得
             const employeeNo = csvData['社員番号'] || '';
+            // 念のため、existingEmployeesのemployeeNoも正規化して比較する
             const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
             const existingEmployee = this.existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === normalizedEmployeeNo);
             
@@ -881,6 +882,7 @@ private readFileAsText(file: File): Promise<string> {
 
           // 月給/賞与支払額同期用テンプレート（payrollテンプレート）の処理
           if (this.templateType === 'payroll') {
+            // 念のため、existingEmployeesのemployeeNoも正規化して比較する
             const employeeNo = normalizeEmployeeNoForComparison(csvData['社員番号'] || '');
             const existingEmployee = this.existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === employeeNo);
             
@@ -1342,6 +1344,7 @@ private readFileAsText(file: File): Promise<string> {
       // payrollテンプレートの場合は給与データの差分も計算
       if (this.templateType === 'payroll' && diffResult.existingEmployee) {
         const employeeNo = parsedRow.data['社員番号'] || '';
+        // 念のため、existingEmployeesのemployeeNoも正規化して比較する
         const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
         const existingEmployee = this.existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === normalizedEmployeeNo);
         if (existingEmployee?.id) {
@@ -1401,9 +1404,10 @@ private readFileAsText(file: File): Promise<string> {
       }
 
       // 既存社員のIDを取得（正規化された社員番号で比較）
+      // existingEmployeesのemployeeNoは既に正規化されているため、直接比較する
           const existingEmployeeId = diffResult.existingEmployee
             ? this.existingEmployees.find(
-                (emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === normalizeEmployeeNoForComparison(diffResult.existingEmployee?.employeeNo || ''),
+                (emp) => (emp.employeeNo || '') === (diffResult.existingEmployee?.employeeNo || ''),
               )?.['id'] as string | undefined
             : undefined;
 
@@ -1451,6 +1455,18 @@ private readFileAsText(file: File): Promise<string> {
         );
       } catch {
         // データが存在しない場合はundefinedのまま
+      }
+
+      // 月給支払月の差分
+      const existingYearMonth = existingPayroll?.yearMonth;
+      const csvYearMonthDisplay = monthlyPayMonth; // YYYY/MM形式のまま表示
+      const existingYearMonthDisplay = existingYearMonth ? existingYearMonth.replace(/-/g, '/') : null;
+      if (existingYearMonth !== normalizedYearMonth) {
+        changes.push({
+          fieldName: '月給支払月',
+          oldValue: existingYearMonthDisplay,
+          newValue: csvYearMonthDisplay,
+        });
       }
 
       // 月給支払額の差分

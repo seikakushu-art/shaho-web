@@ -73,15 +73,128 @@ export function findStandardCompensation(
   const applicable = grades.filter(
     (grade) => grade.insuranceType === insuranceType,
   );
-  const matched = applicable.find((grade) => {
-    const lower = Number(grade.lowerLimit ?? 0);
-    const upper = Number(grade.upperLimit ?? Number.MAX_SAFE_INTEGER);
-    return amount >= lower && amount <= upper;
-  });
-  if (matched?.standardMonthlyCompensation) {
-    const parsed = Number(matched.standardMonthlyCompensation);
-    if (!isNaN(parsed)) return parsed;
+  
+  // デバッグ: 等級表が空の場合の警告
+  if (applicable.length === 0) {
+    console.warn(`標準報酬等級表に${insuranceType}の等級が登録されていません。平均報酬月額: ${amount}円`);
+    return amount;
   }
+  
+  // 数値変換ヘルパー関数（カンマ区切りや文字列に対応）
+  const parseNumber = (value: string | undefined | null): number => {
+    if (!value) return 0;
+    // カンマを削除してから数値に変換
+    const cleaned = String(value).replace(/,/g, '').trim();
+    // 「—」や空文字列の場合は0を返す（上限の場合は上限なしとして扱う）
+    if (cleaned === '—' || cleaned === '' || cleaned === '-') return 0;
+    const parsed = Number(cleaned);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  const matched = applicable.find((grade) => {
+    // 下限が「—」、空文字列、または未設定の場合は0として扱う（等級1の下限は0円以上）
+    const lowerLimitStr = String(grade.lowerLimit ?? '').trim();
+    const isLowerLimitEmpty = !lowerLimitStr || lowerLimitStr === '—' || lowerLimitStr === '-';
+    const lower = isLowerLimitEmpty ? 0 : parseNumber(grade.lowerLimit);
+    
+    // 上限が「—」、空文字列、または未設定の場合は上限なしとして扱う
+    const upperLimitStr = String(grade.upperLimit ?? '').trim();
+    const isUpperLimitEmpty = !upperLimitStr || upperLimitStr === '—' || upperLimitStr === '-';
+    const upper = isUpperLimitEmpty 
+      ? Number.MAX_SAFE_INTEGER
+      : parseNumber(grade.upperLimit);
+    // 標準報酬等級表のルール: 下限以上、上限未満
+    const isMatch = amount >= lower && amount < upper;
+    
+    // デバッグ: 60,000円付近の等級を詳しく確認
+    if (amount >= 55000 && amount <= 65000 && (lower <= 65000 && upper >= 55000)) {
+      console.log(
+        `等級チェック: 等級${grade.grade}, 下限=${grade.lowerLimit}→${lower === 0 && isLowerLimitEmpty ? '0（下限なし）' : lower}, 上限=${grade.upperLimit}→${upper === Number.MAX_SAFE_INTEGER ? '上限なし' : upper}, 平均報酬月額=${amount}, 該当=${isMatch} (${amount} >= ${lower} && ${amount} < ${upper})`
+      );
+    }
+    
+    return isMatch;
+  });
+  
+  if (matched?.standardMonthlyCompensation) {
+    const parsed = parseNumber(matched.standardMonthlyCompensation);
+    if (parsed > 0) {
+      // デバッグ: 該当する等級が見つかった場合
+      if (amount >= 55000 && amount <= 65000) {
+        console.log(
+          `平均報酬月額${amount}円に該当する${insuranceType}の等級が見つかりました: 等級${matched.grade}, 標準報酬月額=${matched.standardMonthlyCompensation}→${parsed}円`
+        );
+      }
+      // デバッグ: 高額報酬の場合も確認
+      if (amount >= 1300000 && amount <= 1400000) {
+        console.log(
+          `平均報酬月額${amount}円に該当する${insuranceType}の等級が見つかりました: 等級${matched.grade}, 標準報酬月額=${matched.standardMonthlyCompensation}→${parsed}円`
+        );
+      }
+      return parsed;
+    }
+    // デバッグ: standardMonthlyCompensationが無効な場合
+    console.warn(
+      `標準報酬等級表の等級で標準報酬月額が無効です。等級: ${matched.grade}, 下限: ${matched.lowerLimit}, 上限: ${matched.upperLimit}, 標準報酬月額: ${matched.standardMonthlyCompensation}→${parsed}, 平均報酬月額: ${amount}円`
+    );
+  } else {
+    // デバッグ: 該当する等級が見つからない場合 - 等級1-3を詳しく表示
+    console.warn(
+      `平均報酬月額${amount}円に該当する${insuranceType}の等級が見つかりませんでした。全等級数: ${applicable.length}`
+    );
+    console.warn('最初の3等級の詳細:');
+    applicable.slice(0, 3).forEach((g) => {
+      const lowerLimitStr = String(g.lowerLimit ?? '').trim();
+      const isLowerLimitEmpty = !lowerLimitStr || lowerLimitStr === '—' || lowerLimitStr === '-';
+      const lower = isLowerLimitEmpty ? 0 : parseNumber(g.lowerLimit);
+      const upperLimitStr = String(g.upperLimit ?? '').trim();
+      const isUpperLimitEmpty = !upperLimitStr || upperLimitStr === '—' || upperLimitStr === '-';
+      const upper = isUpperLimitEmpty ? Number.MAX_SAFE_INTEGER : parseNumber(g.upperLimit);
+      const isMatch = amount >= lower && amount < upper;
+      console.warn(
+        `  等級${g.grade}: 下限=${g.lowerLimit}→${lower === 0 && isLowerLimitEmpty ? '0（下限なし）' : lower}, 上限=${g.upperLimit}→${upper === Number.MAX_SAFE_INTEGER ? '上限なし' : upper}, 標準報酬月額=${g.standardMonthlyCompensation}→${parseNumber(g.standardMonthlyCompensation)}, 該当=${isMatch}`
+      );
+    });
+    
+    // 60,000円付近の等級を全て確認
+    if (amount >= 55000 && amount <= 65000) {
+      console.warn(`${amount}円付近の等級を全て確認:`);
+      applicable.forEach((g) => {
+        const lowerLimitStr = String(g.lowerLimit ?? '').trim();
+        const isLowerLimitEmpty = !lowerLimitStr || lowerLimitStr === '—' || lowerLimitStr === '-';
+        const lower = isLowerLimitEmpty ? 0 : parseNumber(g.lowerLimit);
+        const upperLimitStr = String(g.upperLimit ?? '').trim();
+        const isUpperLimitEmpty = !upperLimitStr || upperLimitStr === '—' || upperLimitStr === '-';
+        const upper = isUpperLimitEmpty ? Number.MAX_SAFE_INTEGER : parseNumber(g.upperLimit);
+        if (lower <= 70000 && upper >= 50000) {
+          const isMatch = amount >= lower && amount < upper;
+          console.warn(
+            `  等級${g.grade}: 下限=${g.lowerLimit}→${lower === 0 && isLowerLimitEmpty ? '0（下限なし）' : lower}, 上限=${g.upperLimit}→${upper === Number.MAX_SAFE_INTEGER ? '上限なし' : upper}, 標準報酬月額=${g.standardMonthlyCompensation}→${parseNumber(g.standardMonthlyCompensation)}, 該当=${isMatch}`
+          );
+        }
+      });
+    }
+    
+    // 1,360,000円付近の等級を全て確認
+    if (amount >= 1300000 && amount <= 1400000) {
+      console.warn(`${amount}円付近の等級を全て確認（最後の5等級）:`);
+      // 最後の5等級を確認
+      const lastFiveGrades = applicable.slice(-5);
+      lastFiveGrades.forEach((g) => {
+        const lowerLimitStr = String(g.lowerLimit ?? '').trim();
+        const isLowerLimitEmpty = !lowerLimitStr || lowerLimitStr === '—' || lowerLimitStr === '-';
+        const lower = isLowerLimitEmpty ? 0 : parseNumber(g.lowerLimit);
+        const upperLimitStr = String(g.upperLimit ?? '').trim();
+        const isUpperLimitEmpty = !upperLimitStr || upperLimitStr === '—' || upperLimitStr === '-';
+        const upper = isUpperLimitEmpty ? Number.MAX_SAFE_INTEGER : parseNumber(g.upperLimit);
+        const isMatch = amount >= lower && amount < upper;
+        console.warn(
+          `  等級${g.grade}: 下限=${g.lowerLimit}→${lower === 0 && isLowerLimitEmpty ? '0（下限なし）' : lower}, 上限=${g.upperLimit}→${upper === Number.MAX_SAFE_INTEGER ? '上限なし' : upper}, 標準報酬月額=${g.standardMonthlyCompensation}→${parseNumber(g.standardMonthlyCompensation)}, 該当=${isMatch}`
+        );
+      });
+    }
+  }
+  
   return amount;
 }
 
@@ -210,7 +323,8 @@ function resolveGradeNumber(
   const matched = applicable.find((grade) => {
     const lower = Number(grade.lowerLimit ?? 0);
     const upper = Number(grade.upperLimit ?? Number.MAX_SAFE_INTEGER);
-    return amount >= lower && amount <= upper;
+    // 標準報酬等級表のルール: 下限以上、上限未満
+    return amount >= lower && amount < upper;
   });
   if (matched?.grade) {
     const parsed = Number(matched.grade);
@@ -479,11 +593,26 @@ export function resolveStandardMonthly(
     };
   }
 
+  // デバッグ: baseの値を確認
+  if (base !== undefined && base >= 55000 && base <= 65000) {
+    console.log(
+      `resolveStandardMonthly: base=${base}, compensationTable.length=${compensationTable.length}, 標準報酬月額を計算します`
+    );
+  }
+
   const standardMonthly = findStandardCompensation(
     base,
     compensationTable,
     '健康保険',
   );
+  
+  // デバッグ: 結果を確認
+  if (base !== undefined && base >= 55000 && base <= 65000) {
+    console.log(
+      `resolveStandardMonthly: 平均報酬月額=${base}円 → 標準報酬月額=${standardMonthly}円`
+    );
+  }
+  
   return {
     standardMonthly,
     source: base ? 'payroll' : compensationTable.length ? 'master' : 'fallback',

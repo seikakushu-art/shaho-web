@@ -122,7 +122,7 @@ describe('CalculationDataService bonus caps', () => {
       targetMonth: '2024-04',
       method: 'none',
       standardMethod: '定時決定',
-      insurances: ['健康', '厚生年金'],
+      insurances: ['健康保険', '厚生年金'],
       employeeNo: 'E001',
       bonusPaidOn: '2024-04-25',
     };
@@ -154,7 +154,7 @@ describe('CalculationDataService bonus caps', () => {
       targetMonth: '2024-06',
       method: 'none',
       standardMethod: '定時決定',
-      insurances: ['健康', '厚生年金'],
+      insurances: ['健康保険', '厚生年金'],
       employeeNo: 'E002',
       bonusPaidOn: '2024-06-20',
     };

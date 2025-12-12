@@ -103,7 +103,9 @@ export interface PayrollData {
   // 賞与関連フィールド
   bonusPaidOn?: string; // 賞与支給日（YYYY-MM-DD形式）
   bonusTotal?: number; // 賞与総支給額
-  standardBonus?: number;
+  standardBonus?: number; // 後方互換性のためのフィールド（非推奨）
+  standardHealthBonus?: number; // 標準賞与額（健・介）
+  standardWelfareBonus?: number; // 標準賞与額（厚生年金）
   healthInsuranceBonus?: number;
   careInsuranceBonus?: number;
   pensionBonus?: number;

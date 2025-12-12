@@ -23,7 +23,7 @@
     <div class="card history-card" *ngIf="historyEntries.length">
       <div class="history-header">
         <div>
-          <h2>過去の結果を再表示</h2>
+          <h2>承認された計算結果 <span class="hint">承認後の計算結果は社員情報に反映されます。</span></h2>
         </div>
         <span class="history-count">{{ historyEntries.length }}件</span>
       </div>
@@ -43,6 +43,9 @@
           <div class="history-meta">
             <span>{{ calculationTypes[history.query.type] }}</span>
             <span>{{ getHistoryTargetLabel(history) }}: {{ getHistoryTargetDisplay(history) }}</span>
+            <span *ngIf="history.query.type === 'standard'">
+              標準報酬月額の算定方法: {{ history.query.standardMethod }}
+            </span>
             <span>
               保険:
               {{

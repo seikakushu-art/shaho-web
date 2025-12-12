@@ -13,7 +13,7 @@ import {
   CalculationRow,
   CalculationResultHistory,
 } from '../calculation-data.service';
-import { InsuranceKey } from '../calculation-utils';
+import { InsuranceKey, normalizeToYearMonth } from '../calculation-utils';
 import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
@@ -135,6 +135,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   }
 
   get targetYearMonthLabel(): string {
+    if (this.calculationType === 'bonus') return '';
     return this.calculationType === 'standard' ? '対象年' : '対象年月';
   }
 
@@ -564,8 +565,8 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
 
   private isInsuranceActive(type: 'health' | 'nursing' | 'welfare') {
     const labelMap: Record<typeof type, string> = {
-      health: '健康',
-      nursing: '介護',
+      health: '健康保険',
+      nursing: '介護保険',
       welfare: '厚生年金',
     };
 
@@ -1329,6 +1330,11 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       this.pushApprovalNotifications({ ...saved, id: saved.id });
       
       this.watchApproval(saved.id!, validRows, query);
+      
+      // メッセージを表示してから1秒後に社会保険料計算メニュー画面に遷移
+      setTimeout(() => {
+        this.router.navigate(['/calculations']);
+      }, 1000);
     } catch (error) {
       console.error('承認依頼エラー:', error);
       this.approvalMessage = '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';
@@ -1400,14 +1406,27 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         const pensionBonusTotal =
           (row.welfareEmployeeBonus || 0) + (row.welfareEmployerBonus || 0);
 
+        // 賞与データがある場合は、bonusPaidOnから年月を抽出してyearMonthを設定
+        let yearMonth = row.month;
+        if (row.bonusPaymentDate) {
+          const normalized = normalizeToYearMonth(row.bonusPaymentDate);
+          if (normalized) {
+            yearMonth = normalized;
+          }
+        }
+
         const payrollData: any = {
-          yearMonth: row.month,
+          yearMonth: yearMonth,
           amount: row.monthlySalary || undefined,
           bonusPaidOn: row.bonusPaymentDate || undefined,
           bonusTotal: row.bonusTotalPay || undefined,
+          standardHealthBonus:
+            row.standardHealthBonus > 0 ? row.standardHealthBonus : undefined,
+          standardWelfareBonus:
+            row.standardWelfareBonus > 0 ? row.standardWelfareBonus : undefined,
+          // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
           standardBonus:
             row.standardHealthBonus || row.standardWelfareBonus || undefined,
-          
           healthInsuranceMonthly:
             healthMonthlyTotal > 0 ? healthMonthlyTotal : undefined,
           careInsuranceMonthly:
@@ -1429,7 +1448,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
 
         await this.employeesService.addOrUpdatePayroll(
           employeeId,
-          row.month,
+          yearMonth,
           payrollData,
         );
 

@@ -75,6 +75,21 @@ export class CsvExportComponent implements OnInit {
   payrollStartMonth = '';
   payrollEndMonth = '';
   readonly EXPORT_ALL = EXPORT_ALL;
+  private readonly insurancePremiumFields: CalculationResultField[] = [
+    'healthEmployeeMonthly',
+    'healthEmployerMonthly',
+    'nursingEmployeeMonthly',
+    'nursingEmployerMonthly',
+    'welfareEmployeeMonthly',
+    'welfareEmployerMonthly',
+    'healthEmployeeBonus',
+    'healthEmployerBonus',
+    'nursingEmployeeBonus',
+    'nursingEmployerBonus',
+    'welfareEmployeeBonus',
+    'welfareEmployerBonus',
+    'totalPremium',
+  ];
 
   ngOnInit(): void {
     const queryContext = this.route.snapshot.queryParamMap.get('context');
@@ -104,6 +119,9 @@ export class CsvExportComponent implements OnInit {
   }
 
   get isPayrollRangeIncomplete() {
+    if (!this.selectedSections.has('payrollHistory')) {
+      return false;
+    }
     return !this.payrollStartMonth || !this.payrollEndMonth;
   }
 
@@ -116,7 +134,7 @@ export class CsvExportComponent implements OnInit {
     }
     if (section === 'calculationResult') {
       if (checked && !this.selectedCalculationFields.size) {
-        this.initializeCalculationFields();
+        this.initializeCalculationFields(!this.shouldExcludeInsurancePremiumFields());
       }
       if (!checked) {
         this.selectedCalculationFields.clear();
@@ -144,14 +162,16 @@ export class CsvExportComponent implements OnInit {
       return;
     }
 
-    if (this.isPayrollRangeIncomplete) {
-      this.statusMessage = '給与履歴の開始年月と終了年月を指定してください。';
-      return;
-    }
+    if (this.selectedSections.has('payrollHistory')) {
+      if (this.isPayrollRangeIncomplete) {
+        this.statusMessage = '給与履歴の開始年月と終了年月を指定してください。';
+        return;
+      }
 
-    if (this.hasInvalidPayrollRange()) {
-      this.statusMessage = '開始年月は終了年月以前を指定してください。';
-      return;
+      if (this.hasInvalidPayrollRange()) {
+        this.statusMessage = '開始年月は終了年月以前を指定してください。';
+        return;
+      }
     }
 
     if (!this.selectedSections.size) {
@@ -266,7 +286,7 @@ export class CsvExportComponent implements OnInit {
     this.selectedSections.clear();
     this.visibleOptions.forEach((option) => this.selectedSections.add(option.key));
     if (this.selectedSections.has('calculationResult')) {
-      this.initializeCalculationFields();
+      this.initializeCalculationFields(!this.shouldExcludeInsurancePremiumFields());
     }
   }
 
@@ -285,14 +305,15 @@ export class CsvExportComponent implements OnInit {
     return this.payrollStartMonth > this.payrollEndMonth;
   }
 
-  initializeCalculationFields() {
+  initializeCalculationFields(selectAll = true) {
     if (!this.calculationContext?.rows?.length) {
       this.selectedCalculationFields.clear();
       return;
     }
-    this.selectedCalculationFields = new Set(
-      this.calculationFieldOptions.map((option) => option.key),
-    );
+    const keys = selectAll
+      ? this.calculationFieldOptions.map((option) => option.key)
+      : this.buildDefaultCalculationFieldKeys();
+    this.selectedCalculationFields = new Set(keys);
   }
 
   onToggleCalculationField(field: CalculationResultField, checked: boolean) {
@@ -302,5 +323,16 @@ export class CsvExportComponent implements OnInit {
     } else {
       this.selectedCalculationFields.delete(field);
     }
+  }
+
+  private shouldExcludeInsurancePremiumFields() {
+    return this.context === 'calculation';
+  }
+
+  private buildDefaultCalculationFieldKeys(): CalculationResultField[] {
+    const excluded = new Set(this.insurancePremiumFields);
+    return this.calculationFieldOptions
+      .map((option) => option.key)
+      .filter((key) => !excluded.has(key));
   }
 }

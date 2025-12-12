@@ -256,8 +256,9 @@ export function normalizeEmployeeNoForComparison(employeeNo: string): string {
       if (templateType === 'new' && existingEmployees && existingEmployees.length > 0) {
         const employeeNo = row.data['社員番号'] || '';
         if (employeeNo) {
+          // 念のため、existingEmployeesのemployeeNoも正規化して比較する
           const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
-          const existingEmployee = existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === normalizedEmployeeNo);
+          const existingEmployee = existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === normalizedEmployeeNo);
           
           if (existingEmployee) {
             // 既存社員が見つかった場合 → 一括更新モード
@@ -844,8 +845,9 @@ export function normalizeEmployeeNoForComparison(employeeNo: string): string {
         });
       } else {
         // 社員番号で既存社員を検索（スペースを無視して比較）
+        // 念のため、existingEmployeesのemployeeNoも正規化して比較する
         const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
-        const foundByEmployeeNo = existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === normalizedEmployeeNo);
+        const foundByEmployeeNo = existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === normalizedEmployeeNo);
         if (!foundByEmployeeNo) {
           errors.push({
             rowIndex: parsedRow.rowIndex,
@@ -885,8 +887,9 @@ export function normalizeEmployeeNoForComparison(employeeNo: string): string {
     }
 
     // 既存社員データを検索（社員番号で、スペースを無視して比較）
+    // 念のため、existingEmployeesのemployeeNoも正規化して比較する
     const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
-    const foundByEmployeeNo = existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === normalizedEmployeeNo);
+    const foundByEmployeeNo = existingEmployees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo || '') === normalizedEmployeeNo);
 
     // 判定ロジック
     // 社員番号が存在しない場合はエラー

@@ -108,6 +108,9 @@ export class ApprovalWorkflowService {
             const normalized = requests.map((req) =>
                 req.flowSnapshot ? req : { ...req, flowSnapshot: flows.find((f) => f.id === req.flowId) },
               );
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/b404053e-2227-4d5b-b69e-e2b3fab0c7ea',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'approval-workflow.service.ts:111',message:'syncRequests updating requests$',data:{totalRequests:normalized.length,statuses:normalized.map(r=>({id:r.id,status:r.status}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+              // #endregion
               this.requestsSubject.next(normalized);
         }),
       )

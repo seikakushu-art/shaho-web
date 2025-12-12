@@ -58,6 +58,8 @@
         <option *ngFor="let year of availableYears" [value]="year">{{ year }}年</option>
       </select>
         <span class="hint" *ngIf="isAdHocDecision" style="font-size: 0.85em; color: #666;">選択された月から3ヶ月の給与で標準報酬月額を計算する。</span>
+        <span class="hint" *ngIf="isAnnualAverage" style="font-size: 0.85em; color: #666;">対象月を基準に、前年7月～当年6月の12か月の給料で計算します。</span>
+        <span class="hint" *ngIf="isAcquisitionDecision" style="font-size: 0.85em; color: #666;">健康保険と厚生年金の資格取得日の月の給料で決めます。</span>
       </div>
     </div>
     <div class="field" *ngIf="isStandardCalculation">
@@ -82,17 +84,20 @@
       <label>保険種別</label>
       <div class="options">
         <label>
-          <input type="checkbox" [checked]="insuranceSelections['health']" (change)="toggleInsurance('health')" />
+          <input type="checkbox" [checked]="insuranceSelections['health']" (change)="toggleInsurance('health')" [disabled]="isStandardCalculation || isBonusCalculation" />
           健康保険
         </label>
         <label>
-          <input type="checkbox" [checked]="insuranceSelections['welfare']" (change)="toggleInsurance('welfare')" />
+          <input type="checkbox" [checked]="insuranceSelections['welfare']" (change)="toggleInsurance('welfare')" [disabled]="isStandardCalculation || isBonusCalculation" />
           厚生年金
         </label>
         <label>
-          <input type="checkbox" [checked]="insuranceSelections['nursing']" (change)="toggleInsurance('nursing')" />
+          <input type="checkbox" [checked]="insuranceSelections['nursing']" (change)="toggleInsurance('nursing')" [disabled]="isStandardCalculation || isBonusCalculation" />
           介護保険
         </label>
+      </div>
+      <div class="hint" style="font-size: 0.85em; color: #666;" *ngIf="isStandardCalculation || isBonusCalculation">
+        保険種別の選択は社会保険料計算でのみ利用できます。
       </div>
     </div>
     <div class="actions-row">
@@ -109,8 +114,9 @@
             <th>氏名</th>
             <th>部署</th>
             <th>勤務地</th>
-            <th *ngIf="isStandardCalculation">標準報酬月額</th>
-            <th *ngIf="!isStandardCalculation">賞与支給日</th>
+            <th *ngIf="isStandardCalculation || calculationType === 'insurance'">標準報酬月額</th>
+            <th *ngIf="calculationType === 'insurance'">介護保険第2号被保険者フラグ</th>
+            <th *ngIf="isBonusCalculation">最新の賞与支給日</th>
           </tr>
         </thead>
         <tbody>
@@ -119,10 +125,13 @@
             <td>{{ candidate.name }}</td>
             <td>{{ candidate.department }}</td>
             <td>{{ getCandidateLocation(candidate) }}</td>
-            <td *ngIf="isStandardCalculation">
+            <td *ngIf="isStandardCalculation || calculationType === 'insurance'">
               {{ candidate.standardMonthly ? (candidate.standardMonthly | number: '1.0-0') + ' 円' : '未設定' }}
             </td>
-            <td *ngIf="!isStandardCalculation">{{ getCandidateBonusDate(candidate) || '未登録' }}</td>
+            <td *ngIf="calculationType === 'insurance'">
+              {{ candidate.careSecondInsured !== undefined ? (candidate.careSecondInsured ? 'ON' : 'OFF') : '未設定' }}
+            </td>
+            <td *ngIf="isBonusCalculation">{{ getCandidateBonusDate(candidate) || '未登録' }}</td>
           </tr>
         </tbody>
       </table>
