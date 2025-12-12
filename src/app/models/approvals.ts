@@ -125,6 +125,8 @@ export interface ApprovalRequest {
     month: string;
     monthlySalary: number;
     standardMonthly: number;
+    healthStandardMonthly?: number;
+    welfareStandardMonthly?: number;
     healthEmployeeMonthly: number;
     healthEmployerMonthly: number;
     nursingEmployeeMonthly: number;

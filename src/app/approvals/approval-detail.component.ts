@@ -924,6 +924,8 @@ export class ApprovalDetailComponent implements OnDestroy {
             month: row.month,
             monthlySalary: row.monthlySalary,
             standardMonthly: row.standardMonthly,
+            healthStandardMonthly: row.healthStandardMonthly,
+            welfareStandardMonthly: row.welfareStandardMonthly,
             healthEmployeeMonthly: row.healthEmployeeMonthly,
             healthEmployerMonthly: row.healthEmployerMonthly,
             nursingEmployeeMonthly: row.nursingEmployeeMonthly,

@@ -40,6 +40,7 @@ type ColumnKey =
   | 'month'
   | 'monthlySalary'
   | 'standardMonthly'
+  | 'welfareStandardMonthly'
   | 'healthEmployeeMonthly'
   | 'healthEmployerMonthly'
   | 'healthTotalMonthly'
@@ -194,7 +195,15 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     },
     {
       key: 'standardMonthly',
-      label: '標準報酬月額',
+      label: '健保標準報酬月額',
+      visible: true,
+      sortable: true,
+      category: 'monthly',
+      format: 'money',
+    },
+    {
+      key: 'welfareStandardMonthly',
+      label: '厚年標準報酬月額',
       visible: true,
       sortable: true,
       category: 'monthly',
@@ -432,6 +441,8 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
               month: row.month,
               monthlySalary: row.monthlySalary,
               standardMonthly: row.standardMonthly,
+              healthStandardMonthly: row.healthStandardMonthly,
+              welfareStandardMonthly: row.welfareStandardMonthly,
               healthEmployeeMonthly: row.healthEmployeeMonthly,
               healthEmployerMonthly: row.healthEmployerMonthly,
               nursingEmployeeMonthly: row.nursingEmployeeMonthly,
@@ -653,6 +664,10 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
 
   getRawValue(row: CalculationRow, key: ColumnKey) {
     switch (key) {
+      case 'standardMonthly':
+        return row.healthStandardMonthly ?? row.standardMonthly;
+      case 'welfareStandardMonthly':
+        return row.welfareStandardMonthly ?? row.standardMonthly;
       case 'month':
         return row.month;
       case 'healthTotalMonthly':
@@ -780,6 +795,8 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     const insuranceMap: Partial<
       Record<ColumnKey, 'health' | 'nursing' | 'welfare'>
     > = {
+      standardMonthly: 'health',
+      welfareStandardMonthly: 'welfare',
       standardHealthBonus: 'health',
       standardWelfareBonus: 'welfare',
       healthEmployeeMonthly: 'health',
@@ -1193,7 +1210,11 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           });
         };
 
-        pushIfExists('標準報酬月額', row.standardMonthly);
+        pushIfExists('健保標準報酬月額', row.healthStandardMonthly ?? row.standardMonthly);
+        pushIfExists(
+          '厚年標準報酬月額',
+          row.welfareStandardMonthly ?? row.standardMonthly,
+        );
 
         const healthTotalMonthly = (row.healthEmployeeMonthly || 0) + (row.healthEmployerMonthly || 0);
         pushIfExists('健康保険料（月額）', healthTotalMonthly > 0 ? healthTotalMonthly : null);
@@ -1214,7 +1235,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
 
         // 差分が無い場合でも行を表示するため、標準報酬月額または社員番号で1件追加
         if (changes.length === 0) {
-          pushIfExists('標準報酬月額', row.standardMonthly ?? 0);
+          pushIfExists('健保標準報酬月額', row.healthStandardMonthly ?? row.standardMonthly ?? 0);
         }
 
         return {
@@ -1234,6 +1255,8 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         month: row.month,
         monthlySalary: row.monthlySalary,
         standardMonthly: row.standardMonthly,
+        healthStandardMonthly: row.healthStandardMonthly,
+        welfareStandardMonthly: row.welfareStandardMonthly,
         healthEmployeeMonthly: row.healthEmployeeMonthly,
         healthEmployerMonthly: row.healthEmployerMonthly,
         nursingEmployeeMonthly: row.nursingEmployeeMonthly,
