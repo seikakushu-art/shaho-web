@@ -46,6 +46,8 @@ export interface CalculationRow {
   month: string;
   monthlySalary: number;
   standardMonthly: number;
+  healthStandardMonthly?: number;
+  welfareStandardMonthly?: number;
   healthEmployeeMonthly: number;
   healthEmployerMonthly: number;
   nursingEmployeeMonthly: number;
@@ -472,6 +474,10 @@ export class CalculationDataService {
       month: context.targetMonth,
       monthlySalary,
       standardMonthly: standard.standardMonthly,
+      healthStandardMonthly:
+        employee.healthStandardMonthly ?? standard.standardMonthly,
+      welfareStandardMonthly:
+        employee.welfareStandardMonthly ?? standard.standardMonthly,
       healthEmployeeMonthly: healthMonthly.employee,
       healthEmployerMonthly: healthMonthly.employer,
       nursingEmployeeMonthly: nursingMonthly.employee,

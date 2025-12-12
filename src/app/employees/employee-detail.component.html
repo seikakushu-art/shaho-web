@@ -8,8 +8,10 @@
                 </p>
             </div>
             <div class="header-actions">
-                <button *ngIf="canManage$ | async" type="button" class="secondary" (click)="navigateToEdit()">編集</button>
-                <button *ngIf="canDelete && (canManage$ | async)" type="button" class="danger" (click)="requestDelete()" [disabled]="!employee">削除</button>
+                <button *ngIf="canManage$ | async" type="button" class="secondary"
+                    (click)="navigateToEdit()">編集</button>
+                <button *ngIf="canDelete && (canManage$ | async)" type="button" class="danger" (click)="requestDelete()"
+                    [disabled]="!employee">削除</button>
                 <button type="button" class="outline" (click)="showApprovalHistory = true">承認履歴</button>
             </div>
         </header>
@@ -123,7 +125,9 @@
                     <div>
                         <label>標準賞与額年度累計</label>
                         <p class="value">{{ displayAmount(displayedStandardBonusAnnualTotal) }}</p>
-                        <p class="hint" *ngIf="socialInsurance.standardBonusAnnualTotal === null || socialInsurance.standardBonusAnnualTotal === undefined" style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                        <p class="hint"
+                            *ngIf="socialInsurance.standardBonusAnnualTotal === null || socialInsurance.standardBonusAnnualTotal === undefined"
+                            style="font-size: 0.85em; color: #666; margin-top: 4px;">
                             ※ 給与データから自動計算した値です
                         </p>
                     </div>
@@ -141,27 +145,33 @@
                     </div>
                     <div>
                         <label>健康保険 資格取得日</label>
-                        <p class="value">{{ socialInsurance.healthAcquisition ? (socialInsurance.healthAcquisition | date: 'yyyy/MM/dd') : '—' }}</p>
+                        <p class="value">{{ socialInsurance.healthAcquisition ? (socialInsurance.healthAcquisition |
+                            date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
                         <label>厚生年金 資格取得日</label>
-                        <p class="value">{{ socialInsurance.pensionAcquisition ? (socialInsurance.pensionAcquisition | date: 'yyyy/MM/dd') : '—' }}</p>
+                        <p class="value">{{ socialInsurance.pensionAcquisition ? (socialInsurance.pensionAcquisition |
+                            date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
                         <label>育休開始日</label>
-                        <p class="value">{{ socialInsurance.childcareLeaveStart ? (socialInsurance.childcareLeaveStart | date: 'yyyy/MM/dd') : '—' }}</p>
+                        <p class="value">{{ socialInsurance.childcareLeaveStart ? (socialInsurance.childcareLeaveStart |
+                            date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
                         <label>育休終了日</label>
-                        <p class="value">{{ socialInsurance.childcareLeaveEnd ? (socialInsurance.childcareLeaveEnd | date: 'yyyy/MM/dd') : '—' }}</p>
+                        <p class="value">{{ socialInsurance.childcareLeaveEnd ? (socialInsurance.childcareLeaveEnd |
+                            date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
                         <label>産休開始日</label>
-                        <p class="value">{{ socialInsurance.maternityLeaveStart ? (socialInsurance.maternityLeaveStart | date: 'yyyy/MM/dd') : '—' }}</p>
+                        <p class="value">{{ socialInsurance.maternityLeaveStart ? (socialInsurance.maternityLeaveStart |
+                            date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
                         <label>産休終了日</label>
-                        <p class="value">{{ socialInsurance.maternityLeaveEnd ? (socialInsurance.maternityLeaveEnd | date: 'yyyy/MM/dd') : '—' }}</p>
+                        <p class="value">{{ socialInsurance.maternityLeaveEnd ? (socialInsurance.maternityLeaveEnd |
+                            date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
                         <label>健康保険・厚生年金一時免除フラグ</label>
@@ -229,7 +239,8 @@
         </section>
 
         <section *ngIf="selectedTab === 'dependent'" class="tab-body">
-            <article class="card" *ngFor="let dependentInfo of dependentInfos; let i = index" style="margin-bottom: 1.5rem;">
+            <article class="card" *ngFor="let dependentInfo of dependentInfos; let i = index"
+                style="margin-bottom: 1.5rem;">
                 <div class="card-header">
                     <div>
                         <h2>扶養情報 {{ i + 1 }}</h2>
@@ -250,7 +261,8 @@
                     </div>
                     <div>
                         <label>生年月日</label>
-                        <p class="value">{{ dependentInfo.birthDate ? (dependentInfo.birthDate | date: 'yyyy/MM/dd') : '—' }}</p>
+                        <p class="value">{{ dependentInfo.birthDate ? (dependentInfo.birthDate | date: 'yyyy/MM/dd') :
+                            '—' }}</p>
                     </div>
                     <div>
                         <label>性別</label>
@@ -282,7 +294,8 @@
                     </div>
                     <div>
                         <label>被扶養者になった日</label>
-                        <p class="value">{{ dependentInfo.dependentStartDate ? (dependentInfo.dependentStartDate | date: 'yyyy/MM/dd') : '—' }}</p>
+                        <p class="value">{{ dependentInfo.dependentStartDate ? (dependentInfo.dependentStartDate | date:
+                            'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
                         <label>国民年金第3号被保険者該当フラグ</label>
@@ -318,12 +331,8 @@
                     </div>
                     <div>
                         <label>項目名</label>
-                        <input 
-                            type="text" 
-                            [(ngModel)]="historyFilters.field" 
-                            placeholder="項目名を入力してください"
-                            autocomplete="off"
-                        />
+                        <input type="text" [(ngModel)]="historyFilters.field" placeholder="項目名を入力してください"
+                            autocomplete="off" />
                     </div>
                     <div>
                         <label>操作者</label>
@@ -454,12 +463,8 @@
                 <p class="hint">社員番号: {{ employee?.employeeNo || '—' }}</p>
             </div>
             <div class="approval-form">
-                <app-flow-selector
-                  [label]="'承認ルート'"
-                  [selectedFlowId]="selectedDeleteFlowId"
-                  (flowSelected)="onDeleteFlowSelected($event)"
-                  (flowsUpdated)="onDeleteFlowsUpdated($event)"
-                />
+                <app-flow-selector [label]="'承認ルート'" [selectedFlowId]="selectedDeleteFlowId"
+                    (flowSelected)="onDeleteFlowSelected($event)" (flowsUpdated)="onDeleteFlowsUpdated($event)" />
                 <label class="field">
                     <div class="field-header">
                         <span>申請コメント</span>
@@ -467,7 +472,8 @@
                             {{ deleteComment.length }}/500 文字
                         </span>
                     </div>
-                    <textarea rows="4" [(ngModel)]="deleteComment" placeholder="例：退職に伴う削除です。" maxlength="500"></textarea>
+                    <textarea rows="4" [(ngModel)]="deleteComment" placeholder="例：退職に伴う削除です。"
+                        maxlength="500"></textarea>
                 </label>
                 <div class="attachment-box">
                     <div class="attachment-header">
@@ -476,12 +482,8 @@
                             <p class="hint">1件10MB以内・最大5件・合計30MB</p>
                         </div>
                         <label class="upload-button">
-                            <input
-                                type="file"
-                                multiple
-                                (change)="onFileSelected($event)"
-                                [accept]="attachmentService.acceptExtensions"
-                            />
+                            <input type="file" multiple (change)="onFileSelected($event)"
+                                [accept]="attachmentService.acceptExtensions" />
                             ファイルを選択
                         </label>
                     </div>
@@ -504,7 +506,8 @@
 
         <div class="navigation">
             <button type="button" class="ghost" (click)="cancelDelete()" [disabled]="isDeleting">キャンセル</button>
-            <button type="button" class="primary danger" (click)="submitDeleteApproval()" [disabled]="isDeleting || !selectedDeleteFlowId">承認依頼を送信</button>
+            <button type="button" class="primary danger" (click)="submitDeleteApproval()"
+                [disabled]="isDeleting || !selectedDeleteFlowId">承認依頼を送信</button>
         </div>
     </div>
 </section>

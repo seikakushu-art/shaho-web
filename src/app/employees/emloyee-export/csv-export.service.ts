@@ -2,10 +2,10 @@ import { inject, Injectable } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
 import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
 import {
-    CalculationRow,
-    CalculationResultHistory,
-  } from '../../calculations/calculation-data.service';
-  import { CalculationType } from '../../calculations/calculation-types';
+  CalculationRow,
+  CalculationResultHistory,
+} from '../../calculations/calculation-data.service';
+import { CalculationType } from '../../calculations/calculation-types';
 
 export type ExportContext = 'import' | 'calculation';
 export type ExportSection =
@@ -19,6 +19,7 @@ export type CalculationResultField =
   | 'targetMonth'
   | 'activeInsurances'
   | 'standardMonthly'
+  | 'welfareStandardMonthly'
   | 'standardHealthBonus'
   | 'standardWelfareBonus'
   | 'healthEmployeeMonthly'
@@ -44,7 +45,8 @@ export const CALCULATION_RESULT_FIELD_DEFS: ReadonlyArray<{
   { key: 'calculationType', header: '計算種別' },
   { key: 'targetMonth', header: '対象年/年月' },
   { key: 'activeInsurances', header: '対象保険種別' },
-  { key: 'standardMonthly', header: '標準報酬月額(計算結果)' },
+  { key: 'standardMonthly', header: '健保標準報酬月額(計算結果)' },
+  { key: 'welfareStandardMonthly', header: '厚年標準報酬月額(計算結果)' },
   { key: 'standardHealthBonus', header: '標準賞与額(健・介)' },
   { key: 'standardWelfareBonus', header: '標準賞与額(厚生年金)' },
   { key: 'healthEmployeeMonthly', header: '健康保険（月例 個人）' },
@@ -75,17 +77,22 @@ export interface CalculationCsvContext {
   meta?: CalculationCsvMeta;
 }
 
-type EmployeesObservable = ReturnType<ShahoEmployeesService['getEmployeesWithPayrolls']>;
-type EmployeeWithPayrolls = EmployeesObservable extends Observable<infer Arr>
-  ? Arr extends readonly any[]
-    ? Arr[number]
-    : never
-  : never;
+type EmployeesObservable = ReturnType<
+  ShahoEmployeesService['getEmployeesWithPayrolls']
+>;
+type EmployeeWithPayrolls =
+  EmployeesObservable extends Observable<infer Arr>
+    ? Arr extends readonly any[]
+      ? Arr[number]
+      : never
+    : never;
 type Payroll = NonNullable<EmployeeWithPayrolls['payrolls']>[number];
 
 interface CsvColumn {
   header: string;
-  value: (employee: EmployeeWithPayrolls) => string | number | boolean | null | undefined;
+  value: (
+    employee: EmployeeWithPayrolls,
+  ) => string | number | boolean | null | undefined;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -102,21 +109,23 @@ export class CsvExportService {
     payrollStartMonth?: string;
     payrollEndMonth?: string;
   }): Promise<Blob> {
-    const employees = await firstValueFrom(this.employeesService.getEmployeesWithPayrolls());
+    const employees = await firstValueFrom(
+      this.employeesService.getEmployeesWithPayrolls(),
+    );
     const filteredEmployees = this.filterEmployees(
       employees,
       options.department,
       options.workPrefecture,
     );
     const columns = this.buildColumns(
-        options.sections,
-        options.context,
-        options.calculationContext,
-        options.calculationFields,
+      options.sections,
+      options.context,
+      options.calculationContext,
+      options.calculationFields,
       filteredEmployees,
       options.payrollStartMonth,
       options.payrollEndMonth,
-      );
+    );
 
     const rows = filteredEmployees.map((employee) =>
       columns.map((column) => this.escapeForCsv(column.value(employee))),
@@ -124,11 +133,15 @@ export class CsvExportService {
     const csvMatrix = [columns.map((column) => column.header), ...rows];
     const csvContent = csvMatrix.map((row) => row.join(',')).join('\n');
 
-    return new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    return new Blob(['\uFEFF' + csvContent], {
+      type: 'text/csv;charset=utf-8;',
+    });
   }
 
   buildFileName(context: ExportContext) {
-    return context === 'calculation' ? 'calculation-csv-export.csv' : 'employee-csv-export.csv';
+    return context === 'calculation'
+      ? 'calculation-csv-export.csv'
+      : 'employee-csv-export.csv';
   }
 
   private buildColumns(
@@ -148,114 +161,161 @@ export class CsvExportService {
         { header: '氏名(漢字)', value: (employee) => employee.name },
         { header: '氏名(カナ)', value: (employee) => employee.kana },
         { header: '部署', value: (employee) => employee.department },
-        { header: '勤務地都道府県', value: (employee) => employee.workPrefecture },
-        { header: '生年月日', value: (employee) => this.formatDate(employee.birthDate) },
+        {
+          header: '勤務地都道府県',
+          value: (employee) => employee.workPrefecture,
+        },
+        {
+          header: '生年月日',
+          value: (employee) => this.formatDate(employee.birthDate),
+        },
         { header: '郵便番号', value: (employee) => employee.postalCode },
         { header: '住所', value: (employee) => employee.address },
         { header: '個人番号', value: (employee) => employee.personalNumber },
-        { header: '基礎年金番号', value: (employee) => employee.basicPensionNumber },
-        { header: '扶養の有無', value: (employee) => (employee.hasDependent ? 'はい' : 'いいえ') },
+        {
+          header: '基礎年金番号',
+          value: (employee) => employee.basicPensionNumber,
+        },
+        {
+          header: '扶養の有無',
+          value: (employee) => (employee.hasDependent ? 'はい' : 'いいえ'),
+        },
       );
     }
 
     if (sections.includes('socialInsurance')) {
       columns.push(
-        { header: '健康保険被保険者番号', value: (employee) => employee.healthInsuredNumber },
-        { header: '厚生年金被保険者番号', value: (employee) => employee.pensionInsuredNumber },
-        { header: '標準報酬月額', value: (employee) => employee.standardMonthly },
-        { header: '標準賞与額年間合計', value: (employee) => employee.standardBonusAnnualTotal },
-        { header: '介護第2号被保険者', value: (employee) => (employee.careSecondInsured ? 'はい' : 'いいえ') },
+        {
+          header: '健康保険被保険者番号',
+          value: (employee) => employee.healthInsuredNumber,
+        },
+        {
+          header: '厚生年金被保険者番号',
+          value: (employee) => employee.pensionInsuredNumber,
+        },
+        {
+          header: '健保標準報酬月額',
+          value: (employee) =>
+            employee.healthStandardMonthly ?? employee.standardMonthly,
+        },
+        {
+          header: '厚年標準報酬月額',
+          value: (employee) =>
+            employee.welfareStandardMonthly ?? employee.standardMonthly,
+        },
+        {
+          header: '標準賞与額年間合計',
+          value: (employee) => employee.standardBonusAnnualTotal,
+        },
+        {
+          header: '介護第2号被保険者',
+          value: (employee) => (employee.careSecondInsured ? 'はい' : 'いいえ'),
+        },
       );
     }
 
     if (sections.includes('payrollHistory')) {
-        const targetMonths = this.determinePayrollMonths(
-          employees,
-          payrollStartMonth,
-          payrollEndMonth,
-        );
+      const targetMonths = this.determinePayrollMonths(
+        employees,
+        payrollStartMonth,
+        payrollEndMonth,
+      );
 
-        targetMonths.forEach((month) => {
-          columns.push(
-            {
-              header: `給与(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)?.amount ?? '',
-            },
-            {
-              header: `支払基礎日数(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)?.workedDays ?? '',
-            },
-            {
-              header: `健康保険（月給）(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)
-                  ?.healthInsuranceMonthly ?? '',
-            },
-            {
-              header: `介護保険（月給）(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)
-                  ?.careInsuranceMonthly ?? '',
-            },
-            {
-              header: `厚生年金（月給）(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)?.pensionMonthly ??
-                '',
-            },
-            {
-              header: `賞与(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)?.bonusTotal ?? '',
-            },
-            {
-              header: `賞与支給日(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)?.bonusPaidOn ?? '',
-            },
-            {
-              header: `標準賞与額(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)?.standardBonus ??
-                '',
-            },
-            {
-              header: `健康保険（賞与）(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)
-                  ?.healthInsuranceBonus ?? '',
-            },
-            {
-              header: `介護保険（賞与）(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)?.careInsuranceBonus ??
-                '',
-            },
-            {
-              header: `厚生年金（賞与）(${month})`,
-              value: (employee) =>
-                (employee.payrolls ?? []).find((payroll) => payroll.yearMonth === month)?.pensionBonus ?? '',
-            },
-          );
+      targetMonths.forEach((month) => {
+        columns.push(
+          {
+            header: `給与(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.amount ?? '',
+          },
+          {
+            header: `支払基礎日数(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.workedDays ?? '',
+          },
+          {
+            header: `健康保険（月給）(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.healthInsuranceMonthly ?? '',
+          },
+          {
+            header: `介護保険（月給）(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.careInsuranceMonthly ?? '',
+          },
+          {
+            header: `厚生年金（月給）(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.pensionMonthly ?? '',
+          },
+          {
+            header: `賞与(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.bonusTotal ?? '',
+          },
+          {
+            header: `賞与支給日(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.bonusPaidOn ?? '',
+          },
+          {
+            header: `標準賞与額(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.standardBonus ?? '',
+          },
+          {
+            header: `健康保険（賞与）(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.healthInsuranceBonus ?? '',
+          },
+          {
+            header: `介護保険（賞与）(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.careInsuranceBonus ?? '',
+          },
+          {
+            header: `厚生年金（賞与）(${month})`,
+            value: (employee) =>
+              (employee.payrolls ?? []).find(
+                (payroll) => payroll.yearMonth === month,
+              )?.pensionBonus ?? '',
+          },
+        );
       });
     }
 
     if (
-        sections.includes('calculationResult') &&
-        context === 'calculation' &&
-        calculationContext?.rows?.length
-      ) {
-        const rowMap = new Map(
-          calculationContext.rows.map((row) => [row.employeeNo, row]),
-        );
-        const meta: CalculationCsvMeta = calculationContext.meta ?? {};
-        const fields = this.resolveCalculationFields(calculationFields);
-        columns.push(
-          ...this.buildCalculationResultColumns(fields, rowMap, meta),
-        );
-      }
+      sections.includes('calculationResult') &&
+      context === 'calculation' &&
+      calculationContext?.rows?.length
+    ) {
+      const rowMap = new Map(
+        calculationContext.rows.map((row) => [row.employeeNo, row]),
+      );
+      const meta: CalculationCsvMeta = calculationContext.meta ?? {};
+      const fields = this.resolveCalculationFields(calculationFields);
+      columns.push(...this.buildCalculationResultColumns(fields, rowMap, meta));
+    }
 
     return columns;
   }
@@ -275,25 +335,103 @@ export class CsvExportService {
     meta: CalculationCsvMeta,
   ): CsvColumn[] {
     const byKey: Record<CalculationResultField, CsvColumn> = {
-      calculationId: { header: '計算ID', value: () => meta.historyId ?? meta.id },
-      calculationType: { header: '計算種別', value: () => meta.calculationType },
+      calculationId: {
+        header: '計算ID',
+        value: () => meta.historyId ?? meta.id,
+      },
+      calculationType: {
+        header: '計算種別',
+        value: () => meta.calculationType,
+      },
       targetMonth: { header: '対象年/年月', value: () => meta.targetMonth },
-      activeInsurances: { header: '対象保険種別', value: () => (meta.activeInsurances ?? []).join('/') },
-      standardMonthly: { header: '標準報酬月額(計算結果)', value: (employee) => rowMap.get(employee.employeeNo)?.standardMonthly },
-      standardHealthBonus: { header: '標準賞与額(健・介)', value: (employee) => rowMap.get(employee.employeeNo)?.standardHealthBonus },
-      standardWelfareBonus: { header: '標準賞与額(厚生年金)', value: (employee) => rowMap.get(employee.employeeNo)?.standardWelfareBonus },
-      healthEmployeeMonthly: { header: '健康保険（月例 個人）', value: (employee) => rowMap.get(employee.employeeNo)?.healthEmployeeMonthly },
-      healthEmployerMonthly: { header: '健康保険（月例 会社）', value: (employee) => rowMap.get(employee.employeeNo)?.healthEmployerMonthly },
-      nursingEmployeeMonthly: { header: '介護保険（月例 個人）', value: (employee) => rowMap.get(employee.employeeNo)?.nursingEmployeeMonthly },
-      nursingEmployerMonthly: { header: '介護保険（月例 会社）', value: (employee) => rowMap.get(employee.employeeNo)?.nursingEmployerMonthly },
-      welfareEmployeeMonthly: { header: '厚生年金（月例 個人）', value: (employee) => rowMap.get(employee.employeeNo)?.welfareEmployeeMonthly },
-      welfareEmployerMonthly: { header: '厚生年金（月例 会社）', value: (employee) => rowMap.get(employee.employeeNo)?.welfareEmployerMonthly },
-      healthEmployeeBonus: { header: '健康保険（賞与 個人）', value: (employee) => rowMap.get(employee.employeeNo)?.healthEmployeeBonus },
-      healthEmployerBonus: { header: '健康保険（賞与 会社）', value: (employee) => rowMap.get(employee.employeeNo)?.healthEmployerBonus },
-      nursingEmployeeBonus: { header: '介護保険（賞与 個人）', value: (employee) => rowMap.get(employee.employeeNo)?.nursingEmployeeBonus },
-      nursingEmployerBonus: { header: '介護保険（賞与 会社）', value: (employee) => rowMap.get(employee.employeeNo)?.nursingEmployerBonus },
-      welfareEmployeeBonus: { header: '厚生年金（賞与 個人）', value: (employee) => rowMap.get(employee.employeeNo)?.welfareEmployeeBonus },
-      welfareEmployerBonus: { header: '厚生年金（賞与 会社）', value: (employee) => rowMap.get(employee.employeeNo)?.welfareEmployerBonus },
+      activeInsurances: {
+        header: '対象保険種別',
+        value: () => (meta.activeInsurances ?? []).join('/'),
+      },
+      standardMonthly: {
+        header: '健保標準報酬月額(計算結果)',
+        value: (employee) => {
+          const row = rowMap.get(employee.employeeNo);
+          return row?.healthStandardMonthly ?? row?.standardMonthly;
+        },
+      },
+      welfareStandardMonthly: {
+        header: '厚年標準報酬月額(計算結果)',
+        value: (employee) => {
+          const row = rowMap.get(employee.employeeNo);
+          return row?.welfareStandardMonthly ?? row?.standardMonthly;
+        },
+      },
+      standardHealthBonus: {
+        header: '標準賞与額(健・介)',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.standardHealthBonus,
+      },
+      standardWelfareBonus: {
+        header: '標準賞与額(厚生年金)',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.standardWelfareBonus,
+      },
+      healthEmployeeMonthly: {
+        header: '健康保険（月例 個人）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.healthEmployeeMonthly,
+      },
+      healthEmployerMonthly: {
+        header: '健康保険（月例 会社）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.healthEmployerMonthly,
+      },
+      nursingEmployeeMonthly: {
+        header: '介護保険（月例 個人）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.nursingEmployeeMonthly,
+      },
+      nursingEmployerMonthly: {
+        header: '介護保険（月例 会社）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.nursingEmployerMonthly,
+      },
+      welfareEmployeeMonthly: {
+        header: '厚生年金（月例 個人）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.welfareEmployeeMonthly,
+      },
+      welfareEmployerMonthly: {
+        header: '厚生年金（月例 会社）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.welfareEmployerMonthly,
+      },
+      healthEmployeeBonus: {
+        header: '健康保険（賞与 個人）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.healthEmployeeBonus,
+      },
+      healthEmployerBonus: {
+        header: '健康保険（賞与 会社）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.healthEmployerBonus,
+      },
+      nursingEmployeeBonus: {
+        header: '介護保険（賞与 個人）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.nursingEmployeeBonus,
+      },
+      nursingEmployerBonus: {
+        header: '介護保険（賞与 会社）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.nursingEmployerBonus,
+      },
+      welfareEmployeeBonus: {
+        header: '厚生年金（賞与 個人）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.welfareEmployeeBonus,
+      },
+      welfareEmployerBonus: {
+        header: '厚生年金（賞与 会社）',
+        value: (employee) =>
+          rowMap.get(employee.employeeNo)?.welfareEmployerBonus,
+      },
       totalPremium: {
         header: '個人＋会社 保険料合計',
         value: (employee) => {
@@ -328,7 +466,11 @@ export class CsvExportService {
     if (!value) return '';
 
     if (value instanceof Date) {
-      return this.formatDateParts(value.getFullYear(), value.getMonth() + 1, value.getDate());
+      return this.formatDateParts(
+        value.getFullYear(),
+        value.getMonth() + 1,
+        value.getDate(),
+      );
     }
 
     const trimmed = String(value).trim();
@@ -342,14 +484,20 @@ export class CsvExportService {
     const date = new Date(trimmed);
     if (Number.isNaN(date.getTime())) return trimmed;
 
-    return this.formatDateParts(date.getFullYear(), date.getMonth() + 1, date.getDate());
+    return this.formatDateParts(
+      date.getFullYear(),
+      date.getMonth() + 1,
+      date.getDate(),
+    );
   }
 
   private formatDateParts(year: number, month: number, day: number): string {
     return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
   }
 
-  private escapeForCsv(value: string | number | boolean | null | undefined): string {
+  private escapeForCsv(
+    value: string | number | boolean | null | undefined,
+  ): string {
     if (value === null || value === undefined) return '';
     const str = String(value);
     if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -365,7 +513,9 @@ export class CsvExportService {
   ) {
     return employees.filter((employee) => {
       const matchesDepartment =
-        !department || department === EXPORT_ALL ? true : employee.department === department;
+        !department || department === EXPORT_ALL
+          ? true
+          : employee.department === department;
       const matchesWorkPrefecture =
         !workPrefecture || workPrefecture === EXPORT_ALL
           ? true
