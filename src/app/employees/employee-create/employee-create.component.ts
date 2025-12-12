@@ -195,13 +195,13 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
                 postalCode: result.data.employeeData.basicInfo?.postalCode ?? '',
               };
               const incomingInsurance = result.data.employeeData.socialInsurance;
-              const healthStandardMonthly = incomingInsurance.healthStandardMonthly ?? incomingInsurance.standardMonthly ?? 0;
-              const welfareStandardMonthly = incomingInsurance.welfareStandardMonthly ?? healthStandardMonthly;
+              const healthStandardMonthly = incomingInsurance.healthStandardMonthly ?? 0;
+                const welfareStandardMonthly = incomingInsurance.welfareStandardMonthly ?? 0;
               this.socialInsurance = {
                 ...incomingInsurance,
                 healthStandardMonthly,
                 welfareStandardMonthly,
-                standardMonthly: healthStandardMonthly,
+                standardMonthly: incomingInsurance.standardMonthly ?? null,
               };
               // 承認リクエストの扶養情報を読み込み（複数件に対応）
               const dependentInfosFromRequest = result.data.employeeData.dependentInfos;
@@ -295,18 +295,18 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       };
 
       // 社会保険情報を設定（詳細画面と同じロジック）
-      const healthStandardMonthly = employee.healthStandardMonthly ?? employee.standardMonthly ?? 0;
-    const welfareStandardMonthly = employee.welfareStandardMonthly ?? healthStandardMonthly;
-    this.socialInsurance = {
-      ...this.socialInsurance,
-      pensionOffice: '',
-      officeName: '',
-      standardMonthly: healthStandardMonthly,
-      healthStandardMonthly,
-      welfareStandardMonthly,
-      healthCumulative: employee.standardBonusAnnualTotal ?? 0,
-      healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
-      pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
+      const healthStandardMonthly = employee.healthStandardMonthly ?? 0;
+      const welfareStandardMonthly = employee.welfareStandardMonthly ?? 0;
+      this.socialInsurance = {
+        ...this.socialInsurance,
+        pensionOffice: '',
+        officeName: '',
+        standardMonthly: employee.standardMonthly ?? 0,
+        healthStandardMonthly,
+        welfareStandardMonthly,
+        healthCumulative: employee.standardBonusAnnualTotal ?? 0,
+        healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
+        pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
         careSecondInsured: employee.careSecondInsured ?? this.socialInsurance.careSecondInsured,
         healthAcquisition: this.formatDateForInput(employee.healthAcquisition) || '',
         pensionAcquisition: this.formatDateForInput(employee.pensionAcquisition) || '',
@@ -544,17 +544,15 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
 
         // 一時保存用の社員データ
         // dependentInfoは後方互換性のため残すが、dependentInfos配列も保存
-        const healthStandardMonthly =
-        this.socialInsurance.healthStandardMonthly || this.socialInsurance.standardMonthly || 0;
-      const welfareStandardMonthly =
-        this.socialInsurance.welfareStandardMonthly || healthStandardMonthly;
+        const healthStandardMonthly = this.socialInsurance.healthStandardMonthly || 0;
+        const welfareStandardMonthly = this.socialInsurance.welfareStandardMonthly || 0;
         const employeeData = {
           basicInfo: { ...this.basicInfo },
           socialInsurance: {
             ...this.socialInsurance,
             healthStandardMonthly,
             welfareStandardMonthly,
-            standardMonthly: healthStandardMonthly,
+            standardMonthly: this.socialInsurance.standardMonthly ?? null,
           },
           dependentInfo: this.dependentInfos.length > 0 ? { ...this.dependentInfos[0] } : undefined,
           // dependentInfosは空の配列でも保存する（undefinedではなく空配列として保存）
@@ -643,10 +641,8 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             }
 
             const { basicInfo, socialInsurance, dependentInfo, dependentInfos } = approvedRequest.employeeData;
-            const healthStandardMonthly =
-              socialInsurance.healthStandardMonthly ?? socialInsurance.standardMonthly;
-            const welfareStandardMonthly =
-              socialInsurance.welfareStandardMonthly ?? healthStandardMonthly;
+            const healthStandardMonthly = socialInsurance.healthStandardMonthly ?? 0;
+            const welfareStandardMonthly = socialInsurance.welfareStandardMonthly ?? 0;
 
             // employeeDataをShahoEmployee形式に変換
             const employeeData: ShahoEmployee = {
@@ -664,7 +660,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
               hasDependent: basicInfo.hasDependent || false,
               healthStandardMonthly: healthStandardMonthly || undefined,
               welfareStandardMonthly: welfareStandardMonthly || undefined,
-              standardMonthly: healthStandardMonthly || undefined,
+              standardMonthly: socialInsurance.standardMonthly || undefined,
               healthInsuredNumber: socialInsurance.healthInsuredNumber || undefined,
               pensionInsuredNumber: socialInsurance.pensionInsuredNumber || undefined,
               careSecondInsured: socialInsurance.careSecondInsured || false,
@@ -1096,10 +1092,10 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       }
 
       // 社会保険情報の差分
-      const originalHealthStandardMonthly = original.healthStandardMonthly ?? original.standardMonthly ?? 0;
-      const originalWelfareStandardMonthly = original.welfareStandardMonthly ?? originalHealthStandardMonthly;
-      const newHealthStandardMonthly = this.socialInsurance.healthStandardMonthly ?? this.socialInsurance.standardMonthly ?? 0;
-      const newWelfareStandardMonthly = this.socialInsurance.welfareStandardMonthly ?? newHealthStandardMonthly;
+      const originalHealthStandardMonthly = original.healthStandardMonthly ?? 0;
+      const originalWelfareStandardMonthly = original.welfareStandardMonthly ?? 0;
+      const newHealthStandardMonthly = this.socialInsurance.healthStandardMonthly ?? 0;
+      const newWelfareStandardMonthly = this.socialInsurance.welfareStandardMonthly ?? 0;
 
       if (originalHealthStandardMonthly !== newHealthStandardMonthly) {
         changes.push({

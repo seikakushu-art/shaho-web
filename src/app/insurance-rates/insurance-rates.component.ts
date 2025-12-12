@@ -619,8 +619,10 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
   }
 
   enableEdit(): void {
-    if (!this.isLatestSelection) {
-      return;
+    // 履歴を表示している場合は、最新レコードに切り替えて編集モードに入る
+    if (!this.isLatestSelection && this.latestRecord) {
+      this.viewingRecord = this.latestRecord;
+      this.populateForm(this.latestRecord);
     }
     this.editMode = true;
     this.message = '最新レコードを編集しています。';

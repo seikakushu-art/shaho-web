@@ -290,8 +290,8 @@ export class ApprovalDetailComponent implements OnDestroy {
       throw new Error('社員番号または氏名が不足しています');
     }
 
-    const healthStandardMonthly = socialInsurance?.healthStandardMonthly ?? socialInsurance?.standardMonthly;
-    const welfareStandardMonthly = socialInsurance?.welfareStandardMonthly ?? healthStandardMonthly;
+    const healthStandardMonthly = socialInsurance?.healthStandardMonthly ?? 0;
+    const welfareStandardMonthly = socialInsurance?.welfareStandardMonthly ?? 0;
 
     const employeePayload: ShahoEmployee = {
       employeeNo: basicInfo.employeeNo,
@@ -308,7 +308,7 @@ export class ApprovalDetailComponent implements OnDestroy {
       hasDependent: basicInfo.hasDependent ?? false,
       healthStandardMonthly: healthStandardMonthly || undefined,
       welfareStandardMonthly: welfareStandardMonthly || undefined,
-      standardMonthly: healthStandardMonthly || undefined,
+      standardMonthly: socialInsurance?.standardMonthly || undefined,
       standardBonusAnnualTotal: socialInsurance?.healthCumulative || undefined,
       healthInsuredNumber: socialInsurance?.healthInsuredNumber || undefined,
       pensionInsuredNumber: socialInsurance?.pensionInsuredNumber || undefined,

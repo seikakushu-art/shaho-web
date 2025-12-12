@@ -652,11 +652,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           const monthlyData: SocialInsuranceHistoryData = {
             monthlySalary: payroll.amount,
             workedDays: payroll.workedDays,
-            healthStandardMonthly: payroll.healthStandardMonthly ?? payroll.standardMonthly,
-            welfareStandardMonthly:
-              payroll.welfareStandardMonthly ??
-              payroll.healthStandardMonthly ??
-              payroll.standardMonthly,
+            healthStandardMonthly: payroll.healthStandardMonthly ?? undefined,
+            welfareStandardMonthly: payroll.welfareStandardMonthly ?? undefined,
             healthInsuranceMonthly: payroll.healthInsuranceMonthly,
             careInsuranceMonthly: payroll.careInsuranceMonthly,
             pensionMonthly: payroll.pensionMonthly,
@@ -921,12 +918,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     this.socialInsurance = {
       ...this.socialInsurance,
       standardMonthly: employee.standardMonthly ?? null,
-      healthStandardMonthly: employee.healthStandardMonthly ?? employee.standardMonthly ?? null,
-      welfareStandardMonthly:
-        employee.welfareStandardMonthly ??
-        employee.healthStandardMonthly ??
-        employee.standardMonthly ??
-        null,
+      healthStandardMonthly: employee.healthStandardMonthly ?? null,
+      welfareStandardMonthly: employee.welfareStandardMonthly ?? null,
       standardBonusAnnualTotal: employee.standardBonusAnnualTotal ?? null,
       healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
       pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
