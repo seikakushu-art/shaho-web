@@ -39,7 +39,7 @@ type ColumnKey =
   | 'location'
   | 'month'
   | 'monthlySalary'
-  | 'standardMonthly'
+  | 'healthStandardMonthly'
   | 'welfareStandardMonthly'
   | 'healthEmployeeMonthly'
   | 'healthEmployerMonthly'
@@ -194,7 +194,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       format: 'money',
     },
     {
-      key: 'standardMonthly',
+      key: 'healthStandardMonthly',
       label: '健保標準報酬月額',
       visible: true,
       sortable: true,
@@ -440,7 +440,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
               location: row.location,
               month: row.month,
               monthlySalary: row.monthlySalary,
-              standardMonthly: row.standardMonthly,
               healthStandardMonthly: row.healthStandardMonthly,
               welfareStandardMonthly: row.welfareStandardMonthly,
               healthEmployeeMonthly: row.healthEmployeeMonthly,
@@ -664,10 +663,10 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
 
   getRawValue(row: CalculationRow, key: ColumnKey) {
     switch (key) {
-      case 'standardMonthly':
-        return row.healthStandardMonthly ?? row.standardMonthly;
+      case 'healthStandardMonthly':
+        return row.healthStandardMonthly;
       case 'welfareStandardMonthly':
-        return row.welfareStandardMonthly ?? row.standardMonthly;
+        return row.welfareStandardMonthly;
       case 'month':
         return row.month;
       case 'healthTotalMonthly':
@@ -778,6 +777,13 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     if (column.category === 'bonus' && this.calculationType === 'standard') {
       return false;
     }
+    // 標準報酬月額計算の場合、健保標準報酬月額と厚年標準報酬月額は常に表示
+    if (
+      this.calculationType === 'standard' &&
+      (column.key === 'healthStandardMonthly' || column.key === 'welfareStandardMonthly')
+    ) {
+      return true;
+    }
     // 標準賞与額（健・介）と標準賞与額（厚生年金）は保険種別に関係なく表示
     if (column.key === 'standardHealthBonus' || column.key === 'standardWelfareBonus') {
       return true;
@@ -795,7 +801,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     const insuranceMap: Partial<
       Record<ColumnKey, 'health' | 'nursing' | 'welfare'>
     > = {
-      standardMonthly: 'health',
+      healthStandardMonthly: 'health',
       welfareStandardMonthly: 'welfare',
       standardHealthBonus: 'health',
       standardWelfareBonus: 'welfare',
@@ -1210,11 +1216,8 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           });
         };
 
-        pushIfExists('健保標準報酬月額', row.healthStandardMonthly ?? row.standardMonthly);
-        pushIfExists(
-          '厚年標準報酬月額',
-          row.welfareStandardMonthly ?? row.standardMonthly,
-        );
+        pushIfExists('健保標準報酬月額', row.healthStandardMonthly);
+        pushIfExists('厚年標準報酬月額', row.welfareStandardMonthly);
 
         const healthTotalMonthly = (row.healthEmployeeMonthly || 0) + (row.healthEmployerMonthly || 0);
         pushIfExists('健康保険料（月額）', healthTotalMonthly > 0 ? healthTotalMonthly : null);
@@ -1235,7 +1238,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
 
         // 差分が無い場合でも行を表示するため、標準報酬月額または社員番号で1件追加
         if (changes.length === 0) {
-          pushIfExists('健保標準報酬月額', row.healthStandardMonthly ?? row.standardMonthly ?? 0);
+          pushIfExists('健保標準報酬月額', row.healthStandardMonthly ?? 0);
         }
 
         return {
@@ -1254,7 +1257,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         location: row.location,
         month: row.month,
         monthlySalary: row.monthlySalary,
-        standardMonthly: row.standardMonthly,
         healthStandardMonthly: row.healthStandardMonthly,
         welfareStandardMonthly: row.welfareStandardMonthly,
         healthEmployeeMonthly: row.healthEmployeeMonthly,
@@ -1474,12 +1476,20 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           yearMonth,
           payrollData,
         );
-
-        
-        if (row.standardMonthly && row.standardMonthly > 0) {
-          await this.employeesService.updateEmployee(employeeId, {
-            standardMonthly: row.standardMonthly,
-          });
+        const standardMonthlyUpdate: Record<string, number> = {};
+        if (row.healthStandardMonthly && row.healthStandardMonthly > 0) {
+          standardMonthlyUpdate['healthStandardMonthly'] =
+            row.healthStandardMonthly;
+        }
+        if (row.welfareStandardMonthly && row.welfareStandardMonthly > 0) {
+          standardMonthlyUpdate['welfareStandardMonthly'] =
+            row.welfareStandardMonthly;
+        }
+        if (Object.keys(standardMonthlyUpdate).length > 0) {
+          await this.employeesService.updateEmployee(
+            employeeId,
+            standardMonthlyUpdate,
+          );
         }
       });
 

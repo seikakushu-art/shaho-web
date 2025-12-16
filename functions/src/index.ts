@@ -29,7 +29,6 @@ type ExternalEmployeeRecord = {
   basicPensionNumber?: string;
   healthStandardMonthly?: number | string;
   welfareStandardMonthly?: number | string;
-  standardMonthly?: number | string;
   healthInsuredNumber?: string;
   pensionInsuredNumber?: string;
   healthAcquisition?: string;
@@ -74,7 +73,6 @@ interface ShahoEmployee {
   basicPensionNumber?: string;
   healthStandardMonthly?: number | string;
   welfareStandardMonthly?: number | string;
-  standardMonthly?: number;
   standardBonusAnnualTotal?: number;
   healthInsuredNumber?: string;
   pensionInsuredNumber?: string;
@@ -172,14 +170,6 @@ function validateExternalRecord(
     isNaN(Number(record.welfareStandardMonthly))
   ) {
     return "標準報酬月額（厚年）が数値ではありません";
-  }
-
-  if (
-    record.standardMonthly !== undefined &&
-    record.standardMonthly !== null &&
-    isNaN(Number(record.standardMonthly))
-  ) {
-    return "標準報酬月額が数値ではありません";
   }
 
   return undefined;
@@ -376,22 +366,13 @@ export const receiveEmployees = functions.https.onRequest(
           basicPensionNumber: normalizeString(record.basicPensionNumber),
           healthStandardMonthly:
           record.healthStandardMonthly !== undefined && record.healthStandardMonthly !== null
-            ? Number(record.healthStandardMonthly)
-            : record.standardMonthly !== undefined && record.standardMonthly !== null
-              ? Number(record.standardMonthly)
+          ? Number(record.healthStandardMonthly)
               : undefined,
-        welfareStandardMonthly:
-          record.welfareStandardMonthly !== undefined && record.welfareStandardMonthly !== null
-            ? Number(record.welfareStandardMonthly)
-            : record.standardMonthly !== undefined && record.standardMonthly !== null
-              ? Number(record.standardMonthly)
+              welfareStandardMonthly:
+              record.welfareStandardMonthly !== undefined &&
+              record.welfareStandardMonthly !== null
+                ? Number(record.welfareStandardMonthly)
               : undefined,
-        standardMonthly:
-          record.healthStandardMonthly !== undefined && record.healthStandardMonthly !== null
-            ? Number(record.healthStandardMonthly)
-            : record.standardMonthly === undefined || record.standardMonthly === null
-              ? undefined
-              : Number(record.standardMonthly),
           healthInsuredNumber: normalizeString(record.healthInsuredNumber),
           pensionInsuredNumber: normalizeString(record.pensionInsuredNumber),
           healthAcquisition: normalizeString(record.healthAcquisition),

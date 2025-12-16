@@ -23,7 +23,6 @@ interface AuditInfo {
 }
 
 interface SocialInsuranceInfo {
-  standardMonthly: number | null;
   healthStandardMonthly: number | null;
   welfareStandardMonthly: number | null;
   standardBonusAnnualTotal: number | null;
@@ -165,7 +164,6 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   };
 
   socialInsurance: SocialInsuranceInfo = {
-    standardMonthly: null,
     healthStandardMonthly: null,
     welfareStandardMonthly: null,
     standardBonusAnnualTotal: null,
@@ -917,7 +915,6 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
 
     this.socialInsurance = {
       ...this.socialInsurance,
-      standardMonthly: employee.standardMonthly ?? null,
       healthStandardMonthly: employee.healthStandardMonthly ?? null,
       welfareStandardMonthly: employee.welfareStandardMonthly ?? null,
       standardBonusAnnualTotal: employee.standardBonusAnnualTotal ?? null,

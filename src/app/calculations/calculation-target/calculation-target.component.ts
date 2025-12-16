@@ -16,7 +16,8 @@ interface EmployeeCandidate {
   location: string;
   method: string;
   bonusPaidOn?: string;
-  standardMonthly?: number;
+  healthStandardMonthly?: number;
+  welfareStandardMonthly?: number;
   careSecondInsured?: boolean;
 }
 
@@ -215,7 +216,8 @@ export class CalculationTargetComponent implements OnInit {
           location: emp.workPrefecture ?? emp.department ?? '未設定',
           method: '自動算出',
           bonusPaidOn: this.extractLatestBonusPaidOn((emp as any).payrolls ?? []),
-          standardMonthly: emp.standardMonthly,
+          healthStandardMonthly: emp.healthStandardMonthly,
+          welfareStandardMonthly: emp.welfareStandardMonthly,
           careSecondInsured: emp.careSecondInsured,
         } as EmployeeCandidate));
 

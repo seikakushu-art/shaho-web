@@ -18,7 +18,7 @@ export type CalculationResultField =
   | 'calculationType'
   | 'targetMonth'
   | 'activeInsurances'
-  | 'standardMonthly'
+  | 'healthStandardMonthly'
   | 'welfareStandardMonthly'
   | 'standardHealthBonus'
   | 'standardWelfareBonus'
@@ -45,7 +45,7 @@ export const CALCULATION_RESULT_FIELD_DEFS: ReadonlyArray<{
   { key: 'calculationType', header: '計算種別' },
   { key: 'targetMonth', header: '対象年/年月' },
   { key: 'activeInsurances', header: '対象保険種別' },
-  { key: 'standardMonthly', header: '健保標準報酬月額(計算結果)' },
+  { key: 'healthStandardMonthly', header: '健保標準報酬月額(計算結果)' },
   { key: 'welfareStandardMonthly', header: '厚年標準報酬月額(計算結果)' },
   { key: 'standardHealthBonus', header: '標準賞与額(健・介)' },
   { key: 'standardWelfareBonus', header: '標準賞与額(厚生年金)' },
@@ -196,12 +196,12 @@ export class CsvExportService {
         {
           header: '健保標準報酬月額',
           value: (employee) =>
-            employee.healthStandardMonthly ?? employee.standardMonthly,
+            employee.healthStandardMonthly,
         },
         {
           header: '厚年標準報酬月額',
           value: (employee) =>
-            employee.welfareStandardMonthly ?? employee.standardMonthly,
+            employee.welfareStandardMonthly,
         },
         {
           header: '標準賞与額年間合計',
@@ -348,18 +348,18 @@ export class CsvExportService {
         header: '対象保険種別',
         value: () => (meta.activeInsurances ?? []).join('/'),
       },
-      standardMonthly: {
+      healthStandardMonthly: {
         header: '健保標準報酬月額(計算結果)',
         value: (employee) => {
           const row = rowMap.get(employee.employeeNo);
-          return row?.healthStandardMonthly ?? row?.standardMonthly;
+          return row?.healthStandardMonthly;
         },
       },
       welfareStandardMonthly: {
         header: '厚年標準報酬月額(計算結果)',
         value: (employee) => {
           const row = rowMap.get(employee.employeeNo);
-          return row?.welfareStandardMonthly ?? row?.standardMonthly;
+          return row?.welfareStandardMonthly;
         },
       },
       standardHealthBonus: {

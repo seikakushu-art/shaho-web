@@ -308,7 +308,6 @@ export class ApprovalDetailComponent implements OnDestroy {
       hasDependent: basicInfo.hasDependent ?? false,
       healthStandardMonthly: healthStandardMonthly || undefined,
       welfareStandardMonthly: welfareStandardMonthly || undefined,
-      standardMonthly: socialInsurance?.standardMonthly || undefined,
       standardBonusAnnualTotal: socialInsurance?.healthCumulative || undefined,
       healthInsuredNumber: socialInsurance?.healthInsuredNumber || undefined,
       pensionInsuredNumber: socialInsurance?.pensionInsuredNumber || undefined,
@@ -448,7 +447,7 @@ export class ApprovalDetailComponent implements OnDestroy {
             employeeId = existingEmployee.id;
           } else {
             // その他のテンプレートの場合は社員情報を更新
-            const healthStandardMonthly = toNumber(csvData['健保標準報酬月額'] || csvData['標準報酬月額']);
+            const healthStandardMonthly = toNumber(csvData['健保標準報酬月額']);
             const welfareStandardMonthly = toNumber(csvData['厚年標準報酬月額']) ?? healthStandardMonthly;
             const employeeDataRaw: Partial<ShahoEmployee> = {
               employeeNo: normalizeEmployeeNoForComparison(csvData['社員番号'] || ''),
@@ -464,7 +463,6 @@ export class ApprovalDetailComponent implements OnDestroy {
               basicPensionNumber: csvData['基礎年金番号'] || undefined,
               healthStandardMonthly,
               welfareStandardMonthly,
-              standardMonthly: healthStandardMonthly,
               healthInsuredNumber: csvData['被保険者番号（健康保険)'] || undefined,
               pensionInsuredNumber: csvData['被保険者番号（厚生年金）'] || undefined,
               healthAcquisition: csvData['健康保険 資格取得日'] || csvData['健康保険資格取得日'] || undefined,
@@ -923,7 +921,6 @@ export class ApprovalDetailComponent implements OnDestroy {
             location: row.location,
             month: row.month,
             monthlySalary: row.monthlySalary,
-            standardMonthly: row.standardMonthly,
             healthStandardMonthly: row.healthStandardMonthly,
             welfareStandardMonthly: row.welfareStandardMonthly,
             healthEmployeeMonthly: row.healthEmployeeMonthly,
@@ -1144,10 +1141,17 @@ export class ApprovalDetailComponent implements OnDestroy {
             payrollData,
           );
 
-          if (row.standardMonthly && row.standardMonthly > 0) {
-            await this.employeesService.updateEmployee(employeeId, {
-              standardMonthly: row.standardMonthly,
-            });
+          const updatePayload: Partial<ShahoEmployee> = {};
+          // 標準報酬月額計算の場合、0以外の値（0も含む）を保存する
+          // ただし、undefinedやnullの場合は保存しない
+          if (row.healthStandardMonthly !== undefined && row.healthStandardMonthly !== null) {
+            updatePayload.healthStandardMonthly = row.healthStandardMonthly;
+          }
+          if (row.welfareStandardMonthly !== undefined && row.welfareStandardMonthly !== null) {
+            updatePayload.welfareStandardMonthly = row.welfareStandardMonthly;
+          }
+          if (Object.keys(updatePayload).length > 0) {
+            await this.employeesService.updateEmployee(employeeId, updatePayload);
           }
         });
 

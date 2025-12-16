@@ -45,7 +45,6 @@ export interface CalculationRow {
   location: string;
   month: string;
   monthlySalary: number;
-  standardMonthly: number;
   healthStandardMonthly?: number;
   welfareStandardMonthly?: number;
   healthEmployeeMonthly: number;
@@ -108,8 +107,7 @@ export class CalculationDataService {
   );
 
   getCalculationRows(params: CalculationQueryParams) {
-    const { type, targetMonth, insurances, standardMethod } =
-      params;
+    const { type, targetMonth, insurances, standardMethod } = params;
     const activeInsurances = this.resolveActiveInsurances(insurances);
 
     // 標準賞与額計算の場合は、bonusPaidOnから年月を抽出してtargetMonthを設定
@@ -225,7 +223,9 @@ export class CalculationDataService {
             .split(',')
             .map((no) => no.trim())
             .filter((no) => no.length > 0)
-            .some((no) => employee.employeeNo.toLowerCase().includes(no.toLowerCase()))
+            .some((no) =>
+              employee.employeeNo.toLowerCase().includes(no.toLowerCase()),
+            )
         : true;
 
       const matchesBonusDate =
@@ -233,7 +233,12 @@ export class CalculationDataService {
           ? this.hasBonusOnDate(employee, params.bonusPaidOn)
           : true;
 
-      return matchesDepartment && matchesLocation && matchesEmployeeNo && matchesBonusDate;
+      return (
+        matchesDepartment &&
+        matchesLocation &&
+        matchesEmployeeNo &&
+        matchesBonusDate
+      );
     });
   }
 
@@ -245,8 +250,7 @@ export class CalculationDataService {
     // 日付指定（YYYY-MM-DD）の場合は完全一致のみ許容
     if (isExactDate) {
       return payrolls.some(
-        (p) =>
-          (p.bonusPaidOn ?? '').replace(/\//g, '-') === normalizedTarget,
+        (p) => (p.bonusPaidOn ?? '').replace(/\//g, '-') === normalizedTarget,
       );
     }
 
@@ -266,23 +270,26 @@ export class CalculationDataService {
     fallbackBonusDate?: string,
   ): CalculationRow {
     const payrolls = this.extractPayrolls(employee);
-    // 社会保険料計算と標準賞与額計算ではDBに保存された標準報酬月額をそのまま利用する
-    // 標準報酬月額計算の場合のみ、標準報酬月額を計算する
-    const standard =
-      context.calculationType === 'insurance' || context.calculationType === 'bonus'
-        ? {
-            standardMonthly: employee.standardMonthly ?? 0,
-            source: 'master' as const,
-          }
+    // 標準賞与額計算ではDBに保存された標準報酬月額をそのまま利用する
+    // 標準報酬月額計算と社会保険料計算では標準報酬月額を計算する
+    const resolvedStandard =
+      context.calculationType === 'bonus'
+        ? undefined
         : resolveStandardMonthly(
             employee,
             payrolls,
             context.standardCalculationMethod,
             context.targetMonth,
             rateRecord.standardCompensations ?? [],
-            employee.previousStandardMonthly,
           );
-
+    const healthStandardMonthly =
+      context.calculationType === 'bonus'
+        ? (employee.healthStandardMonthly ?? 0)
+        : (resolvedStandard?.health.amount ?? 0);
+    const welfareStandardMonthly =
+      context.calculationType === 'bonus'
+        ? (employee.welfareStandardMonthly ?? 0)
+        : (resolvedStandard?.welfare.amount ?? 0);
     // エラーチェック
     const errors: string[] = [];
     const withEmployeeInfo = (message: string) =>
@@ -290,9 +297,15 @@ export class CalculationDataService {
         ? message
         : `${message}（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
 
-    // 標準報酬月額計算の場合のみ、標準報酬月額の計算エラーをチェック
-    if (context.calculationType === 'standard' && standard.error) {
-      errors.push(withEmployeeInfo(standard.error));
+    // 標準報酬月額計算と社会保険料計算の場合、標準報酬月額の計算エラーをチェック
+    if (
+      (context.calculationType === 'standard' || context.calculationType === 'insurance') &&
+      resolvedStandard &&
+      (resolvedStandard.health.error || resolvedStandard.welfare.error)
+    ) {
+      errors.push(
+        withEmployeeInfo(resolvedStandard.health.error ?? resolvedStandard.welfare.error ?? ''),
+      );
     }
 
     const location = employee.workPrefecture || employee.department || '未設定';
@@ -328,29 +341,36 @@ export class CalculationDataService {
       context.activeInsurances.includes('welfare') &&
       !rateRecord.pensionRate
     ) {
-      errors.push(
-        withEmployeeInfo('厚生年金保険料率が設定されていません。'),
-      );
+      errors.push(withEmployeeInfo('厚生年金保険料率が設定されていません。'));
     }
 
-    // 社会保険料計算の場合、標準報酬月額が未設定の場合はエラー
+    // 社会保険料計算の場合、標準報酬月額が計算できなかった場合はエラー
     if (context.calculationType === 'insurance') {
-      if (!employee.standardMonthly || employee.standardMonthly <= 0) {
-        errors.push(
-          withEmployeeInfo(`標準報酬月額を計算してください。`),
-        );
+      if (
+        context.activeInsurances.includes('health') &&
+        (!healthStandardMonthly || healthStandardMonthly <= 0)
+      ) {
+        errors.push(withEmployeeInfo(`健保標準報酬月額を計算できませんでした。`));
+      }
+      if (
+        context.activeInsurances.includes('welfare') &&
+        (!welfareStandardMonthly || welfareStandardMonthly <= 0)
+      ) {
+        errors.push(withEmployeeInfo(`厚年標準報酬月額を計算できませんでした。`));
       }
     }
 
     // 標準報酬月額計算の場合は、計算対象の月の給与データの平均を計算
-    const monthlySalaryResult = context.calculationType === 'standard'
-      ? this.calculateAverageMonthlySalary(
-          payrolls,
-          context.standardCalculationMethod,
-          context.targetMonth,
-          employee,
-        )
-      : payrolls.find((p) => p.yearMonth === context.targetMonth)?.amount ?? 0;
+    const monthlySalaryResult =
+      context.calculationType === 'standard'
+        ? this.calculateAverageMonthlySalary(
+            payrolls,
+            context.standardCalculationMethod,
+            context.targetMonth,
+            employee,
+          )
+        : (payrolls.find((p) => p.yearMonth === context.targetMonth)?.amount ??
+          0);
 
     const monthlySalary = monthlySalaryResult ?? 0;
     const bonusRecord =
@@ -370,9 +390,7 @@ export class CalculationDataService {
           ),
         );
       } else if (!bonusRecord.bonusTotal || bonusRecord.bonusTotal <= 0) {
-        errors.push(
-          withEmployeeInfo('賞与総額が未設定または0です。'),
-        );
+        errors.push(withEmployeeInfo('賞与総額が未設定または0です。'));
       }
     }
 
@@ -385,7 +403,8 @@ export class CalculationDataService {
         location,
         month: context.targetMonth,
         monthlySalary: 0,
-        standardMonthly: 0,
+        healthStandardMonthly: 0,
+        welfareStandardMonthly: 0,
         healthEmployeeMonthly: 0,
         healthEmployerMonthly: 0,
         nursingEmployeeMonthly: 0,
@@ -405,7 +424,7 @@ export class CalculationDataService {
         error: errors.join(' '),
       };
     }
-    
+
     const bonusDate = this.resolveBonusDate(
       bonusRecord,
       context.bonusPaymentDate ?? fallbackBonusDate,
@@ -436,15 +455,15 @@ export class CalculationDataService {
     );
 
     const healthMonthly = context.activeInsurances.includes('health')
-      ? calculateInsurancePremium(standard.standardMonthly, healthRate)
+    ? calculateInsurancePremium(healthStandardMonthly, healthRate)
       : { employee: 0, employer: 0, total: 0 };
     const nursingMonthly =
       context.activeInsurances.includes('nursing') && employee.careSecondInsured
-        ? calculateInsurancePremium(standard.standardMonthly, nursingRate)
+      ? calculateInsurancePremium(healthStandardMonthly, nursingRate)
         : { employee: 0, employer: 0, total: 0 };
     const welfareMonthly = context.activeInsurances.includes('welfare')
       ? calculatePensionPremium(
-          standard.standardMonthly,
+        welfareStandardMonthly,
           rateRecord.pensionRate,
         )
       : { employee: 0, employer: 0, total: 0 };
@@ -463,7 +482,7 @@ export class CalculationDataService {
     const welfareBonus =
       context.activeInsurances.includes('welfare') &&
       (context.includeBonusInMonth ?? true)
-        ? calculatePensionPremium(standardWelfareBonus, rateRecord.pensionRate)
+        ? calculatePensionPremium( standardWelfareBonus, rateRecord.pensionRate)
         : { employee: 0, employer: 0, total: 0 };
 
     return {
@@ -473,11 +492,8 @@ export class CalculationDataService {
       location,
       month: context.targetMonth,
       monthlySalary,
-      standardMonthly: standard.standardMonthly,
-      healthStandardMonthly:
-        employee.healthStandardMonthly ?? standard.standardMonthly,
-      welfareStandardMonthly:
-        employee.welfareStandardMonthly ?? standard.standardMonthly,
+      healthStandardMonthly,
+      welfareStandardMonthly,
       healthEmployeeMonthly: healthMonthly.employee,
       healthEmployerMonthly: healthMonthly.employer,
       nursingEmployeeMonthly: nursingMonthly.employee,
@@ -485,7 +501,9 @@ export class CalculationDataService {
       welfareEmployeeMonthly: welfareMonthly.employee,
       welfareEmployerMonthly: welfareMonthly.employer,
       bonusPaymentDate:
-        context.calculationType === 'insurance' ? '' : bonusRecord?.bonusPaidOn ?? '',
+        context.calculationType === 'insurance'
+          ? ''
+          : (bonusRecord?.bonusPaidOn ?? ''),
       bonusTotalPay: bonusRecord?.bonusTotal ?? 0,
       standardHealthBonus,
       standardWelfareBonus,
@@ -510,8 +528,7 @@ export class CalculationDataService {
     employee?: ShahoEmployee,
   ): number | undefined {
     const eligiblePayrolls = payrolls.filter(
-      (p) =>
-        p.amount !== undefined && (p.workedDays ?? 0) >= 17,
+      (p) => p.amount !== undefined && (p.workedDays ?? 0) >= 17,
     );
 
     switch (method) {
@@ -531,7 +548,7 @@ export class CalculationDataService {
       case '随時決定': {
         const parsed = this.toYearMonthParts(targetMonth);
         if (!parsed) return 0;
-        
+
         // 対象月から連続した3ヶ月を生成
         const targetMonths: string[] = [];
         for (let i = 0; i < 3; i++) {
@@ -543,15 +560,18 @@ export class CalculationDataService {
           }
           targetMonths.push(this.buildYearMonth(year, month));
         }
-        
+
         // 連続した3ヶ月のデータを取得（3ヶ月分揃っていなくても良い）
         const targetOrAfter = eligiblePayrolls.filter((p) =>
           targetMonths.includes(p.yearMonth),
         );
-        
+
         // データが0件の場合は0を返す（エラーとして扱われる）、1件以上あれば利用可能なデータで計算
         if (targetOrAfter.length === 0) return 0;
-        const total = targetOrAfter.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+        const total = targetOrAfter.reduce(
+          (sum, p) => sum + (p.amount ?? 0),
+          0,
+        );
         return Math.floor(total / targetOrAfter.length);
       }
       case '年間平均': {
@@ -561,13 +581,13 @@ export class CalculationDataService {
         if (parsed.month >= 1 && parsed.month <= 5) {
           return undefined;
         }
-        
+
         // 前年7月～当年6月の12か月を生成
         const startYear = parsed.year - 1;
         const startMonth = 7;
         const endYear = parsed.year;
         const endMonth = 6;
-        
+
         const targetMonths: string[] = [];
         // 前年7月～12月
         for (let month = startMonth; month <= 12; month++) {
@@ -577,14 +597,17 @@ export class CalculationDataService {
         for (let month = 1; month <= endMonth; month++) {
           targetMonths.push(this.buildYearMonth(endYear, month));
         }
-        
+
         const targetPayrolls = eligiblePayrolls.filter((p) =>
           targetMonths.includes(p.yearMonth),
         );
         if (targetPayrolls.length === 0) {
           return undefined;
         }
-        const total = targetPayrolls.reduce((sum, p) => sum + (p.amount ?? 0), 0);
+        const total = targetPayrolls.reduce(
+          (sum, p) => sum + (p.amount ?? 0),
+          0,
+        );
         return Math.floor(total / targetPayrolls.length);
       }
       case '資格取得時': {
@@ -592,35 +615,58 @@ export class CalculationDataService {
         // 健康保険と厚生年金の資格取得日のうち、古い方を取得
         const healthAcq = employee.healthAcquisition;
         const pensionAcq = employee.pensionAcquisition;
-        
+
         if (!healthAcq && !pensionAcq) return 0;
-        
+
         // 古い方の資格取得日を特定
-        const earliestAcquisition: string | undefined = healthAcq && pensionAcq
-          ? (healthAcq < pensionAcq ? healthAcq : pensionAcq)
-          : (healthAcq || pensionAcq);
-        
+        const earliestAcquisition: string | undefined =
+          healthAcq && pensionAcq
+            ? healthAcq < pensionAcq
+              ? healthAcq
+              : pensionAcq
+            : healthAcq || pensionAcq;
+
         if (!earliestAcquisition || earliestAcquisition.length < 7) return 0;
-        
+
         // 資格取得日の年月を取得（YYYY-MM形式に正規化）
         const acquisitionYearMonth = normalizeToYearMonth(earliestAcquisition);
         if (!acquisitionYearMonth) return 0;
-        
+
         // 該当月の給与データを取得
         const acquisitionPayroll = eligiblePayrolls.find(
           (p) => p.yearMonth === acquisitionYearMonth,
         );
-        
+
         return acquisitionPayroll?.amount ?? 0;
       }
       case '育休復帰時': {
-        const sorted = eligiblePayrolls
-          .filter((p) => p.yearMonth >= targetMonth)
-          .sort((a, b) => a.yearMonth.localeCompare(b.yearMonth))
-          .slice(0, 3);
-        if (sorted.length === 0) return 0;
-        const total = sorted.reduce((sum, p) => sum + (p.amount ?? 0), 0);
-        return Math.floor(total / sorted.length);
+        const parsed = this.toYearMonthParts(targetMonth);
+        if (!parsed) return 0;
+
+        // 対象月から連続した3ヶ月を生成
+        const targetMonths: string[] = [];
+        for (let i = 0; i < 3; i++) {
+          let year = parsed.year;
+          let month = parsed.month + i;
+          while (month > 12) {
+            month -= 12;
+            year += 1;
+          }
+          targetMonths.push(this.buildYearMonth(year, month));
+        }
+
+        // 連続した3ヶ月のデータを取得（3ヶ月分揃っていなくても良い）
+        const targetOrAfter = eligiblePayrolls.filter((p) =>
+          targetMonths.includes(p.yearMonth),
+        );
+
+        // データが0件の場合は0を返す（エラーとして扱われる）、1件以上あれば利用可能なデータで計算
+        if (targetOrAfter.length === 0) return 0;
+        const total = targetOrAfter.reduce(
+          (sum, p) => sum + (p.amount ?? 0),
+          0,
+        );
+        return Math.floor(total / targetOrAfter.length);
       }
       default:
         return 0;
@@ -663,12 +709,10 @@ export class CalculationDataService {
     // 完全一致がない場合、月単位で検索（bonusPaymentDateから月を抽出）
     const bonusMonth = normalizeToYearMonth(normalizedTarget);
     if (bonusMonth) {
-      const byMonth = payrolls.find(
-        (payroll) => {
-          const normalized = (payroll.bonusPaidOn ?? '').replace(/\//g, '-');
-          return normalized.startsWith(bonusMonth);
-        },
-      );
+      const byMonth = payrolls.find((payroll) => {
+        const normalized = (payroll.bonusPaidOn ?? '').replace(/\//g, '-');
+        return normalized.startsWith(bonusMonth);
+      });
       if (byMonth) return byMonth;
     }
 
@@ -789,7 +833,10 @@ export class CalculationDataService {
       })
       .reduce((sum, record) => {
         // 過去の標準賞与額（健・介）が設定されている場合はそれを使用
-        if (record.standardHealthBonus !== undefined && record.standardHealthBonus > 0) {
+        if (
+          record.standardHealthBonus !== undefined &&
+          record.standardHealthBonus > 0
+        ) {
           return sum + record.standardHealthBonus;
         }
         // 後方互換性: standardBonusが設定されている場合はそれを使用
@@ -798,7 +845,9 @@ export class CalculationDataService {
         }
         // 標準賞与額が未設定の場合は、賞与総支給額から標準賞与額を計算
         if (record.bonusTotal !== undefined && record.bonusTotal > 0) {
-          return sum + calculateStandardBonus(record.bonusTotal, healthBonusCap);
+          return (
+            sum + calculateStandardBonus(record.bonusTotal, healthBonusCap)
+          );
         }
         return sum;
       }, 0);
@@ -829,7 +878,10 @@ export class CalculationDataService {
       })
       .reduce((sum, record) => {
         // 過去の標準賞与額（厚生年金）が設定されている場合はそれを使用
-        if (record.standardWelfareBonus !== undefined && record.standardWelfareBonus > 0) {
+        if (
+          record.standardWelfareBonus !== undefined &&
+          record.standardWelfareBonus > 0
+        ) {
           return sum + record.standardWelfareBonus;
         }
         // 後方互換性: standardBonusが設定されている場合はそれを使用
@@ -838,7 +890,9 @@ export class CalculationDataService {
         }
         // 標準賞与額が未設定の場合は、賞与総支給額から標準賞与額を計算
         if (record.bonusTotal !== undefined && record.bonusTotal > 0) {
-          return sum + calculateStandardBonus(record.bonusTotal, welfareBonusCap);
+          return (
+            sum + calculateStandardBonus(record.bonusTotal, welfareBonusCap)
+          );
         }
         return sum;
       }, 0);

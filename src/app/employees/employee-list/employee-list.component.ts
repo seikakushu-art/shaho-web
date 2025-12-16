@@ -17,7 +17,8 @@ interface EmployeeListItem {
   birthDate: string;
   department: string;
   workPrefecture: string;
-  standardMonthly: number;
+  healthStandardMonthly: number;
+  welfareStandardMonthly: number;
 }
 
 interface SearchCondition {
@@ -207,7 +208,8 @@ export class EmployeeListComponent implements OnInit, OnDestroy {
       birthDate: employee.birthDate ?? '',
       department: employee.department ?? '',
       workPrefecture: employee.workPrefecture ?? '',
-      standardMonthly: employee.standardMonthly ?? 0,
+      healthStandardMonthly: employee.healthStandardMonthly ?? 0,
+      welfareStandardMonthly: employee.welfareStandardMonthly ?? 0,
     };
   }
 }

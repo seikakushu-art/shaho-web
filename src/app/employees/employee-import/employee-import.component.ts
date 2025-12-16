@@ -203,8 +203,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           dependentStartDate: firstDependent?.dependentStartDate,
           dependentThirdCategoryFlag: firstDependent?.thirdCategoryFlag,
           dependents: existingDependents, // 全ての扶養家族情報
-          standardMonthly: emp.standardMonthly,
           standardBonusAnnualTotal: emp.standardBonusAnnualTotal,
+          healthStandardMonthly: emp.healthStandardMonthly,
+          welfareStandardMonthly: emp.welfareStandardMonthly,
           healthInsuredNumber: emp.healthInsuredNumber,
           pensionInsuredNumber: emp.pensionInsuredNumber,
           insuredNumber: emp.insuredNumber,
@@ -854,15 +855,10 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
               personalNumber: csvData['個人番号'] || undefined,
               basicPensionNumber: csvData['基礎年金番号'] || undefined,
               healthStandardMonthly:
-                toNumber(csvData['健保標準報酬月額']) ||
-                toNumber(csvData['標準報酬月額']),
+                toNumber(csvData['健保標準報酬月額']),
               welfareStandardMonthly:
                 toNumber(csvData['厚年標準報酬月額']) ||
-                toNumber(csvData['健保標準報酬月額']) ||
-                toNumber(csvData['標準報酬月額']),
-              standardMonthly:
-                toNumber(csvData['健保標準報酬月額']) ||
-                toNumber(csvData['標準報酬月額']),
+                toNumber(csvData['健保標準報酬月額']),
               healthInsuredNumber:
                 csvData['被保険者番号（健康保険)'] || undefined,
               pensionInsuredNumber:
@@ -1291,15 +1287,10 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 personalNumber: csvData['個人番号'] || undefined,
                 basicPensionNumber: csvData['基礎年金番号'] || undefined,
                 healthStandardMonthly:
-                  toNumber(csvData['健保標準報酬月額']) ||
-                  toNumber(csvData['標準報酬月額']),
+                  toNumber(csvData['健保標準報酬月額']),
                 welfareStandardMonthly:
                   toNumber(csvData['厚年標準報酬月額']) ||
-                  toNumber(csvData['健保標準報酬月額']) ||
-                  toNumber(csvData['標準報酬月額']),
-                standardMonthly:
-                  toNumber(csvData['健保標準報酬月額']) ||
-                  toNumber(csvData['標準報酬月額']),
+                  toNumber(csvData['健保標準報酬月額']),
                 healthInsuredNumber:
                   csvData['被保険者番号（健康保険)'] || undefined,
                 pensionInsuredNumber:
@@ -1786,13 +1777,13 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         });
       }
 
-      // 月給支払額の差分
+      // 月給支払額の差分（月の情報を含める）
       if (monthlyPayAmount) {
         const csvAmount = Number(monthlyPayAmount.replace(/,/g, ''));
         const existingAmount = existingPayroll?.amount;
         if (existingAmount === undefined || existingAmount !== csvAmount) {
           changes.push({
-            fieldName: '月給支払額',
+            fieldName: `月給支払額（${csvYearMonthDisplay}）`,
             oldValue:
               existingAmount !== undefined ? String(existingAmount) : null,
             newValue: String(csvAmount),
@@ -1800,26 +1791,26 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         }
       }
 
-      // 支払基礎日数の差分
+      // 支払基礎日数の差分（月の情報を含める）
       if (workedDays) {
         const csvDays = Number(workedDays.replace(/,/g, ''));
         const existingDays = existingPayroll?.workedDays;
         if (existingDays === undefined || existingDays !== csvDays) {
           changes.push({
-            fieldName: '支払基礎日数',
+            fieldName: `支払基礎日数（${csvYearMonthDisplay}）`,
             oldValue: existingDays !== undefined ? String(existingDays) : null,
             newValue: String(csvDays),
           });
         }
       }
 
-      // 賞与総支給額の差分
+      // 賞与総支給額の差分（月の情報を含める）
       if (bonusTotal) {
         const csvBonus = Number(bonusTotal.replace(/,/g, ''));
         const existingBonus = existingPayroll?.bonusTotal;
         if (existingBonus === undefined || existingBonus !== csvBonus) {
           changes.push({
-            fieldName: '賞与総支給額',
+            fieldName: `賞与総支給額（${csvYearMonthDisplay}）`,
             oldValue:
               existingBonus !== undefined ? String(existingBonus) : null,
             newValue: String(csvBonus),
@@ -1827,13 +1818,13 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         }
       }
 
-      // 賞与支給日の差分
+      // 賞与支給日の差分（月の情報を含める）
       if (bonusPaidOn) {
         const normalizedBonusDate = bonusPaidOn.replace(/\//g, '-');
         const existingBonusDate = existingPayroll?.bonusPaidOn;
         if (existingBonusDate !== normalizedBonusDate) {
           changes.push({
-            fieldName: '賞与支給日',
+            fieldName: `賞与支給日（${csvYearMonthDisplay}）`,
             oldValue: existingBonusDate || null,
             newValue: normalizedBonusDate,
           });
@@ -1846,6 +1837,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         const year = bonusDate.getFullYear();
         const month = String(bonusDate.getMonth() + 1).padStart(2, '0');
         const normalizedYearMonth = `${year}-${month}`;
+        const bonusYearMonthDisplay = `${year}/${month}`; // YYYY/MM形式で表示
 
         // 既存の給与データを取得
         let existingPayroll: PayrollData | undefined;
@@ -1857,13 +1849,13 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           // データが存在しない場合はundefinedのまま
         }
 
-        // 賞与総支給額の差分
+        // 賞与総支給額の差分（月の情報を含める）
         if (bonusTotal) {
           const csvBonus = Number(bonusTotal.replace(/,/g, ''));
           const existingBonus = existingPayroll?.bonusTotal;
           if (existingBonus === undefined || existingBonus !== csvBonus) {
             changes.push({
-              fieldName: '賞与総支給額',
+              fieldName: `賞与総支給額（${bonusYearMonthDisplay}）`,
               oldValue:
                 existingBonus !== undefined ? String(existingBonus) : null,
               newValue: String(csvBonus),
@@ -1871,12 +1863,12 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           }
         }
 
-        // 賞与支給日の差分
+        // 賞与支給日の差分（月の情報を含める）
         const normalizedBonusDate = bonusPaidOn.replace(/\//g, '-');
         const existingBonusDate = existingPayroll?.bonusPaidOn;
         if (existingBonusDate !== normalizedBonusDate) {
           changes.push({
-            fieldName: '賞与支給日',
+            fieldName: `賞与支給日（${bonusYearMonthDisplay}）`,
             oldValue: existingBonusDate || null,
             newValue: normalizedBonusDate,
           });

@@ -20,10 +20,15 @@ export interface PremiumBreakdown {
   total: number;
 }
 
-export interface StandardCompensationResult {
-  standardMonthly: number;
+export interface InsuranceStandardMonthly {
+  amount: number;
   source: 'payroll' | 'master' | 'fallback';
   error?: string;
+}
+
+export interface StandardCompensationResult {
+  health: InsuranceStandardMonthly;
+  welfare: InsuranceStandardMonthly;
 }
 
 const WORKED_DAYS_THRESHOLD = 17;
@@ -69,15 +74,63 @@ export function findStandardCompensation(
   amount: number,
   grades: StandardCompensationGrade[],
   insuranceType: '健康保険' | '厚生年金',
-): number {
+): number | null {
+  // デバッグ: 入力データの確認
+  console.log(`[${insuranceType}] 入力データ確認: 全等級数=${grades.length}`);
+  const insuranceTypeCounts = grades.reduce((acc, g) => {
+    const type = g.insuranceType || '未設定';
+    acc[type] = (acc[type] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  console.log(`[${insuranceType}] 保険種別ごとの等級数:`, insuranceTypeCounts);
+  
+  // サンプルデータを表示（最初の5件）
+  if (grades.length > 0) {
+    console.log(`[${insuranceType}] サンプルデータ（最初の5件）:`, grades.slice(0, 5).map(g => ({
+      insuranceType: g.insuranceType,
+      grade: g.grade,
+      standardMonthlyCompensation: g.standardMonthlyCompensation
+    })));
+  }
+  
   const applicable = grades.filter(
-    (grade) => grade.insuranceType === insuranceType,
+    (grade) => {
+      // insuranceTypeが一致することを確認
+      if (grade.insuranceType !== insuranceType) {
+        return false;
+      }
+      // 等級が空、「—」、または無効な場合は除外
+      const gradeValue = grade.grade?.trim();
+      if (!gradeValue || gradeValue === '—' || gradeValue === '-') {
+        return false;
+      }
+      return true;
+    },
   );
   
   // デバッグ: 等級表が空の場合の警告
   if (applicable.length === 0) {
-    console.warn(`標準報酬等級表に${insuranceType}の等級が登録されていません。平均報酬月額: ${amount}円`);
+    console.error(`[${insuranceType}] 標準報酬等級表に${insuranceType}の等級が登録されていません。平均報酬月額: ${amount}円`);
+    console.error(`[${insuranceType}] 全等級データ:`, grades.map(g => ({ insuranceType: g.insuranceType, grade: g.grade })));
+    // 健康保険の場合はエラーとしてnullを返す
+    if (insuranceType === '健康保険') {
+      return null;
+    }
+    // 厚生年金の場合は平均報酬月額をそのまま返す
     return amount;
+  }
+  
+  // デバッグ: 等級表の内容を確認
+  console.log(`[${insuranceType}] 平均報酬月額=${amount}円, 該当等級数=${applicable.length}`);
+  
+  // 該当等級のサンプルを表示
+  if (applicable.length > 0) {
+    console.log(`[${insuranceType}] 該当等級サンプル（最初の3件）:`, applicable.slice(0, 3).map(g => ({
+      grade: g.grade,
+      lowerLimit: g.lowerLimit,
+      upperLimit: g.upperLimit,
+      standardMonthlyCompensation: g.standardMonthlyCompensation
+    })));
   }
   
   // 数値変換ヘルパー関数（カンマ区切りや文字列に対応）
@@ -119,18 +172,10 @@ export function findStandardCompensation(
   if (matched?.standardMonthlyCompensation) {
     const parsed = parseNumber(matched.standardMonthlyCompensation);
     if (parsed > 0) {
-      // デバッグ: 該当する等級が見つかった場合
-      if (amount >= 55000 && amount <= 65000) {
-        console.log(
-          `平均報酬月額${amount}円に該当する${insuranceType}の等級が見つかりました: 等級${matched.grade}, 標準報酬月額=${matched.standardMonthlyCompensation}→${parsed}円`
-        );
-      }
-      // デバッグ: 高額報酬の場合も確認
-      if (amount >= 1300000 && amount <= 1400000) {
-        console.log(
-          `平均報酬月額${amount}円に該当する${insuranceType}の等級が見つかりました: 等級${matched.grade}, 標準報酬月額=${matched.standardMonthlyCompensation}→${parsed}円`
-        );
-      }
+      // デバッグ: 該当する等級が見つかった場合（gradeとinsuranceTypeのペアを明確に表示）
+      console.log(
+        `[${insuranceType}] 平均報酬月額${amount}円に該当する等級が見つかりました: 等級${matched.grade}, 標準報酬月額=${matched.standardMonthlyCompensation}→${parsed}円`
+      );
       return parsed;
     }
     // デバッグ: standardMonthlyCompensationが無効な場合
@@ -138,6 +183,34 @@ export function findStandardCompensation(
       `標準報酬等級表の等級で標準報酬月額が無効です。等級: ${matched.grade}, 下限: ${matched.lowerLimit}, 上限: ${matched.upperLimit}, 標準報酬月額: ${matched.standardMonthlyCompensation}→${parsed}, 平均報酬月額: ${amount}円`
     );
   } else {
+    // 該当する等級が見つからない場合、上限を超えているかどうかを判断
+    // 等級表を標準報酬月額でソートして、最高等級を見つける
+    const sortedGrades = [...applicable].sort((a, b) => {
+      const standardA = parseNumber(a.standardMonthlyCompensation);
+      const standardB = parseNumber(b.standardMonthlyCompensation);
+      return standardA - standardB;
+    });
+    
+    // 最高等級を取得（標準報酬月額が最大の等級）
+    const highestGrade = sortedGrades[sortedGrades.length - 1];
+    if (highestGrade?.standardMonthlyCompensation) {
+      // 最高等級の上限を確認
+      const highestUpperLimitStr = String(highestGrade.upperLimit ?? '').trim();
+      const isHighestUpperLimitEmpty = !highestUpperLimitStr || highestUpperLimitStr === '—' || highestUpperLimitStr === '-';
+      const highestUpperLimit = isHighestUpperLimitEmpty ? Number.MAX_SAFE_INTEGER : parseNumber(highestGrade.upperLimit);
+      
+      // 実際に上限を超えている場合のみ最高等級を適用
+      if (highestUpperLimit < Number.MAX_SAFE_INTEGER && amount >= highestUpperLimit) {
+        const highestStandardMonthly = parseNumber(highestGrade.standardMonthlyCompensation);
+        if (highestStandardMonthly > 0) {
+          console.warn(
+            `平均報酬月額${amount}円は${insuranceType}の等級表の上限（${highestUpperLimit}円）を超えています。最高等級（等級${highestGrade.grade}）の標準報酬月額${highestStandardMonthly}円を適用します。`
+          );
+          return highestStandardMonthly;
+        }
+      }
+    }
+    
     // デバッグ: 該当する等級が見つからない場合 - 等級1-3を詳しく表示
     console.warn(
       `平均報酬月額${amount}円に該当する${insuranceType}の等級が見つかりませんでした。全等級数: ${applicable.length}`
@@ -195,6 +268,47 @@ export function findStandardCompensation(
     }
   }
   
+  // 等級が見つからなかった場合
+  // 健康保険の場合はエラーとしてnullを返す
+  if (insuranceType === '健康保険') {
+    return null;
+  }
+  
+  // 厚生年金の場合の特別処理
+  if (insuranceType === '厚生年金') {
+    // 等級1と等級32を取得
+    const grade1 = applicable.find(g => g.grade?.trim() === '1');
+    const grade32 = applicable.find(g => g.grade?.trim() === '32');
+    
+    if (grade1) {
+      const grade1LowerLimit = parseNumber(grade1.lowerLimit);
+      const grade1StandardMonthly = parseNumber(grade1.standardMonthlyCompensation);
+      // 等級1の下限より低い場合は等級1の標準報酬月額を返す
+      if (amount < grade1LowerLimit) {
+        console.log(
+          `[厚生年金] 平均報酬月額${amount}円は等級1の下限${grade1LowerLimit}円より低いため、等級1の標準報酬月額${grade1StandardMonthly}円を適用します。`
+        );
+        return grade1StandardMonthly;
+      }
+    }
+    
+    if (grade32) {
+      const grade32UpperLimit = parseNumber(grade32.upperLimit);
+      const grade32StandardMonthly = parseNumber(grade32.standardMonthlyCompensation);
+      // 等級32の上限より高い場合は等級32の標準報酬月額を返す
+      if (grade32UpperLimit > 0 && amount >= grade32UpperLimit) {
+        console.log(
+          `[厚生年金] 平均報酬月額${amount}円は等級32の上限${grade32UpperLimit}円を超えているため、等級32の標準報酬月額${grade32StandardMonthly}円を適用します。`
+        );
+        return grade32StandardMonthly;
+      }
+    }
+    
+    // その他の場合は平均報酬月額をそのまま返す
+    return amount;
+  }
+  
+  // その他の場合は平均報酬月額をそのまま返す
   return amount;
 }
 
@@ -343,7 +457,6 @@ export function resolveStandardMonthly(
   method: StandardCalculationMethod,
   targetMonth: string,
   compensationTable: StandardCompensationGrade[],
-  previousStandardMonthly?: number,
 ): StandardCompensationResult {
   const eligiblePayrolls = filterEligiblePayrolls(payrolls);
   let base: number | undefined;
@@ -430,32 +543,6 @@ export function resolveStandardMonthly(
           error = `対象月以降の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
           return undefined;
         }
-        const candidateStandard = findStandardCompensation(
-          average,
-          compensationTable,
-          '健康保険',
-        );
-        const previousGrade = resolveGradeNumber(
-          previousStandardMonthly ?? employee.standardMonthly,
-          compensationTable,
-          '健康保険',
-        );
-        const candidateGrade = resolveGradeNumber(
-          candidateStandard,
-          compensationTable,
-          '健康保険',
-        );
-
-        if (
-          candidateStandard !== undefined &&
-          previousStandardMonthly !== undefined &&
-          previousGrade !== undefined &&
-          candidateGrade !== undefined
-        ) {
-          const diff = Math.abs(candidateGrade - previousGrade);
-          if (diff < 2) return previousStandardMonthly;
-        }
-
         return average;
       })();
       break;
@@ -529,41 +616,48 @@ export function resolveStandardMonthly(
       break;
     case '育休復帰時':
       base = (() => {
-        const targetOrAfter = eligiblePayrolls
-          .filter((p) => p.yearMonth >= targetMonth)
-          .sort((a, b) => a.yearMonth.localeCompare(b.yearMonth))
-          .slice(0, 3);
+        const parsed = toYearMonthParts(targetMonth);
+        if (!parsed) {
+          error = '対象年月の解析に失敗しました。';
+          return undefined;
+        }
+        
+        // 対象月から連続した3ヶ月を生成
+        const targetMonths: string[] = [];
+        for (let i = 0; i < 3; i++) {
+          let year = parsed.year;
+          let month = parsed.month + i;
+          while (month > 12) {
+            month -= 12;
+            year += 1;
+          }
+          targetMonths.push(buildYearMonth(year, month));
+        }
+        
+        // 連続した3ヶ月のデータを取得（3ヶ月分揃っていなくても良い）
+        const targetOrAfter = eligiblePayrolls.filter((p) =>
+          targetMonths.includes(p.yearMonth),
+        );
+        
+        // データが0件の場合はエラー、1件以上あれば利用可能なデータで計算
+        if (targetOrAfter.length === 0) {
+          // 全給与データから該当する月のデータを確認（workedDaysの条件なし）
+          const allPayrollsForMonths = payrolls.filter((p) =>
+            targetMonths.includes(p.yearMonth) && p.amount !== undefined,
+          );
+          if (allPayrollsForMonths.length > 0) {
+            // データは存在するが、workedDays < 17で除外されている
+            error = `対象月（${targetMonth}）から連続した3ヶ月の給与データは存在しますが、勤務日数が17日未満のため計算対象外です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          } else {
+            error = `対象月（${targetMonth}）から連続した3ヶ月（${targetMonths.join(', ')}）の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          }
+          return undefined;
+        }
         const average = averagePayroll(targetOrAfter);
         if (average === undefined) {
           error = `対象月以降の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
           return undefined;
         }
-        const candidateStandard = findStandardCompensation(
-          average,
-          compensationTable,
-          '健康保険',
-        );
-        const previousGrade = resolveGradeNumber(
-          previousStandardMonthly ?? employee.standardMonthly,
-          compensationTable,
-          '健康保険',
-        );
-        const candidateGrade = resolveGradeNumber(
-          candidateStandard,
-          compensationTable,
-          '健康保険',
-        );
-
-        if (
-          candidateStandard !== undefined &&
-          previousStandardMonthly !== undefined &&
-          previousGrade !== undefined &&
-          candidateGrade !== undefined
-        ) {
-          const diff = Math.abs(candidateGrade - previousGrade);
-          if (diff < 1) return previousStandardMonthly;
-        }
-
         return average;
       })();
       break;
@@ -571,25 +665,38 @@ export function resolveStandardMonthly(
 
   if (error) {
     return {
-      standardMonthly: 0,
-      source: 'fallback',
-      error,
+      health: { amount: 0, source: 'fallback', error },
+      welfare: { amount: 0, source: 'fallback', error },
     };
   }
 
   if (base === undefined) {
     return {
-      standardMonthly: 0,
-      source: 'fallback',
-      error: `計算に必要な給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`,
+      health: {
+        amount: 0,
+        source: 'fallback',
+        error: `計算に必要な給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`,
+      },
+      welfare: {
+        amount: 0,
+        source: 'fallback',
+        error: `計算に必要な給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`,
+      },
     };
   }
 
   if (compensationTable.length === 0) {
     return {
-      standardMonthly: 0,
-      source: 'fallback',
-      error: '標準報酬等級表が設定されていません。',
+      health: {
+        amount: 0,
+        source: 'fallback',
+        error: '標準報酬等級表が設定されていません。',
+      },
+      welfare: {
+        amount: 0,
+        source: 'fallback',
+        error: '標準報酬等級表が設定されていません。',
+      },
     };
   }
 
@@ -600,22 +707,81 @@ export function resolveStandardMonthly(
     );
   }
 
-  const standardMonthly = findStandardCompensation(
+  // デバッグ: 等級表の内容を確認
+  const healthGrades = compensationTable.filter(g => g.insuranceType === '健康保険');
+  const welfareGrades = compensationTable.filter(g => g.insuranceType === '厚生年金');
+  console.log(`[標準報酬月額計算] 平均報酬月額=${base}円`);
+  console.log(`[標準報酬月額計算] 健康保険等級数: ${healthGrades.length}, 厚生年金等級数: ${welfareGrades.length}`);
+  if (healthGrades.length > 0 && healthGrades.length <= 5) {
+    console.log(`[標準報酬月額計算] 健康保険等級サンプル:`, healthGrades.slice(0, 3).map(g => ({
+      grade: g.grade,
+      lowerLimit: g.lowerLimit,
+      upperLimit: g.upperLimit,
+      standardMonthlyCompensation: g.standardMonthlyCompensation
+    })));
+  }
+  if (welfareGrades.length > 0 && welfareGrades.length <= 5) {
+    console.log(`[標準報酬月額計算] 厚生年金等級サンプル:`, welfareGrades.slice(0, 3).map(g => ({
+      grade: g.grade,
+      lowerLimit: g.lowerLimit,
+      upperLimit: g.upperLimit,
+      standardMonthlyCompensation: g.standardMonthlyCompensation
+    })));
+  }
+
+  const standardHealthMonthly = findStandardCompensation(
     base,
     compensationTable,
     '健康保険',
   );
+  const standardWelfareMonthly = findStandardCompensation(
+    base,
+    compensationTable,
+    '厚生年金',
+
+  );
   
-  // デバッグ: 結果を確認
-  if (base !== undefined && base >= 55000 && base <= 65000) {
-    console.log(
-      `resolveStandardMonthly: 平均報酬月額=${base}円 → 標準報酬月額=${standardMonthly}円`
-    );
+  // 健康保険の等級が見つからない場合はエラーを返す
+  if (standardHealthMonthly === null) {
+    return {
+      health: {
+        amount: 0,
+        source: 'fallback',
+        error: `平均報酬月額${base}円に該当する健康保険の等級が見つかりませんでした。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`,
+      },
+      welfare: {
+        amount: standardWelfareMonthly ?? 0,
+        source: base
+          ? 'payroll'
+          : compensationTable.length
+            ? 'master'
+            : 'fallback',
+      },
+    };
   }
   
+  // デバッグ: 結果を確認
+  console.log(
+    `[標準報酬月額計算] 平均報酬月額=${base}円 → 健保標準報酬月額=${standardHealthMonthly}円, 厚年標準報酬月額=${standardWelfareMonthly}円`
+  );
+  
   return {
-    standardMonthly,
-    source: base ? 'payroll' : compensationTable.length ? 'master' : 'fallback',
+    health: {
+      amount: standardHealthMonthly,
+      source: base
+        ? 'payroll'
+        : compensationTable.length
+          ? 'master'
+          : 'fallback',
+    },
+    welfare: {
+      amount: standardWelfareMonthly ?? 0,
+      source: base
+        ? 'payroll'
+        : compensationTable.length
+          ? 'master'
+          : 'fallback',
+    },
   };
 }
 
@@ -685,3 +851,4 @@ export function extractBonusCap(
   const parsed = rawCap ? Number(rawCap) : undefined;
   return parsed && !isNaN(parsed) ? parsed : undefined;
 }
+

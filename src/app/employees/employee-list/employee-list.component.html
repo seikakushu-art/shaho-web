@@ -71,13 +71,14 @@
               <th>生年月日</th>
               <th>所属部署</th>
               <th>勤務地都道府県</th>
-              <th>標準報酬月額</th>
+              <th>健保標準報酬月額</th>
+              <th>厚年標準報酬月額</th>
               <th class="actions-col">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr *ngIf="isLoading">
-                <td colspan="7" class="empty">データを読み込み中です…</td>
+                <td colspan="8" class="empty">データを読み込み中です…</td>
               </tr>
             <tr
               *ngFor="let employee of paginatedEmployees; trackBy: trackByEmployee"
@@ -88,7 +89,8 @@
               <td>{{ employee.birthDate | date: 'yyyy/MM/dd' }}</td>
               <td>{{ employee.department }}</td>
               <td>{{ employee.workPrefecture }}</td>
-              <td class="numeric">{{ employee.standardMonthly | number: '1.0-0' }} 円</td>
+              <td class="numeric">{{ employee.healthStandardMonthly | number: '1.0-0' }} 円</td>
+              <td class="numeric">{{ employee.welfareStandardMonthly | number: '1.0-0' }} 円</td>
               <td class="actions-col">
                 <button type="button" class="ghost" (click)="onViewDetail($event, employee)">
                   詳細

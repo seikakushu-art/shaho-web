@@ -124,7 +124,6 @@ export interface ApprovalRequest {
     location: string;
     month: string;
     monthlySalary: number;
-    standardMonthly: number;
     healthStandardMonthly?: number;
     welfareStandardMonthly?: number;
     healthEmployeeMonthly: number;
@@ -163,7 +162,6 @@ export interface ApprovalRequest {
     socialInsurance: {
       pensionOffice: string;
       officeName: string;
-      standardMonthly: number;
       healthStandardMonthly?: number;
       welfareStandardMonthly?: number;
       healthCumulative: number;

@@ -744,22 +744,24 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       },
       standardCompensations: (formValue.standardCompensations ?? []).flatMap((r) => {
         const result: StandardCompensationGrade[] = [];
-        // 健康保険の等級がある場合は健康保険レコードを追加
-        if (r.healthInsuranceGrade) {
+        // 健康保険の等級がある場合は健康保険レコードを追加（空文字、「—」、null、undefinedを除外）
+        const healthGrade = r.healthInsuranceGrade?.trim();
+        if (healthGrade && healthGrade !== '—' && healthGrade !== '-') {
           result.push({
             insuranceType: '健康保険',
-            grade: r.healthInsuranceGrade ?? '',
+            grade: healthGrade,
             standardMonthlyCompensation: r.standardMonthlyCompensation ?? undefined,
             lowerLimit: r.lowerLimit ?? undefined,
             upperLimit: r.upperLimit ?? undefined,
             effectiveFrom: r.effectiveFrom ?? undefined,
           });
         }
-        // 厚生年金の等級がある場合は厚生年金レコードを追加
-        if (r.pensionGrade) {
+        // 厚生年金の等級がある場合は厚生年金レコードを追加（空文字、「—」、null、undefinedを除外）
+        const pensionGrade = r.pensionGrade?.trim();
+        if (pensionGrade && pensionGrade !== '—' && pensionGrade !== '-') {
           result.push({
             insuranceType: '厚生年金',
-            grade: r.pensionGrade ?? '',
+            grade: pensionGrade,
             standardMonthlyCompensation: r.standardMonthlyCompensation ?? undefined,
             lowerLimit: r.lowerLimit ?? undefined,
             upperLimit: r.upperLimit ?? undefined,

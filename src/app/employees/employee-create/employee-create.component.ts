@@ -85,7 +85,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     socialInsurance = {
       pensionOffice: '',
       officeName: '',
-      standardMonthly: 0,
       healthCumulative: 0,
       healthStandardMonthly: 0,
       welfareStandardMonthly: 0,
@@ -201,7 +200,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
                 ...incomingInsurance,
                 healthStandardMonthly,
                 welfareStandardMonthly,
-                standardMonthly: incomingInsurance.standardMonthly ?? null,
               };
               // 承認リクエストの扶養情報を読み込み（複数件に対応）
               const dependentInfosFromRequest = result.data.employeeData.dependentInfos;
@@ -301,7 +299,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         ...this.socialInsurance,
         pensionOffice: '',
         officeName: '',
-        standardMonthly: employee.standardMonthly ?? 0,
         healthStandardMonthly,
         welfareStandardMonthly,
         healthCumulative: employee.standardBonusAnnualTotal ?? 0,
@@ -552,7 +549,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             ...this.socialInsurance,
             healthStandardMonthly,
             welfareStandardMonthly,
-            standardMonthly: this.socialInsurance.standardMonthly ?? null,
           },
           dependentInfo: this.dependentInfos.length > 0 ? { ...this.dependentInfos[0] } : undefined,
           // dependentInfosは空の配列でも保存する（undefinedではなく空配列として保存）
@@ -660,7 +656,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
               hasDependent: basicInfo.hasDependent || false,
               healthStandardMonthly: healthStandardMonthly || undefined,
               welfareStandardMonthly: welfareStandardMonthly || undefined,
-              standardMonthly: socialInsurance.standardMonthly || undefined,
               healthInsuredNumber: socialInsurance.healthInsuredNumber || undefined,
               pensionInsuredNumber: socialInsurance.pensionInsuredNumber || undefined,
               careSecondInsured: socialInsurance.careSecondInsured || false,

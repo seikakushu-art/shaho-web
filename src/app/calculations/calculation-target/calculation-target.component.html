@@ -114,7 +114,8 @@
             <th>氏名</th>
             <th>部署</th>
             <th>勤務地</th>
-            <th *ngIf="isStandardCalculation || calculationType === 'insurance'">標準報酬月額</th>
+            <th *ngIf="isStandardCalculation || calculationType === 'insurance'">健保標準報酬月額</th>
+            <th *ngIf="isStandardCalculation || calculationType === 'insurance'">厚年標準報酬月額</th>
             <th *ngIf="calculationType === 'insurance'">介護保険第2号被保険者フラグ</th>
             <th *ngIf="isBonusCalculation">最新の賞与支給日</th>
           </tr>
@@ -126,7 +127,10 @@
             <td>{{ candidate.department }}</td>
             <td>{{ getCandidateLocation(candidate) }}</td>
             <td *ngIf="isStandardCalculation || calculationType === 'insurance'">
-              {{ candidate.standardMonthly ? (candidate.standardMonthly | number: '1.0-0') + ' 円' : '未設定' }}
+              {{ candidate.healthStandardMonthly ? (candidate.healthStandardMonthly | number: '1.0-0') + ' 円' : '未設定' }}
+            </td>
+            <td *ngIf="isStandardCalculation || calculationType === 'insurance'">
+              {{ candidate.welfareStandardMonthly ? (candidate.welfareStandardMonthly | number: '1.0-0') + ' 円' : '未設定' }}
             </td>
             <td *ngIf="calculationType === 'insurance'">
               {{ candidate.careSecondInsured !== undefined ? (candidate.careSecondInsured ? 'ON' : 'OFF') : '未設定' }}
