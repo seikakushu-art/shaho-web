@@ -113,7 +113,7 @@
 
   <div class="summary-grid">
     <div class="card wide" *ngIf="calculationType === 'insurance'">
-      <div class="table-caption">保険種別別まとめ</div>
+      <div class="table-caption">保険種別まとめ</div>
       <div class="table-wrapper">
       <table class="result-table compact">
         <thead>
@@ -125,11 +125,19 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let insurance of insuranceSummaries">
+          <tr *ngFor="let insurance of insuranceSummaries" [class.error-row]="insurance.error">
             <td>{{ insurance.type }}</td>
-            <td class="money">{{ insurance.employee | number }}</td>
-            <td class="money">{{ insurance.employer | number }}</td>
-            <td class="money">{{ insurance.total | number }}</td>
+            <ng-container *ngIf="insurance.error; else normalRow">
+              <td class="money">{{ insurance.employee | number }}</td>
+              <td [attr.colspan]="2" class="error-message">
+                <strong>エラー:</strong> {{ insurance.error }}
+              </td>
+            </ng-container>
+            <ng-template #normalRow>
+              <td class="money">{{ insurance.employee | number }}</td>
+              <td class="money">{{ insurance.employer | number }}</td>
+              <td class="money">{{ insurance.total | number }}</td>
+            </ng-template>
           </tr>
         </tbody>
       </table>

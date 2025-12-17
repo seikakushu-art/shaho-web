@@ -313,11 +313,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         maternityLeaveEnd: this.formatDateForInput(employee.maternityLeaveEnd) || '',
         exemption: employee.exemption ?? this.socialInsurance.exemption,
       };
-
-      // 介護保険第2号被保険者フラグを年齢に基づいて自動計算（詳細画面と同じロジック）
-      if (employee.birthDate) {
-        this.recalcCareFlag();
-      }
     
       // 扶養情報をdependentsサブコレクションから読み込む
       if (employee.id) {
@@ -364,17 +359,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         age--;
       }
       return age;
-    }
-
-    /**
-     * 介護保険第2号被保険者フラグを年齢に基づいて自動計算
-     */
-    private recalcCareFlag(): void {
-      if (!this.basicInfo.birthDate) return;
-      const birthDate = new Date(this.basicInfo.birthDate);
-      if (isNaN(birthDate.getTime())) return;
-      const age = this.calculateAge(birthDate);
-      this.socialInsurance.careSecondInsured = age >= 40 && age < 65;
     }
 
     /**

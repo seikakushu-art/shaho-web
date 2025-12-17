@@ -50,12 +50,19 @@ export function parseRate(rate?: string): number {
 }
 
 export function roundToInsuranceUnit(value: number): number {
-  const base = Math.floor(value);
-  const fraction = value - base;
+  // 浮動小数点の誤差を避けるため、100倍して整数として扱う
+  // 例: 2989.9 → 298990（銭単位）、41375.5 → 4137550（銭単位）
+  const valueInSen = Math.floor(value * 100 + 1e-6); // 1e-6を加えて浮動小数点誤差を補正
+  const baseInYen = Math.floor(value);
+  const baseInSen = baseInYen * 100;
+  const fractionInSen = valueInSen - baseInSen;
 
-  if (fraction > 0.5) return base + 1;
-  if (fraction < 0.5) return base;
-  return base; // 50銭は切り捨て
+  // 50銭（50）未満は切り捨て、50銭以上は1円（100）に切り上げ
+  // 50銭ちょうど（fractionInSen === 50）の場合は切り捨て
+  if (fractionInSen > 50) {
+    return baseInYen + 1;
+  }
+  return baseInYen; // 50銭未満または50銭ちょうどは切り捨て
 }
 
 export function floorInsuranceTotal(value: number): number {
@@ -809,11 +816,10 @@ export function calculateInsurancePremium(
   const employeeRate = parseRate(rate.employeeRate);
   const rawTotal = base * totalRate;
   const rawEmployee = base * employeeRate;
-  const rawEmployer = rawTotal - rawEmployee;
 
   const employee = roundToInsuranceUnit(rawEmployee);
-  const employer = roundToInsuranceUnit(rawEmployer);
-  const total = floorInsuranceTotal(employee + employer);
+  const total = floorInsuranceTotal(rawTotal);
+  const employer = total - employee;
   return { total, employee, employer };
 }
 
@@ -827,11 +833,10 @@ export function calculatePensionPremium(
   const employeeRate = parseRate(rateDetail.employeeRate);
   const rawTotal = base * totalRate;
   const rawEmployee = base * employeeRate;
-  const rawEmployer = rawTotal - rawEmployee;
 
   const employee = roundToInsuranceUnit(rawEmployee);
-  const employer = roundToInsuranceUnit(rawEmployer);
-  const total = floorInsuranceTotal(employee + employer);
+  const total = floorInsuranceTotal(rawTotal);
+  const employer = total - employee;
 
   return { total, employee, employer };
 }

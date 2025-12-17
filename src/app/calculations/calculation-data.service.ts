@@ -270,26 +270,26 @@ export class CalculationDataService {
     fallbackBonusDate?: string,
   ): CalculationRow {
     const payrolls = this.extractPayrolls(employee);
-    // 標準賞与額計算ではDBに保存された標準報酬月額をそのまま利用する
-    // 標準報酬月額計算と社会保険料計算では標準報酬月額を計算する
+    // 標準報酬月額計算の場合のみ標準報酬月額を計算する
+    // 標準賞与額計算と社会保険料計算ではDBに保存された標準報酬月額をそのまま利用する
     const resolvedStandard =
-      context.calculationType === 'bonus'
-        ? undefined
-        : resolveStandardMonthly(
+      context.calculationType === 'standard'
+        ? resolveStandardMonthly(
             employee,
             payrolls,
             context.standardCalculationMethod,
             context.targetMonth,
             rateRecord.standardCompensations ?? [],
-          );
+          )
+        : undefined;
     const healthStandardMonthly =
-      context.calculationType === 'bonus'
-        ? (employee.healthStandardMonthly ?? 0)
-        : (resolvedStandard?.health.amount ?? 0);
+      context.calculationType === 'standard'
+        ? (resolvedStandard?.health.amount ?? 0)
+        : (employee.healthStandardMonthly ?? 0);
     const welfareStandardMonthly =
-      context.calculationType === 'bonus'
-        ? (employee.welfareStandardMonthly ?? 0)
-        : (resolvedStandard?.welfare.amount ?? 0);
+      context.calculationType === 'standard'
+        ? (resolvedStandard?.welfare.amount ?? 0)
+        : (employee.welfareStandardMonthly ?? 0);
     // エラーチェック
     const errors: string[] = [];
     const withEmployeeInfo = (message: string) =>
@@ -297,9 +297,9 @@ export class CalculationDataService {
         ? message
         : `${message}（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
 
-    // 標準報酬月額計算と社会保険料計算の場合、標準報酬月額の計算エラーをチェック
+    // 標準報酬月額計算の場合のみ、標準報酬月額の計算エラーをチェック
     if (
-      (context.calculationType === 'standard' || context.calculationType === 'insurance') &&
+      context.calculationType === 'standard' &&
       resolvedStandard &&
       (resolvedStandard.health.error || resolvedStandard.welfare.error)
     ) {
@@ -344,19 +344,19 @@ export class CalculationDataService {
       errors.push(withEmployeeInfo('厚生年金保険料率が設定されていません。'));
     }
 
-    // 社会保険料計算の場合、標準報酬月額が計算できなかった場合はエラー
+    // 社会保険料計算の場合、標準報酬月額がDBに保存されていない場合はエラー
     if (context.calculationType === 'insurance') {
       if (
         context.activeInsurances.includes('health') &&
         (!healthStandardMonthly || healthStandardMonthly <= 0)
       ) {
-        errors.push(withEmployeeInfo(`健保標準報酬月額を計算できませんでした。`));
+        errors.push(withEmployeeInfo(`健保標準報酬月額が設定されていません。`));
       }
       if (
         context.activeInsurances.includes('welfare') &&
         (!welfareStandardMonthly || welfareStandardMonthly <= 0)
       ) {
-        errors.push(withEmployeeInfo(`厚年標準報酬月額を計算できませんでした。`));
+        errors.push(withEmployeeInfo(`厚年標準報酬月額が設定されていません。`));
       }
     }
 
@@ -454,36 +454,42 @@ export class CalculationDataService {
       welfareBonusCumulative,
     );
 
-    const healthMonthly = context.activeInsurances.includes('health')
-    ? calculateInsurancePremium(healthStandardMonthly, healthRate)
-      : { employee: 0, employer: 0, total: 0 };
+    // 一時免除フラグがONの場合は、すべての保険料を0にする
+    const isExempted = employee.exemption === true;
+
+    const healthMonthly = isExempted || !context.activeInsurances.includes('health')
+    ? { employee: 0, employer: 0, total: 0 }
+      : calculateInsurancePremium(healthStandardMonthly, healthRate);
     const nursingMonthly =
-      context.activeInsurances.includes('nursing') && employee.careSecondInsured
-      ? calculateInsurancePremium(healthStandardMonthly, nursingRate)
-        : { employee: 0, employer: 0, total: 0 };
-    const welfareMonthly = context.activeInsurances.includes('welfare')
-      ? calculatePensionPremium(
+      isExempted || !context.activeInsurances.includes('nursing') || !employee.careSecondInsured
+      ? { employee: 0, employer: 0, total: 0 }
+        : calculateInsurancePremium(healthStandardMonthly, nursingRate);
+    const welfareMonthly = isExempted || !context.activeInsurances.includes('welfare')
+      ? { employee: 0, employer: 0, total: 0 }
+      : calculatePensionPremium(
         welfareStandardMonthly,
           rateRecord.pensionRate,
-        )
-      : { employee: 0, employer: 0, total: 0 };
+        );
 
     const healthBonus =
-      context.activeInsurances.includes('health') &&
-      (context.includeBonusInMonth ?? true)
-        ? calculateInsurancePremium(standardHealthBonus, healthRate)
-        : { employee: 0, employer: 0, total: 0 };
+      isExempted ||
+      !context.activeInsurances.includes('health') ||
+      !(context.includeBonusInMonth ?? true)
+        ? { employee: 0, employer: 0, total: 0 }
+        : calculateInsurancePremium(standardHealthBonus, healthRate);
     const nursingBonus =
-      context.activeInsurances.includes('nursing') &&
-      employee.careSecondInsured &&
-      (context.includeBonusInMonth ?? true)
-        ? calculateInsurancePremium(standardHealthBonus, nursingRate)
-        : { employee: 0, employer: 0, total: 0 };
+      isExempted ||
+      !context.activeInsurances.includes('nursing') ||
+      !employee.careSecondInsured ||
+      !(context.includeBonusInMonth ?? true)
+        ? { employee: 0, employer: 0, total: 0 }
+        : calculateInsurancePremium(standardHealthBonus, nursingRate);
     const welfareBonus =
-      context.activeInsurances.includes('welfare') &&
-      (context.includeBonusInMonth ?? true)
-        ? calculatePensionPremium( standardWelfareBonus, rateRecord.pensionRate)
-        : { employee: 0, employer: 0, total: 0 };
+      isExempted ||
+      !context.activeInsurances.includes('welfare') ||
+      !(context.includeBonusInMonth ?? true)
+        ? { employee: 0, employer: 0, total: 0 }
+        : calculatePensionPremium( standardWelfareBonus, rateRecord.pensionRate);
 
     return {
       employeeNo: employee.employeeNo,

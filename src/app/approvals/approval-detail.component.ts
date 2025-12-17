@@ -467,6 +467,11 @@ export class ApprovalDetailComponent implements OnDestroy {
               pensionInsuredNumber: csvData['被保険者番号（厚生年金）'] || undefined,
               healthAcquisition: csvData['健康保険 資格取得日'] || csvData['健康保険資格取得日'] || undefined,
               pensionAcquisition: csvData['厚生年金 資格取得日'] || csvData['厚生年金資格取得日'] || undefined,
+              careSecondInsured: toBoolean(
+                csvData['介護保険第2号被保険者フラグ'] ||
+                csvData['介護保険第2号フラグ'] ||
+                undefined,
+              ),
               childcareLeaveStart: csvData['育休開始日'] || undefined,
               childcareLeaveEnd: csvData['育休終了日'] || undefined,
               maternityLeaveStart: csvData['産休開始日'] || undefined,
@@ -1077,85 +1082,147 @@ export class ApprovalDetailComponent implements OnDestroy {
       const savePromises = validRows
         .filter((row) => !row.error)
         .map(async (row) => {
-          const employeeId = employeeMap.get(row.employeeNo);
-          if (!employeeId) {
-            console.warn(`社員番号 ${row.employeeNo} の社員IDが見つかりません`);
-            return;
-          }
-
-          const healthMonthlyTotal =
-            (row.healthEmployeeMonthly || 0) + (row.healthEmployerMonthly || 0);
-          const careMonthlyTotal =
-            (row.nursingEmployeeMonthly || 0) + (row.nursingEmployerMonthly || 0);
-          const pensionMonthlyTotal =
-            (row.welfareEmployeeMonthly || 0) + (row.welfareEmployerMonthly || 0);
-          const healthBonusTotal =
-            (row.healthEmployeeBonus || 0) + (row.healthEmployerBonus || 0);
-          const careBonusTotal =
-            (row.nursingEmployeeBonus || 0) + (row.nursingEmployerBonus || 0);
-          const pensionBonusTotal =
-            (row.welfareEmployeeBonus || 0) + (row.welfareEmployerBonus || 0);
-
-          // 賞与データがある場合は、bonusPaidOnから年月を抽出してyearMonthを設定
-          let yearMonth = row.month;
-          if (row.bonusPaymentDate) {
-            const normalized = normalizeToYearMonth(row.bonusPaymentDate);
-            if (normalized) {
-              yearMonth = normalized;
+          try {
+            const employeeId = employeeMap.get(row.employeeNo);
+            if (!employeeId) {
+              console.warn(`社員番号 ${row.employeeNo} の社員IDが見つかりません`);
+              return { success: false, employeeNo: row.employeeNo, error: '社員IDが見つかりません' };
             }
-          }
 
-          const payrollData: any = {
-            yearMonth: yearMonth,
-            amount: row.monthlySalary || undefined,
-            bonusPaidOn: row.bonusPaymentDate || undefined,
-            bonusTotal: row.bonusTotalPay || undefined,
-            standardHealthBonus:
-              row.standardHealthBonus > 0 ? row.standardHealthBonus : undefined,
-            standardWelfareBonus:
-              row.standardWelfareBonus > 0 ? row.standardWelfareBonus : undefined,
-            // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
-            standardBonus:
-              row.standardHealthBonus || row.standardWelfareBonus || undefined,
-            healthInsuranceMonthly:
-              healthMonthlyTotal > 0 ? healthMonthlyTotal : undefined,
-            careInsuranceMonthly:
-              careMonthlyTotal > 0 ? careMonthlyTotal : undefined,
-            pensionMonthly:
-              pensionMonthlyTotal > 0 ? pensionMonthlyTotal : undefined,
-            healthInsuranceBonus:
-              healthBonusTotal > 0 ? healthBonusTotal : undefined,
-            careInsuranceBonus: careBonusTotal > 0 ? careBonusTotal : undefined,
-            pensionBonus: pensionBonusTotal > 0 ? pensionBonusTotal : undefined,
-          };
+            console.log(`保険料計算: 社員番号=${row.employeeNo}`, {
+              健康保険料月額: {
+                従業員負担: row.healthEmployeeMonthly,
+                事業主負担: row.healthEmployerMonthly,
+                保存値: row.healthEmployeeMonthly, // 従業員負担分のみ保存
+              },
+              介護保険料月額: {
+                従業員負担: row.nursingEmployeeMonthly,
+                事業主負担: row.nursingEmployerMonthly,
+                保存値: row.nursingEmployeeMonthly, // 従業員負担分のみ保存
+              },
+              厚生年金保険料月額: {
+                従業員負担: row.welfareEmployeeMonthly,
+                事業主負担: row.welfareEmployerMonthly,
+                保存値: row.welfareEmployeeMonthly, // 従業員負担分のみ保存
+              },
+              健康保険料賞与: {
+                従業員負担: row.healthEmployeeBonus,
+                事業主負担: row.healthEmployerBonus,
+                保存値: row.healthEmployeeBonus, // 従業員負担分のみ保存
+              },
+              介護保険料賞与: {
+                従業員負担: row.nursingEmployeeBonus,
+                事業主負担: row.nursingEmployerBonus,
+                保存値: row.nursingEmployeeBonus, // 従業員負担分のみ保存
+              },
+              厚生年金保険料賞与: {
+                従業員負担: row.welfareEmployeeBonus,
+                事業主負担: row.welfareEmployerBonus,
+                保存値: row.welfareEmployeeBonus, // 従業員負担分のみ保存
+              },
+            });
 
-          Object.keys(payrollData).forEach((key) => {
-            if (payrollData[key] === undefined) {
-              delete payrollData[key];
+            // 賞与データがある場合は、bonusPaidOnから年月を抽出してyearMonthを設定
+            let yearMonth = row.month;
+            if (row.bonusPaymentDate) {
+              const normalized = normalizeToYearMonth(row.bonusPaymentDate);
+              if (normalized) {
+                yearMonth = normalized;
+              }
             }
-          });
 
-          await this.employeesService.addOrUpdatePayroll(
-            employeeId,
-            yearMonth,
-            payrollData,
-          );
+            const payrollData: any = {
+              yearMonth: yearMonth,
+              amount: row.monthlySalary || undefined,
+              bonusPaidOn: row.bonusPaymentDate || undefined,
+              bonusTotal: row.bonusTotalPay || undefined,
+              standardHealthBonus:
+                row.standardHealthBonus > 0 ? row.standardHealthBonus : undefined,
+              standardWelfareBonus:
+                row.standardWelfareBonus > 0 ? row.standardWelfareBonus : undefined,
+              // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
+              standardBonus:
+                row.standardHealthBonus || row.standardWelfareBonus || undefined,
+              // 健康保険料、介護保険料、厚生年金保険料（月額）を従業員負担分のみで保存
+              healthInsuranceMonthly:
+                (row.healthEmployeeMonthly || 0) > 0 ? row.healthEmployeeMonthly : undefined,
+              careInsuranceMonthly:
+                (row.nursingEmployeeMonthly || 0) > 0 ? row.nursingEmployeeMonthly : undefined,
+              pensionMonthly:
+                (row.welfareEmployeeMonthly || 0) > 0 ? row.welfareEmployeeMonthly : undefined,
+              // 健康保険料、介護保険料、厚生年金保険料（賞与）を従業員負担分のみで保存
+              healthInsuranceBonus:
+                (row.healthEmployeeBonus || 0) > 0 ? row.healthEmployeeBonus : undefined,
+              careInsuranceBonus: (row.nursingEmployeeBonus || 0) > 0 ? row.nursingEmployeeBonus : undefined,
+              pensionBonus: (row.welfareEmployeeBonus || 0) > 0 ? row.welfareEmployeeBonus : undefined,
+            };
 
-          const updatePayload: Partial<ShahoEmployee> = {};
-          // 標準報酬月額計算の場合、0以外の値（0も含む）を保存する
-          // ただし、undefinedやnullの場合は保存しない
-          if (row.healthStandardMonthly !== undefined && row.healthStandardMonthly !== null) {
-            updatePayload.healthStandardMonthly = row.healthStandardMonthly;
-          }
-          if (row.welfareStandardMonthly !== undefined && row.welfareStandardMonthly !== null) {
-            updatePayload.welfareStandardMonthly = row.welfareStandardMonthly;
-          }
-          if (Object.keys(updatePayload).length > 0) {
-            await this.employeesService.updateEmployee(employeeId, updatePayload);
+            Object.keys(payrollData).forEach((key) => {
+              if (payrollData[key] === undefined) {
+                delete payrollData[key];
+              }
+            });
+
+            // 保存するデータの詳細をログ出力
+            console.log(`給与データを保存します: 社員番号=${row.employeeNo}, 年月=${yearMonth}`, {
+              ...payrollData,
+              // 保険料の詳細も表示（月額・賞与ともに従業員負担分のみ保存）
+              '健康保険料（月額・従業員負担）': payrollData.healthInsuranceMonthly || '未設定',
+              '介護保険料（月額・従業員負担）': payrollData.careInsuranceMonthly || '未設定',
+              '厚生年金保険料（月額・従業員負担）': payrollData.pensionMonthly || '未設定',
+              '健康保険料（賞与・従業員負担）': payrollData.healthInsuranceBonus || '未設定',
+              '介護保険料（賞与・従業員負担）': payrollData.careInsuranceBonus || '未設定',
+              '厚生年金保険料（賞与・従業員負担）': payrollData.pensionBonus || '未設定',
+            });
+            await this.employeesService.addOrUpdatePayroll(
+              employeeId,
+              yearMonth,
+              payrollData,
+            );
+            console.log(`給与データの保存完了: 社員番号=${row.employeeNo}`);
+
+            const updatePayload: Partial<ShahoEmployee> = {};
+            // 標準報酬月額計算の場合、0以外の値（0も含む）を保存する
+            // ただし、undefinedやnullの場合は保存しない
+            if (row.healthStandardMonthly !== undefined && row.healthStandardMonthly !== null) {
+              updatePayload.healthStandardMonthly = row.healthStandardMonthly;
+            }
+            if (row.welfareStandardMonthly !== undefined && row.welfareStandardMonthly !== null) {
+              updatePayload.welfareStandardMonthly = row.welfareStandardMonthly;
+            }
+            if (Object.keys(updatePayload).length > 0) {
+              console.log(`標準報酬月額を更新します: 社員番号=${row.employeeNo}`, updatePayload);
+              await this.employeesService.updateEmployee(employeeId, updatePayload);
+              console.log(`標準報酬月額の更新完了: 社員番号=${row.employeeNo}`);
+            } else {
+              console.log(`標準報酬月額の更新スキップ: 社員番号=${row.employeeNo} (更新データなし)`);
+            }
+
+            return { success: true, employeeNo: row.employeeNo };
+          } catch (error) {
+            console.error(`社員番号 ${row.employeeNo} の保存に失敗しました:`, error);
+            return { success: false, employeeNo: row.employeeNo, error: error instanceof Error ? error.message : '不明なエラー' };
           }
         });
 
-      await Promise.all(savePromises);
+      const results = await Promise.allSettled(savePromises);
+      const successCount = results.filter((r) => r.status === 'fulfilled' && r.value?.success).length;
+      const failureCount = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success)).length;
+      
+      console.log(`社員情報の保存結果: 成功=${successCount}件, 失敗=${failureCount}件`);
+      
+      if (failureCount > 0) {
+        const failures = results
+          .filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success))
+          .map((r) => {
+            if (r.status === 'rejected') {
+              return `不明なエラー: ${r.reason}`;
+            }
+            const value = r.value as { success: boolean; employeeNo: string; error?: string };
+            return `社員番号 ${value.employeeNo}: ${value.error || '不明なエラー'}`;
+          });
+        console.warn('保存に失敗した社員:', failures);
+      }
       
       const calculationTypeLabels: Record<string, string> = {
         standard: '標準報酬月額',
@@ -1164,6 +1231,7 @@ export class ApprovalDetailComponent implements OnDestroy {
       };
       const calculationTypeLabel = calculationTypeLabels[query.type] || query.type.toUpperCase();
       
+      console.log(`計算履歴を保存します: 種別=${calculationTypeLabel}, 行数=${validRows.filter((row) => !row.error).length}`);
       await this.calculationDataService.saveCalculationHistory(
         query,
         validRows.filter((row) => !row.error),
@@ -1171,6 +1239,7 @@ export class ApprovalDetailComponent implements OnDestroy {
           title: calculationTypeLabel,
         },
       );
+      console.log('計算履歴の保存完了');
     } catch (error) {
       console.error('計算結果の保存エラー:', error);
       throw error;

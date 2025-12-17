@@ -72,9 +72,18 @@ type CalculationCsvMeta = {
   historyId?: string;
 };
 
+export interface InsuranceSummary {
+  type: string;
+  employee: number;
+  employer: number;
+  total?: number;
+  error?: string;
+}
+
 export interface CalculationCsvContext {
   rows: CalculationRow[];
   meta?: CalculationCsvMeta;
+  insuranceSummaries?: InsuranceSummary[];
 }
 
 type EmployeesObservable = ReturnType<
@@ -131,7 +140,26 @@ export class CsvExportService {
       columns.map((column) => this.escapeForCsv(column.value(employee))),
     );
     const csvMatrix = [columns.map((column) => column.header), ...rows];
-    const csvContent = csvMatrix.map((row) => row.join(',')).join('\n');
+    let csvContent = csvMatrix.map((row) => row.join(',')).join('\n');
+
+    // 保険種別まとめテーブルを追加（計算コンテキストが存在し、保険料計算の場合のみ）
+    if (
+      options.context === 'calculation' &&
+      options.calculationContext?.insuranceSummaries &&
+      options.calculationContext.insuranceSummaries.length > 0 &&
+      options.calculationContext.meta?.calculationType === 'insurance'
+    ) {
+      csvContent += '\n\n';
+      csvContent += '保険種別まとめ\n';
+      csvContent += '保険種別,個人負担,会社負担,合計\n';
+      options.calculationContext.insuranceSummaries.forEach((summary) => {
+        if (summary.error) {
+          csvContent += `${this.escapeForCsv(summary.type)},${this.escapeForCsv(summary.employee)},エラー: ${this.escapeForCsv(summary.error)}\n`;
+        } else {
+          csvContent += `${this.escapeForCsv(summary.type)},${this.escapeForCsv(summary.employee)},${this.escapeForCsv(summary.employer)},${this.escapeForCsv(summary.total ?? '')}\n`;
+        }
+      });
+    }
 
     return new Blob(['\uFEFF' + csvContent], {
       type: 'text/csv;charset=utf-8;',

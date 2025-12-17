@@ -322,13 +322,6 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     return `${value.toLocaleString()} 円`;
   }
 
-
-  recalcCareFlag() {
-    const birthDate = new Date(this.basicInfo.birthDate);
-    const age = this.calculateAge(birthDate);
-    this.socialInsurance.careSecondInsured = age >= 40 && age < 65;
-  }
-
   updateInsuranceHistoryRange(field: 'start' | 'end', value: string) {
     this.insuranceHistoryFilter = { ...this.insuranceHistoryFilter, [field]: value };
     this.refreshDisplayedMonths();
@@ -1004,10 +997,6 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
         updatedBy: getDisplayName(employee.updatedBy) || this.auditInfo.updatedBy,
         approvedBy: latestApprover || getDisplayName(employee.approvedBy) || this.auditInfo.approvedBy,
       };
-    }
-
-    if (employee.birthDate) {
-      this.recalcCareFlag();
     }
 
     this.rebuildApprovalHistory();

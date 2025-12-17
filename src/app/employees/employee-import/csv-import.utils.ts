@@ -41,6 +41,7 @@ const POSTAL_CODE_FIELDS = ['郵便番号'];
 const ADDRESS_FIELDS = ['住所', '扶養 住所（別居の場合のみ入力）'];
 const FLAG_FIELDS = [
   '介護保険第2号フラグ',
+  '介護保険第2号被保険者フラグ',
   '一時免除フラグ（健康保険料・厚生年金一時免除）',
   '扶養の有無',
   '扶養 国民年金第3号被保険者該当フラグ',
@@ -1407,6 +1408,8 @@ export function calculateDifferences(
       '健康保険 資格取得日': 'healthAcquisition',
       厚生年金資格取得日: 'pensionAcquisition',
       '厚生年金 資格取得日': 'pensionAcquisition',
+      '介護保険第2号被保険者フラグ': 'careSecondInsured',
+      介護保険第2号フラグ: 'careSecondInsured',
       育休開始日: 'childcareLeaveStart',
       育休終了日: 'childcareLeaveEnd',
       産休開始日: 'maternityLeaveStart',
@@ -1585,7 +1588,11 @@ export function calculateDifferences(
       };
 
       // フラグフィールドのリスト
-      const flagFields = ['扶養の有無'];
+      const flagFields = [
+        '扶養の有無',
+        '介護保険第2号被保険者フラグ',
+        '介護保険第2号フラグ',
+      ];
 
       // 数値フィールドの比較
       if (

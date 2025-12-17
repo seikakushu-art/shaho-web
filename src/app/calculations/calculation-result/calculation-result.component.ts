@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subject, takeUntil, firstValueFrom, Subscription } from 'rxjs';
+import { Subject, takeUntil, firstValueFrom, Subscription, switchMap, map } from 'rxjs';
 import {
   CalculationType,
   StandardCalculationMethod,
@@ -13,8 +13,10 @@ import {
   CalculationRow,
   CalculationResultHistory,
 } from '../calculation-data.service';
-import { InsuranceKey, normalizeToYearMonth } from '../calculation-utils';
+import { InsuranceKey, normalizeToYearMonth, parseRate, findPrefectureRate } from '../calculation-utils';
 import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
+import { CorporateInfoService } from '../../app/services/corporate-info.service';
+import { InsuranceRatesService, InsuranceRateRecord } from '../../app/services/insurance-rates.service';
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
 import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
 import { ApprovalNotificationService } from '../../approvals/approval-notification.service';
@@ -87,12 +89,15 @@ interface ColumnSetting {
 export class CalculationResultComponent implements OnInit, OnDestroy {
   private calculationDataService = inject(CalculationDataService);
   private employeesService = inject(ShahoEmployeesService);
+  private corporateInfoService = inject(CorporateInfoService);
+  private insuranceRatesService = inject(InsuranceRatesService);
   private approvalWorkflowService = inject(ApprovalWorkflowService);
   private notificationService = inject(ApprovalNotificationService);
   private authService = inject(AuthService);
   readonly attachmentService = inject(ApprovalAttachmentService);
   private destroy$ = new Subject<void>();
   private approvalSubscription?: Subscription;
+  private currentRateRecord?: InsuranceRateRecord;
 
   saving = false;
   approvalMessage = '';
@@ -477,8 +482,23 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
             }
             
             this.refreshVisibility(true);
-            this.calculateSummaries();
-            this.updateFilterOptions();
+            // 保険料率を取得してから集計
+            this.corporateInfoService.getCorporateInfo().pipe(
+              switchMap((info) =>
+                this.insuranceRatesService.getRateHistory(
+                  info?.healthInsuranceType ?? '協会けんぽ',
+                ).pipe(
+                  map((rateHistory) => {
+                    this.currentRateRecord = rateHistory?.[0];
+                    return this.currentRateRecord;
+                  })
+                )
+              ),
+              takeUntil(this.destroy$)
+            ).subscribe(() => {
+              this.calculateSummaries();
+              this.updateFilterOptions();
+            });
             return;
           }
 
@@ -593,8 +613,23 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         this.rows = rows;
         this.currentHistoryId = undefined;
         this.refreshVisibility(true);
-        this.calculateSummaries();
-        this.updateFilterOptions();
+        // 保険料率を取得してから集計
+        this.corporateInfoService.getCorporateInfo().pipe(
+          switchMap((info) =>
+            this.insuranceRatesService.getRateHistory(
+              info?.healthInsuranceType ?? '協会けんぽ',
+            ).pipe(
+              map((rateHistory) => {
+                this.currentRateRecord = rateHistory?.[0];
+                return this.currentRateRecord;
+              })
+            )
+          ),
+          takeUntil(this.destroy$)
+        ).subscribe(() => {
+          this.calculateSummaries();
+          this.updateFilterOptions();
+        });
       });
   }
 
@@ -926,6 +961,11 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       summaries.push(entry);
     }
 
+    // 合計欄の計算用：各社員のraw値を合計（端数処理しない）
+    let rawHealthTotal = 0;
+    let rawNursingTotal = 0;
+    let rawWelfareTotal = 0;
+
     this.rows.forEach((row) => {
       if (row.error) return; // エラーがある行は集計から除外
       if (summaryRefs.health) {
@@ -946,11 +986,97 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         summaryRefs.welfare.employer +=
           row.welfareEmployerMonthly + row.welfareEmployerBonus;
       }
+
+      // 合計欄の計算：各社員の標準報酬月額 × 保険料率（端数処理しない）
+      const rateRecord = this.currentRateRecord;
+      if (rateRecord) {
+        const location = row.location || '未設定';
+        const healthRate = findPrefectureRate(
+          rateRecord.healthInsuranceRates,
+          location,
+        );
+        const nursingRate = findPrefectureRate(
+          rateRecord.nursingCareRates,
+          location,
+        );
+
+        // 健康保険の合計raw値
+        if (summaryRefs.health && healthRate) {
+          const totalRate = parseRate(healthRate.totalRate);
+          // 月例分
+          if (row.healthStandardMonthly) {
+            rawHealthTotal += row.healthStandardMonthly * totalRate;
+          }
+          // 賞与分（標準報酬月額が0でも賞与がある場合は含める）
+          if (row.standardHealthBonus > 0) {
+            rawHealthTotal += row.standardHealthBonus * totalRate;
+          }
+        }
+
+        // 介護保険の合計raw値
+        if (summaryRefs.nursing && nursingRate) {
+          const totalRate = parseRate(nursingRate.totalRate);
+          // 月例分
+          if (row.healthStandardMonthly) {
+            rawNursingTotal += row.healthStandardMonthly * totalRate;
+          }
+          // 賞与分（標準報酬月額が0でも賞与がある場合は含める）
+          if (row.standardHealthBonus > 0) {
+            rawNursingTotal += row.standardHealthBonus * totalRate;
+          }
+        }
+
+        // 厚生年金の合計raw値
+        if (summaryRefs.welfare && rateRecord.pensionRate) {
+          const totalRate = parseRate(rateRecord.pensionRate.totalRate);
+          // 月例分
+          if (row.welfareStandardMonthly) {
+            rawWelfareTotal += row.welfareStandardMonthly * totalRate;
+          }
+          // 賞与分（標準報酬月額が0でも賞与がある場合は含める）
+          if (row.standardWelfareBonus > 0) {
+            rawWelfareTotal += row.standardWelfareBonus * totalRate;
+          }
+        }
+      }
     });
-    return summaries.map((row) => ({
-      ...row,
-      total: row.employee + row.employer,
-    }));
+
+    // 合計欄を計算：合計後に1円未満切捨て
+    return summaries.map((row) => {
+      // 保険料率が取得できていない場合はエラー
+      if (!this.currentRateRecord) {
+        return {
+          ...row,
+          error: '保険料率が取得できません。合計を計算できません。',
+        };
+      }
+
+      let total = 0;
+      
+      // 保険料率が取得できている場合は、raw値の合計から計算
+      if (row.type === '健康保険' && summaryRefs.health) {
+        total = Math.floor(rawHealthTotal + 1e-6);
+      } else if (row.type === '介護保険' && summaryRefs.nursing) {
+        total = Math.floor(rawNursingTotal + 1e-6);
+      } else if (row.type === '厚生年金' && summaryRefs.welfare) {
+        total = Math.floor(rawWelfareTotal + 1e-6);
+      } else {
+        // 該当する保険種別がない場合もエラー
+        return {
+          ...row,
+          error: '保険料率が取得できません。合計を計算できません。',
+        };
+      }
+
+      // 会社負担 = 合計 - 個人負担
+      const employer = total - row.employee;
+
+      return {
+        ...row,
+        employer,
+        total,
+      };
+    });
   }
 
   private buildInsuranceMonthlySummaries(): InsuranceMonthlySummary[] {
@@ -1060,6 +1186,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
             activeInsurances: query.insurances,
             historyId: this.currentHistoryId,
           },
+          insuranceSummaries: this.calculationType === 'insurance' ? this.insuranceSummaries : undefined,
         },
       },
     });
@@ -1153,8 +1280,23 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     this.rows = history.rows;
     this.currentHistoryId = history.id;
     this.refreshVisibility(true);
-    this.calculateSummaries();
-    this.updateFilterOptions();
+    // 保険料率を取得してから集計
+    this.corporateInfoService.getCorporateInfo().pipe(
+      switchMap((info) =>
+        this.insuranceRatesService.getRateHistory(
+          info?.healthInsuranceType ?? '協会けんぽ',
+        ).pipe(
+          map((rateHistory) => {
+            this.currentRateRecord = rateHistory?.[0];
+            return this.currentRateRecord;
+          })
+        )
+      ),
+      takeUntil(this.destroy$)
+    ).subscribe(() => {
+      this.calculateSummaries();
+      this.updateFilterOptions();
+    });
   }
 
   async saveResults() {
@@ -1570,6 +1712,7 @@ interface InsuranceSummary {
   employee: number;
   employer: number;
   total?: number;
+  error?: string;
 }
 
 interface InsuranceMonthlySummary {

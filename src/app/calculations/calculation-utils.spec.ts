@@ -42,8 +42,8 @@ describe('premium calculations', () => {
     const monthly = calculateInsurancePremium(1234.56, insuranceRate);
 
     expect(monthly.employee).toBe(59);
-    expect(monthly.employer).toBe(59);
-    expect(monthly.total).toBe(118);
+    expect(monthly.employer).toBe(58);
+    expect(monthly.total).toBe(117);
   });
 
   it('applies the same rounding when calculating bonus health premiums', () => {

@@ -871,6 +871,11 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 csvData['厚生年金 資格取得日'] ||
                 csvData['厚生年金資格取得日'] ||
                 undefined,
+              careSecondInsured: toBoolean(
+                csvData['介護保険第2号被保険者フラグ'] ||
+                csvData['介護保険第2号フラグ'] ||
+                undefined,
+              ),
               childcareLeaveStart: csvData['育休開始日'] || undefined,
               childcareLeaveEnd: csvData['育休終了日'] || undefined,
               maternityLeaveStart: csvData['産休開始日'] || undefined,
@@ -1303,6 +1308,11 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                   csvData['厚生年金 資格取得日'] ||
                   csvData['厚生年金資格取得日'] ||
                   undefined,
+                careSecondInsured: toBoolean(
+                  csvData['介護保険第2号被保険者フラグ'] ||
+                  csvData['介護保険第2号フラグ'] ||
+                  undefined,
+                ),
                 childcareLeaveStart: csvData['育休開始日'] || undefined,
                 childcareLeaveEnd: csvData['育休終了日'] || undefined,
                 maternityLeaveStart: csvData['産休開始日'] || undefined,
@@ -1899,6 +1909,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       '被保険者番号（厚生年金）',
       '健康保険 資格取得日',
       '厚生年金 資格取得日',
+      '介護保険第2号被保険者フラグ',
       '育休開始日',
       '育休終了日',
       '産休開始日',
@@ -1934,8 +1945,10 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       '',
       '',
       '',
+      '',
       'YYYY/MM/DD',
       'YYYY/MM/DD',
+      '0/1/true/false',
       'YYYY/MM/DD',
       'YYYY/MM/DD',
       'YYYY/MM/DD',
