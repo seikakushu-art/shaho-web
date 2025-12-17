@@ -115,6 +115,28 @@ interface PayrollData {
   approvedBy?: string;
 }
 
+interface DependentData {
+  id?: string; // FirestoreドキュメントID
+  relationship?: string; // 続柄
+  nameKanji?: string; // 氏名(漢字)
+  nameKana?: string; // 氏名(カナ)
+  birthDate?: string; // 生年月日
+  gender?: string; // 性別
+  personalNumber?: string; // 個人番号
+  basicPensionNumber?: string; // 基礎年金番号
+  cohabitationType?: string; // 同居区分
+  address?: string; // 住所
+  occupation?: string; // 職業
+  annualIncome?: number | null; // 年収
+  dependentStartDate?: string; // 被扶養者になった日
+  thirdCategoryFlag?: boolean; // 第3号被保険者フラグ
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  createdBy?: string;
+  updatedBy?: string;
+  approvedBy?: string; // 承認者
+}
+
 // APIキーの検証（環境変数から取得）
 const API_KEY = functions.config().api?.key || "";
 
@@ -748,6 +770,31 @@ async function fetchPayrolls(
 }
 
 /**
+ * 扶養家族情報を取得するヘルパー
+ */
+async function fetchDependents(
+  employeeId: string
+): Promise<DependentData[]> {
+  const db = admin.firestore();
+  const dependentsRef = db
+    .collection("shaho_employees")
+    .doc(employeeId)
+    .collection("dependents")
+    .orderBy("createdAt", "desc");
+
+  const snapshot = await dependentsRef.get();
+  return snapshot.docs.map(
+    (docSnap: admin.firestore.QueryDocumentSnapshot<admin.firestore.DocumentData>) => {
+      const data = docSnap.data() as DependentData;
+      return {
+        ...data,
+        id: docSnap.id,
+      };
+    }
+  );
+}
+
+/**
  * CSV出力相当のデータをJSONで提供するエンドポイント
  * GET /api/export/csv-data
  * クエリ: department, workPrefecture, payrollStartMonth, payrollEndMonth,
@@ -807,7 +854,7 @@ export const exportCsvData = functions.https.onRequest(
       const employeesSnapshot = await db.collection("shaho_employees").get();
 
       const employeesWithPayrolls: Array<
-        ShahoEmployee & { payrolls: PayrollData[] }
+        ShahoEmployee & { payrolls: PayrollData[]; dependents: DependentData[] }
       > = [];
 
       for (const docSnap of employeesSnapshot.docs) {
@@ -835,10 +882,13 @@ export const exportCsvData = functions.https.onRequest(
           payrollEndMonth
         );
 
+        const dependents = await fetchDependents(docSnap.id);
+
         employeesWithPayrolls.push({
           ...data,
           id: docSnap.id,
           payrolls,
+          dependents,
         });
       }
 

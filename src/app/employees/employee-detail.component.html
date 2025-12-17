@@ -69,8 +69,12 @@
                         <p class="value">{{ basicInfo.hasDependent ? '有' : '無' }}</p>
                     </div>
                     <div style="grid-column: span 2;">
-                        <label>住所</label>
+                        <label>住民票住所</label>
                         <p class="value">{{ formattedAddress || '—' }}</p>
+                    </div>
+                    <div style="grid-column: span 2;" *ngIf="basicInfo.currentAddress">
+                        <label>現住所</label>
+                        <p class="value">{{ formattedCurrentAddress || '—' }}</p>
                     </div>
                 </div>
             </article>

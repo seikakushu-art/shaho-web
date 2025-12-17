@@ -80,6 +80,7 @@
               type="date"
               name="birthDate"
               [(ngModel)]="basicInfo.birthDate"
+              (ngModelChange)="onBirthDateChange()"
               required
               [readonly]="!editMode"
               #birthDateModel="ngModel"
@@ -133,9 +134,26 @@
             <label>郵便番号</label>
             <input name="postalCode" [(ngModel)]="basicInfo.postalCode" [readonly]="!editMode" />
           </div>
-          <div>
-            <label>住所</label>
+          <div style="grid-column: span 2;">
+            <label style="display: flex; align-items: center; gap: 0.5rem;">
+              <span>住民票住所</span>
+              <label style="display: flex; align-items: center; gap: 0.25rem; font-weight: normal; font-size: 0.9em; white-space: nowrap;">
+                <input
+                  type="checkbox"
+                  [(ngModel)]="basicInfo.isCurrentAddressSameAsResident"
+                  name="isCurrentAddressSameAsResident"
+                  [disabled]="!editMode"
+                  (ngModelChange)="onCurrentAddressCheckboxChange()"
+                  style="margin: 0;"
+                />
+                <span>現住所は住民票住所と同じ</span>
+              </label>
+            </label>
             <input name="address" [(ngModel)]="basicInfo.address" [readonly]="!editMode" />
+          </div>
+          <div style="grid-column: span 2;" *ngIf="!basicInfo.isCurrentAddressSameAsResident">
+            <label>現住所</label>
+            <input name="currentAddress" [(ngModel)]="basicInfo.currentAddress" [readonly]="!editMode" />
           </div>
         </div>
       </article>

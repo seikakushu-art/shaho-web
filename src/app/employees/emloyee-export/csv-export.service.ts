@@ -121,8 +121,17 @@ export class CsvExportService {
     const employees = await firstValueFrom(
       this.employeesService.getEmployeesWithPayrolls(),
     );
+    const calculationScopedEmployees =
+      options.context === 'calculation' &&
+      options.calculationContext?.rows &&
+      options.calculationContext.rows.length > 0
+        ? this.filterEmployeesByCalculationRows(
+            employees,
+            options.calculationContext.rows,
+          )
+        : employees;
     const filteredEmployees = this.filterEmployees(
-      employees,
+      calculationScopedEmployees,
       options.department,
       options.workPrefecture,
     );
@@ -154,7 +163,7 @@ export class CsvExportService {
       csvContent += '保険種別,個人負担,会社負担,合計\n';
       options.calculationContext.insuranceSummaries.forEach((summary) => {
         if (summary.error) {
-          csvContent += `${this.escapeForCsv(summary.type)},${this.escapeForCsv(summary.employee)},エラー: ${this.escapeForCsv(summary.error)}\n`;
+          csvContent += `${this.escapeForCsv(summary.type)},${this.escapeForCsv(summary.employee)},エラー: ${this.escapeForCsv(summary.error)},\n`;
         } else {
           csvContent += `${this.escapeForCsv(summary.type)},${this.escapeForCsv(summary.employee)},${this.escapeForCsv(summary.employer)},${this.escapeForCsv(summary.total ?? '')}\n`;
         }
@@ -198,7 +207,8 @@ export class CsvExportService {
           value: (employee) => this.formatDate(employee.birthDate),
         },
         { header: '郵便番号', value: (employee) => employee.postalCode },
-        { header: '住所', value: (employee) => employee.address },
+        { header: '住民票住所', value: (employee) => employee.address },
+        { header: '現住所', value: (employee) => employee.currentAddress },
         { header: '個人番号', value: (employee) => employee.personalNumber },
         {
           header: '基礎年金番号',
@@ -532,6 +542,16 @@ export class CsvExportService {
       return '"' + str.replace(/"/g, '""') + '"';
     }
     return str;
+  }
+
+  private filterEmployeesByCalculationRows(
+    employees: EmployeeWithPayrolls[],
+    rows: CalculationRow[],
+  ) {
+    const employeeNoSet = new Set(rows.map((row) => row.employeeNo));
+    return employees.filter((employee) =>
+      employeeNoSet.has(employee.employeeNo),
+    );
   }
 
   private filterEmployees(

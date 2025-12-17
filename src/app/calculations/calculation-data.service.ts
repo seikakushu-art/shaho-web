@@ -37,6 +37,7 @@ import {
   CalculationType,
   StandardCalculationMethod,
 } from '../calculations/calculation-types';
+import { isCareSecondInsured } from '../app/services/care-insurance.utils';
 
 export interface CalculationRow {
   employeeNo: string;
@@ -318,6 +319,14 @@ export class CalculationDataService {
       location,
     );
 
+    // 介護保険第2号被保険者フラグはデータベースに保存された値を使用
+    // データベースに値がない場合は生年月日から自動判定（対象月での判定）
+    const careSecondInsured = employee.careSecondInsured !== undefined && employee.careSecondInsured !== null
+      ? employee.careSecondInsured
+      : (employee.birthDate
+          ? isCareSecondInsured(employee.birthDate, context.targetMonth)
+          : false);
+
     // 保険料率のチェック
     if (context.activeInsurances.includes('health') && !healthRate) {
       errors.push(
@@ -328,7 +337,7 @@ export class CalculationDataService {
     }
     if (
       context.activeInsurances.includes('nursing') &&
-      employee.careSecondInsured &&
+      careSecondInsured &&
       !nursingRate
     ) {
       errors.push(
@@ -461,7 +470,7 @@ export class CalculationDataService {
     ? { employee: 0, employer: 0, total: 0 }
       : calculateInsurancePremium(healthStandardMonthly, healthRate);
     const nursingMonthly =
-      isExempted || !context.activeInsurances.includes('nursing') || !employee.careSecondInsured
+      isExempted || !context.activeInsurances.includes('nursing') || !careSecondInsured
       ? { employee: 0, employer: 0, total: 0 }
         : calculateInsurancePremium(healthStandardMonthly, nursingRate);
     const welfareMonthly = isExempted || !context.activeInsurances.includes('welfare')
@@ -480,7 +489,7 @@ export class CalculationDataService {
     const nursingBonus =
       isExempted ||
       !context.activeInsurances.includes('nursing') ||
-      !employee.careSecondInsured ||
+      !careSecondInsured ||
       !(context.includeBonusInMonth ?? true)
         ? { employee: 0, employer: 0, total: 0 }
         : calculateInsurancePremium(standardHealthBonus, nursingRate);

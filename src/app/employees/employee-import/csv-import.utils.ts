@@ -38,7 +38,7 @@ const NUMBER_FIELDS = [
   '扶養 年収（見込みでも可）',
 ];
 const POSTAL_CODE_FIELDS = ['郵便番号'];
-const ADDRESS_FIELDS = ['住所', '扶養 住所（別居の場合のみ入力）'];
+const ADDRESS_FIELDS = ['住民票住所', '現住所', '扶養 住所（別居の場合のみ入力）'];
 const FLAG_FIELDS = [
   '介護保険第2号フラグ',
   '介護保険第2号被保険者フラグ',
@@ -1011,6 +1011,7 @@ export interface ExistingEmployee {
   birthDate?: string;
   postalCode?: string;
   address?: string;
+  currentAddress?: string;
   department?: string;
   workPrefecture?: string;
   personalNumber?: string;
@@ -1381,7 +1382,8 @@ export function calculateDifferences(
       性別: 'gender',
       生年月日: 'birthDate',
       郵便番号: 'postalCode',
-      住所: 'address',
+      住民票住所: 'address',
+      現住所: 'currentAddress',
       所属部署名: 'department',
       勤務地都道府県名: 'workPrefecture',
       個人番号: 'personalNumber',

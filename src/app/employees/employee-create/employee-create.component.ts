@@ -13,6 +13,7 @@ import { Timestamp } from '@angular/fire/firestore';
 import { AuthService } from '../../auth/auth.service';
 import { RoleKey } from '../../models/roles';
 import { UserDirectoryService } from '../../auth/user-directory.service';
+import { calculateCareSecondInsured } from '../../app/services/care-insurance.utils';
 
 @Component({
   selector: 'app-employee-create',
@@ -80,6 +81,8 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       hasDependent: false,
       postalCode: '',
       address: '',
+      currentAddress: '',
+      isCurrentAddressSameAsResident: true,
     };
   
     socialInsurance = {
@@ -188,18 +191,26 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             if (result.data?.employeeData) {
               console.log('employeeDataを読み込み:', result.data.employeeData);
               // 承認リクエストから一時保存データを読み込む
+              const basicInfoData = result.data.employeeData.basicInfo;
               this.basicInfo = { 
-                ...result.data.employeeData.basicInfo,
-                hasDependent: result.data.employeeData.basicInfo?.hasDependent ?? false,
-                postalCode: result.data.employeeData.basicInfo?.postalCode ?? '',
+                ...basicInfoData,
+                hasDependent: basicInfoData?.hasDependent ?? false,
+                postalCode: basicInfoData?.postalCode ?? '',
+                currentAddress: basicInfoData?.currentAddress ?? '',
+                isCurrentAddressSameAsResident: basicInfoData?.isCurrentAddressSameAsResident ?? (!basicInfoData?.currentAddress || basicInfoData?.currentAddress === basicInfoData?.address),
               };
               const incomingInsurance = result.data.employeeData.socialInsurance;
               const healthStandardMonthly = incomingInsurance.healthStandardMonthly ?? 0;
                 const welfareStandardMonthly = incomingInsurance.welfareStandardMonthly ?? 0;
+              // 介護保険第2号被保険者フラグは生年月日から自動判定
+              const careSecondInsured = basicInfoData?.birthDate
+                ? calculateCareSecondInsured(basicInfoData.birthDate)
+                : (incomingInsurance.careSecondInsured ?? false);
               this.socialInsurance = {
                 ...incomingInsurance,
                 healthStandardMonthly,
                 welfareStandardMonthly,
+                careSecondInsured,
               };
               // 承認リクエストの扶養情報を読み込み（複数件に対応）
               const dependentInfosFromRequest = result.data.employeeData.dependentInfos;
@@ -277,6 +288,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       };
 
       // 基本情報を設定
+      const currentAddress = employee.currentAddress || '';
       this.basicInfo = {
         employeeNo: employee.employeeNo || '',
         name: employee.name || '',
@@ -290,11 +302,17 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         hasDependent: employee.hasDependent ?? false,
         postalCode: employee.postalCode || '',
         address: employee.address || '',
+        currentAddress: currentAddress,
+        isCurrentAddressSameAsResident: !currentAddress || currentAddress === employee.address,
       };
 
       // 社会保険情報を設定（詳細画面と同じロジック）
       const healthStandardMonthly = employee.healthStandardMonthly ?? 0;
       const welfareStandardMonthly = employee.welfareStandardMonthly ?? 0;
+      // 介護保険第2号被保険者フラグは生年月日から自動判定
+      const careSecondInsured = employee.birthDate
+        ? calculateCareSecondInsured(employee.birthDate)
+        : (employee.careSecondInsured ?? false);
       this.socialInsurance = {
         ...this.socialInsurance,
         pensionOffice: '',
@@ -304,7 +322,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         healthCumulative: employee.standardBonusAnnualTotal ?? 0,
         healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
         pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
-        careSecondInsured: employee.careSecondInsured ?? this.socialInsurance.careSecondInsured,
+        careSecondInsured,
         healthAcquisition: this.formatDateForInput(employee.healthAcquisition) || '',
         pensionAcquisition: this.formatDateForInput(employee.pensionAcquisition) || '',
         childcareLeaveStart: this.formatDateForInput(employee.childcareLeaveStart) || '',
@@ -380,6 +398,19 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       const month = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
+    }
+
+    /**
+     * 生年月日変更時に介護保険第2号被保険者フラグを自動判定
+     */
+    onBirthDateChange(): void {
+      if (this.basicInfo.birthDate) {
+        this.socialInsurance.careSecondInsured = calculateCareSecondInsured(
+          this.basicInfo.birthDate
+        );
+      } else {
+        this.socialInsurance.careSecondInsured = false;
+      }
     }
 
     handleProceedApproval(form: NgForm) {
@@ -625,6 +656,9 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             const welfareStandardMonthly = socialInsurance.welfareStandardMonthly ?? 0;
 
             // employeeDataをShahoEmployee形式に変換
+            const currentAddress = basicInfo.isCurrentAddressSameAsResident 
+              ? undefined 
+              : (basicInfo.currentAddress || undefined);
             const employeeData: ShahoEmployee = {
               employeeNo: basicInfo.employeeNo || '',
               name: basicInfo.name || '',
@@ -633,6 +667,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
               birthDate: basicInfo.birthDate || undefined,
               postalCode: basicInfo.postalCode || undefined,
               address: basicInfo.address || undefined,
+              currentAddress: currentAddress,
               department: basicInfo.department || undefined,
               workPrefecture: basicInfo.workPrefecture || undefined,
               personalNumber: basicInfo.myNumber || undefined,
@@ -854,6 +889,16 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       this.dependentInfos.splice(index, 1);
     }
 
+    /**
+     * 現住所チェックボックスの変更時の処理
+     */
+    onCurrentAddressCheckboxChange(): void {
+      if (this.basicInfo.isCurrentAddressSameAsResident) {
+        // チェックが入った場合、現住所をクリア
+        this.basicInfo.currentAddress = '';
+      }
+    }
+
     private removeUndefinedFields<T extends Record<string, unknown>>(obj: T): Partial<T> {
       const cleaned: Partial<T> = {};
       Object.keys(obj).forEach((key) => {
@@ -912,7 +957,10 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         changes.push({ field: '郵便番号', oldValue: null, newValue: this.basicInfo.postalCode });
       }
       if (this.basicInfo.address) {
-        changes.push({ field: '住所', oldValue: null, newValue: this.basicInfo.address });
+        changes.push({ field: '住民票住所', oldValue: null, newValue: this.basicInfo.address });
+      }
+      if (!this.basicInfo.isCurrentAddressSameAsResident && this.basicInfo.currentAddress) {
+        changes.push({ field: '現住所', oldValue: null, newValue: this.basicInfo.currentAddress });
       }
 
       // 社会保険情報
@@ -1067,7 +1115,12 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         changes.push({ field: '郵便番号', oldValue: original.postalCode || null, newValue: this.basicInfo.postalCode || null });
       }
       if (original.address !== this.basicInfo.address) {
-        changes.push({ field: '住所', oldValue: original.address || null, newValue: this.basicInfo.address || null });
+        changes.push({ field: '住民票住所', oldValue: original.address || null, newValue: this.basicInfo.address || null });
+      }
+      const originalCurrentAddress = original.currentAddress || '';
+      const newCurrentAddress = this.basicInfo.isCurrentAddressSameAsResident ? '' : (this.basicInfo.currentAddress || '');
+      if (originalCurrentAddress !== newCurrentAddress) {
+        changes.push({ field: '現住所', oldValue: originalCurrentAddress || null, newValue: newCurrentAddress || null });
       }
 
       // 社会保険情報の差分

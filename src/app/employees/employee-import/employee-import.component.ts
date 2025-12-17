@@ -42,6 +42,7 @@ import {
   validateAllRows,
 } from './csv-import.utils';
 import { FlowSelectorComponent } from '../../approvals/flow-selector/flow-selector.component';
+import { calculateCareSecondInsured } from '../../app/services/care-insurance.utils';
 
 type DifferenceRow = {
   id: number;
@@ -558,7 +559,10 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         request: { ...saved, id: saved.id },
         onApproved: async () => {
           // 承認完了時に社員データを保存
-          if (!saved.id) return;
+          if (!saved.id) {
+            console.error('saved.idがありません');
+            return;
+          }
 
           // 承認依頼から最新のデータを取得
           const approvedRequest = await firstValueFrom(
@@ -571,6 +575,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           }
 
           await this.saveApprovedImportData(approvedRequest.importEmployeeData);
+          
+          console.log('saveApprovedImportDataが完了しました');
+          console.log('========================================');
         },
         onFailed: () => {
           // 承認が失敗した場合の処理
@@ -761,14 +768,19 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     this.isLoading = true;
 
     // undefinedのフィールドを除外するヘルパー関数（Firestoreはundefinedを許可しない）
+    // currentAddressは空文字列でない限り保存する（CSVインポート時）
     const removeUndefinedFields = <T extends Record<string, unknown>>(
       obj: T,
     ): Partial<T> => {
       const cleaned: Partial<T> = {};
       Object.keys(obj).forEach((key) => {
         const value = obj[key];
-        // undefined と空文字列を除外
-        if (value !== undefined && value !== '') {
+        // currentAddressの場合は空文字列でない限り保存（undefinedやnull、空文字列は除外）
+        if (key === 'currentAddress') {
+          if (value !== undefined && value !== null && value !== 'undefined' && String(value).trim() !== '') {
+            cleaned[key as keyof T] = value as T[keyof T];
+          }
+        } else if (value !== undefined && value !== '' && value !== 'undefined') {
           cleaned[key as keyof T] = value as T[keyof T];
         }
       });
@@ -848,9 +860,11 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
               kana: csvData['氏名(カナ)'] || undefined,
               gender: csvData['性別'] || undefined,
               birthDate: csvData['生年月日'] || undefined,
-              postalCode: csvData['郵便番号'] || undefined,
-              address: csvData['住所'] || undefined,
-              department: csvData['所属部署名'] || undefined,
+                postalCode: csvData['郵便番号'] || undefined,
+                address: csvData['住民票住所'] || undefined,
+                // CSVインポート時は、現住所に値が入っていればそのまま保存（チェックボックスのロジックは適用しない）
+                currentAddress: csvData['現住所']?.trim() || undefined,
+                department: csvData['所属部署名'] || undefined,
               workPrefecture: csvData['勤務地都道府県名'] || undefined,
               personalNumber: csvData['個人番号'] || undefined,
               basicPensionNumber: csvData['基礎年金番号'] || undefined,
@@ -871,11 +885,14 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 csvData['厚生年金 資格取得日'] ||
                 csvData['厚生年金資格取得日'] ||
                 undefined,
-              careSecondInsured: toBoolean(
-                csvData['介護保険第2号被保険者フラグ'] ||
-                csvData['介護保険第2号フラグ'] ||
-                undefined,
-              ),
+              // 介護保険第2号被保険者フラグは生年月日から自動判定
+              careSecondInsured: csvData['生年月日']
+                ? calculateCareSecondInsured(csvData['生年月日'])
+                : toBoolean(
+                    csvData['介護保険第2号被保険者フラグ'] ||
+                    csvData['介護保険第2号フラグ'] ||
+                    undefined,
+                  ),
               childcareLeaveStart: csvData['育休開始日'] || undefined,
               childcareLeaveEnd: csvData['育休終了日'] || undefined,
               maternityLeaveStart: csvData['産休開始日'] || undefined,
@@ -886,7 +903,6 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
             // undefinedのフィールドを除外
             const employeeData = removeUndefinedFields(employeeDataRaw);
-
             if (row.isNew) {
               // 新規登録
               const result = await this.employeesService.addEmployee(
@@ -1175,14 +1191,25 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       templateType: string;
     }>,
   ): Promise<void> {
+    console.log('========================================');
+    console.log('【saveApprovedImportDataメソッドが呼ばれました】');
+    console.log('========================================');
+    console.log(`importDataの件数: ${importData.length}`);
+    
     // undefinedのフィールドを除外するヘルパー関数
+    // currentAddressは空文字列でない限り保存する（CSVインポート時）
     const removeUndefinedFields = <T extends Record<string, unknown>>(
       obj: T,
     ): Partial<T> => {
       const cleaned: Partial<T> = {};
       Object.keys(obj).forEach((key) => {
         const value = obj[key];
-        if (value !== undefined && value !== '') {
+        // currentAddressの場合は空文字列でない限り保存（undefinedやnull、空文字列は除外）
+        if (key === 'currentAddress') {
+          if (value !== undefined && value !== null && value !== 'undefined' && String(value).trim() !== '') {
+            cleaned[key as keyof T] = value as T[keyof T];
+          }
+        } else if (value !== undefined && value !== '' && value !== 'undefined') {
           cleaned[key as keyof T] = value as T[keyof T];
         }
       });
@@ -1286,7 +1313,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 gender: csvData['性別'] || undefined,
                 birthDate: csvData['生年月日'] || undefined,
                 postalCode: csvData['郵便番号'] || undefined,
-                address: csvData['住所'] || undefined,
+                address: csvData['住民票住所'] || undefined,
+                // CSVインポート時は、現住所に値が入っていればそのまま保存（チェックボックスのロジックは適用しない）
+                currentAddress: csvData['現住所']?.trim() || undefined,
                 department: csvData['所属部署名'] || undefined,
                 workPrefecture: csvData['勤務地都道府県名'] || undefined,
                 personalNumber: csvData['個人番号'] || undefined,
@@ -1308,11 +1337,14 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                   csvData['厚生年金 資格取得日'] ||
                   csvData['厚生年金資格取得日'] ||
                   undefined,
-                careSecondInsured: toBoolean(
-                  csvData['介護保険第2号被保険者フラグ'] ||
-                  csvData['介護保険第2号フラグ'] ||
-                  undefined,
-                ),
+                // 介護保険第2号被保険者フラグは生年月日から自動判定
+                careSecondInsured: csvData['生年月日']
+                  ? calculateCareSecondInsured(csvData['生年月日'])
+                  : toBoolean(
+                      csvData['介護保険第2号被保険者フラグ'] ||
+                      csvData['介護保険第2号フラグ'] ||
+                      undefined,
+                    ),
                 childcareLeaveStart: csvData['育休開始日'] || undefined,
                 childcareLeaveEnd: csvData['育休終了日'] || undefined,
                 maternityLeaveStart: csvData['産休開始日'] || undefined,
@@ -1898,7 +1930,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       '性別',
       '生年月日',
       '郵便番号',
-      '住所',
+      '住民票住所',
+      '現住所',
       '所属部署名',
       '勤務地都道府県名',
       '個人番号',
@@ -1937,6 +1970,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       '男/女',
       'YYYY/MM/DD',
       '例：123-4567',
+      '',
       '',
       '',
       '',

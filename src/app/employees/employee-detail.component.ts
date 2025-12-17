@@ -149,6 +149,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     birthDate: '',
     postalCode: '',
     address: '',
+    currentAddress: '',
     workPrefecture: '',
     personalNumber: '',
     basicPensionNumber: '',
@@ -315,6 +316,11 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     if (postal) return `〒${postal}`;
     if (address) return address;
     return '';
+  }
+
+  get formattedCurrentAddress(): string {
+    const currentAddress = this.basicInfo.currentAddress?.trim();
+    return currentAddress || '';
   }
 
   displayAmount(value: number | null | undefined): string {
@@ -824,20 +830,14 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
 
   /**
    * 標準賞与額年度累計を計算
-   * 現在の年度に属する賞与をすべて集計する
+   * 各賞与の支給日（bonusPaidOn）を基準に年度を計算して集計する
    */
   private calculateStandardBonusAnnualTotal(): number {
     if (!this.allPayrolls || this.allPayrolls.length === 0) {
       return 0;
     }
 
-    // 現在日時を基準に現在の年度を計算
-    const now = new Date();
-    const currentFiscalYear = this.getFiscalYearForDate(now);
-    const startDate = new Date(currentFiscalYear.start.getFullYear(), currentFiscalYear.start.getMonth(), currentFiscalYear.start.getDate());
-    const endDate = new Date(currentFiscalYear.end.getFullYear(), currentFiscalYear.end.getMonth(), currentFiscalYear.end.getDate());
-
-    // 現在の年度に属する賞与をフィルタリングして合計
+    // 各賞与の支給日を基準に年度を計算して合計
     return this.allPayrolls
       .filter((payroll) => {
         if (!payroll.bonusPaidOn || payroll.standardBonus === undefined) {
@@ -847,13 +847,26 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
         const paidOn = this.toBonusDate(payroll.bonusPaidOn);
         if (!paidOn) return false;
 
-        // 各賞与の支給日が属する年度を計算
+        return true;
+      })
+      .reduce((sum, record) => {
+        const paidOn = this.toBonusDate(record.bonusPaidOn!);
+        if (!paidOn) return sum;
+
+        // 各賞与の支給日（bonusPaidOn）を基準に年度を計算
+        const fiscalYear = this.getFiscalYearForDate(paidOn);
+        const startDate = new Date(fiscalYear.start.getFullYear(), fiscalYear.start.getMonth(), fiscalYear.start.getDate());
+        const endDate = new Date(fiscalYear.end.getFullYear(), fiscalYear.end.getMonth(), fiscalYear.end.getDate());
+        
+        // 支給日がその年度の範囲内かチェック
         const paidOnDate = new Date(paidOn.getFullYear(), paidOn.getMonth(), paidOn.getDate());
         
-        // 現在の年度の範囲内かチェック
-        return paidOnDate >= startDate && paidOnDate <= endDate;
-      })
-      .reduce((sum, record) => sum + (record.standardBonus ?? 0), 0);
+        if (paidOnDate >= startDate && paidOnDate <= endDate) {
+          return sum + (record.standardBonus ?? 0);
+        }
+        
+        return sum;
+      }, 0);
   }
 
   /**
@@ -900,6 +913,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       birthDate: employee.birthDate ?? '',
       postalCode: employee.postalCode ?? '',
       address: employee.address ?? '',
+      currentAddress: employee.currentAddress ?? '',
       workPrefecture: employee.workPrefecture ?? '',
       personalNumber: employee.personalNumber ?? '',
       basicPensionNumber: employee.basicPensionNumber ?? '',

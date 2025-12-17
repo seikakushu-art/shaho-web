@@ -158,6 +158,8 @@ export interface ApprovalRequest {
       hasDependent?: boolean;
       postalCode?: string;
       address: string;
+      currentAddress?: string;
+      isCurrentAddressSameAsResident?: boolean;
     };
     socialInsurance: {
       pensionOffice: string;

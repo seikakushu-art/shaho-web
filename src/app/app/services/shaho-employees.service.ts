@@ -15,7 +15,7 @@ import {
   writeBatch,
 } from '@angular/fire/firestore';
 import { Auth } from '@angular/fire/auth';
-import { Observable, combineLatest, map, of, switchMap, firstValueFrom } from 'rxjs';
+import { Observable, combineLatest, map, of, switchMap, firstValueFrom, take } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { UserDirectoryService } from '../../auth/user-directory.service';
 
@@ -27,7 +27,8 @@ export interface ShahoEmployee {
   gender?: string;
   birthDate?: string;
   postalCode?: string;
-  address?: string;
+  address?: string; // 住民票住所
+  currentAddress?: string; // 現住所
   department?: string;
   departmentCode?: string;
   workPrefecture?: string;
@@ -66,15 +67,48 @@ export type ExternalPayrollRecord = {
   standardBonus?: number; // 標準賞与額
 };
 
+export type ExternalDependentRecord = {
+  relationship?: string; // 扶養 続柄
+  nameKanji?: string; // 扶養 氏名(漢字)
+  nameKana?: string; // 扶養 氏名(カナ)
+  birthDate?: string; // 扶養 生年月日
+  gender?: string; // 扶養 性別
+  personalNumber?: string; // 扶養 個人番号
+  basicPensionNumber?: string; // 扶養 基礎年金番号
+  cohabitationType?: string; // 扶養 同居区分
+  address?: string; // 扶養 住所（別居の場合のみ入力）
+  occupation?: string; // 扶養 職業
+  annualIncome?: number | string; // 扶養 年収（見込みでも可）
+  dependentStartDate?: string; // 扶養 被扶養者になった日
+  thirdCategoryFlag?: boolean | string | number; // 扶養 国民年金第3号被保険者該当フラグ
+};
+
 export type ExternalEmployeeRecord = {
   employeeNo: string;
   name: string;
   kana?: string;
+  gender?: string; // 性別
+  birthDate?: string;
+  postalCode?: string; // 郵便番号
+  address?: string; // 住民票住所
+  currentAddress?: string; // 現住所
   department?: string;
   workPrefecture?: string;
+  personalNumber?: string; // 個人番号
+  basicPensionNumber?: string; // 基礎年金番号
   healthStandardMonthly?: number | string;
   welfareStandardMonthly?: number | string;
-  birthDate?: string;
+  healthInsuredNumber?: string; // 被保険者番号（健康保険)
+  pensionInsuredNumber?: string; // 被保険者番号（厚生年金）
+  healthAcquisition?: string; // 健康保険 資格取得日
+  pensionAcquisition?: string; // 厚生年金 資格取得日
+  careSecondInsured?: boolean | string | number; // 介護保険第2号被保険者フラグ
+  childcareLeaveStart?: string; // 育休開始日
+  childcareLeaveEnd?: string; // 育休終了日
+  maternityLeaveStart?: string; // 産休開始日
+  maternityLeaveEnd?: string; // 産休終了日
+  hasDependent?: boolean | string | number; // 扶養の有無
+  dependents?: ExternalDependentRecord[]; // 扶養家族情報配列
   payrolls?: ExternalPayrollRecord[]; // 給与データ配列
 };
 
@@ -248,6 +282,20 @@ export class ShahoEmployeesService {
       return '標準報酬月額（厚年）が数値ではありません';
     }
 
+    // 扶養家族情報のバリデーション
+    if (record.dependents && Array.isArray(record.dependents)) {
+      for (let i = 0; i < record.dependents.length; i++) {
+        const dependent = record.dependents[i];
+        if (
+          dependent.annualIncome !== undefined &&
+          dependent.annualIncome !== null &&
+          isNaN(Number(dependent.annualIncome))
+        ) {
+          return `扶養家族${i + 1}の年収が数値ではありません`;
+        }
+      }
+    }
+
     return undefined;
   }
 
@@ -288,6 +336,10 @@ export class ShahoEmployeesService {
       employeeNo: string;
       payrollRecord: ExternalPayrollRecord;
     }> = [];
+    const dependentDataToProcess: Array<{
+      employeeNo: string;
+      dependentRecords: ExternalDependentRecord[];
+    }> = [];
 
     records.forEach((record, index) => {
       const validationError = this.validateExternalRecord(record);
@@ -300,21 +352,65 @@ export class ShahoEmployeesService {
         return;
       }
 
+      // ブール値変換ヘルパー関数
+      const toBoolean = (
+        value: boolean | string | number | undefined,
+      ): boolean | undefined => {
+        if (value === undefined || value === null) return undefined;
+        if (typeof value === 'boolean') return value;
+        const normalized = String(value).toLowerCase().trim();
+        if (
+          normalized === '1' ||
+          normalized === 'true' ||
+          normalized === 'on' ||
+          normalized === 'yes' ||
+          normalized === '有'
+        ) {
+          return true;
+        }
+        if (
+          normalized === '0' ||
+          normalized === 'false' ||
+          normalized === 'off' ||
+          normalized === 'no' ||
+          normalized === '無'
+        ) {
+          return false;
+        }
+        return undefined;
+      };
+
       const normalized: ShahoEmployee = {
         employeeNo: `${record.employeeNo}`.trim(),
         name: record.name.trim(),
         kana: record.kana?.trim(),
+        gender: record.gender?.trim(),
+        birthDate: record.birthDate?.trim(),
+        postalCode: record.postalCode?.trim(),
+        address: record.address?.trim(),
+        currentAddress: record.currentAddress?.trim(),
         department: record.department?.trim(),
         workPrefecture: record.workPrefecture?.trim(),
-        birthDate: record.birthDate?.trim(),
+        personalNumber: record.personalNumber?.trim(),
+        basicPensionNumber: record.basicPensionNumber?.trim(),
         healthStandardMonthly:
-        record.healthStandardMonthly !== undefined
-        ? Number(record.healthStandardMonthly)
+          record.healthStandardMonthly !== undefined
+            ? Number(record.healthStandardMonthly)
             : undefined,
-      welfareStandardMonthly:
-      record.welfareStandardMonthly !== undefined
-        ? Number(record.welfareStandardMonthly)
+        welfareStandardMonthly:
+          record.welfareStandardMonthly !== undefined
+            ? Number(record.welfareStandardMonthly)
             : undefined,
+        healthInsuredNumber: record.healthInsuredNumber?.trim(),
+        pensionInsuredNumber: record.pensionInsuredNumber?.trim(),
+        healthAcquisition: record.healthAcquisition?.trim(),
+        pensionAcquisition: record.pensionAcquisition?.trim(),
+        careSecondInsured: toBoolean(record.careSecondInsured),
+        childcareLeaveStart: record.childcareLeaveStart?.trim(),
+        childcareLeaveEnd: record.childcareLeaveEnd?.trim(),
+        maternityLeaveStart: record.maternityLeaveStart?.trim(),
+        maternityLeaveEnd: record.maternityLeaveEnd?.trim(),
+        hasDependent: toBoolean(record.hasDependent),
       };
 
       // undefinedのフィールドを除外
@@ -346,6 +442,14 @@ export class ShahoEmployeesService {
           approvedBy: '外部データ連携',
         });
         created += 1;
+      }
+
+      // 扶養家族情報（dependents）を後で処理するために保存
+      if (record.dependents && Array.isArray(record.dependents) && record.dependents.length > 0) {
+        dependentDataToProcess.push({
+          employeeNo: normalized.employeeNo,
+          dependentRecords: record.dependents,
+        });
       }
 
       // 給与データ（payrolls）を後で処理するために保存
@@ -444,6 +548,109 @@ export class ShahoEmployeesService {
       }
     }
 
+    // 扶養家族情報を保存
+    const dependentPromises: Promise<void>[] = [];
+    dependentDataToProcess.forEach(({ employeeNo, dependentRecords }) => {
+      const employee = existingMap.get(employeeNo);
+      if (!employee) {
+        errors.push({
+          index: -1,
+          employeeNo,
+          message: `社員番号 ${employeeNo} の社員が見つかりません（扶養家族データの保存に失敗）`,
+        });
+        return;
+      }
+
+      // 既存の扶養家族情報を削除（更新の場合）
+      dependentPromises.push(
+        (async () => {
+          const existingDependents: DependentData[] = await firstValueFrom(
+            this.getDependents(employee.id).pipe(take(1)),
+          );
+          for (const existing of existingDependents) {
+            if (existing.id) {
+              await this.deleteDependent(employee.id, existing.id);
+            }
+          }
+
+          // 新しい扶養家族情報を追加
+          for (const dependentRecord of dependentRecords) {
+            // ブール値変換ヘルパー関数
+            const toBoolean = (
+              value: boolean | string | number | undefined,
+            ): boolean | undefined => {
+              if (value === undefined || value === null) return undefined;
+              if (typeof value === 'boolean') return value;
+              const normalized = String(value).toLowerCase().trim();
+              if (
+                normalized === '1' ||
+                normalized === 'true' ||
+                normalized === 'on' ||
+                normalized === 'yes' ||
+                normalized === '有'
+              ) {
+                return true;
+              }
+              if (
+                normalized === '0' ||
+                normalized === 'false' ||
+                normalized === 'off' ||
+                normalized === 'no' ||
+                normalized === '無'
+              ) {
+                return false;
+              }
+              return undefined;
+            };
+
+            const dependentData: Partial<DependentData> = {
+              relationship: dependentRecord.relationship?.trim(),
+              nameKanji: dependentRecord.nameKanji?.trim(),
+              nameKana: dependentRecord.nameKana?.trim(),
+              birthDate: dependentRecord.birthDate?.trim(),
+              gender: dependentRecord.gender?.trim(),
+              personalNumber: dependentRecord.personalNumber?.trim(),
+              basicPensionNumber: dependentRecord.basicPensionNumber?.trim(),
+              cohabitationType: dependentRecord.cohabitationType?.trim(),
+              address: dependentRecord.address?.trim(),
+              occupation: dependentRecord.occupation?.trim(),
+              annualIncome:
+                dependentRecord.annualIncome !== undefined &&
+                dependentRecord.annualIncome !== null
+                  ? Number(dependentRecord.annualIncome)
+                  : undefined,
+              dependentStartDate: dependentRecord.dependentStartDate?.trim(),
+              thirdCategoryFlag: toBoolean(dependentRecord.thirdCategoryFlag),
+              approvedBy: '外部データ連携',
+            };
+
+            // undefinedのフィールドを除外
+            const cleanedDependentData = this.removeUndefinedFields(dependentData);
+
+            // 扶養家族情報にデータがあるかチェック
+            const hasDependentData = Object.values(cleanedDependentData).some(
+              (value) =>
+                value !== undefined &&
+                value !== null &&
+                value !== false &&
+                value !== '',
+            );
+
+            if (hasDependentData) {
+              await this.addOrUpdateDependent(
+                employee.id,
+                cleanedDependentData as DependentData,
+              );
+            }
+          }
+        })(),
+      );
+    });
+
+    if (dependentPromises.length > 0) {
+      await Promise.all(dependentPromises);
+    }
+
     // 給与データを保存
     const payrollPromises: Promise<void>[] = [];
     payrollDataToProcess.forEach(({ employeeNo, payrollRecord }) => {
@@ -457,9 +664,6 @@ export class ShahoEmployeesService {
         return;
       }
 
-      // 賞与データかどうかを判定（賞与支給日または賞与総支給額がある場合）
-      const isBonus = !!(payrollRecord.bonusPaidOn || payrollRecord.bonusTotal);
-      
       // 月給データと賞与データは既に分離されているので、そのまま保存
       const payrollData: Partial<PayrollData> = {
         yearMonth: payrollRecord.yearMonth,

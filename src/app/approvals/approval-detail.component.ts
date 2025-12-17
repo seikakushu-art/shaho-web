@@ -24,6 +24,7 @@ import { normalizeEmployeeNoForComparison } from '../employees/employee-import/c
 import { CalculationDataService, CalculationRow, CalculationQueryParams } from '../calculations/calculation-data.service';
 import { StandardCalculationMethod } from '../calculations/calculation-types';
 import { normalizeToYearMonth } from '../calculations/calculation-utils';
+import { calculateCareSecondInsured } from '../app/services/care-insurance.utils';
 
 type EmployeeStatus = 'OK' | '警告' | 'エラー';
 
@@ -379,7 +380,14 @@ export class ApprovalDetailComponent implements OnDestroy {
       const cleaned: Partial<T> = {};
       Object.keys(obj).forEach((key) => {
         const value = obj[key];
-        if (value !== undefined && value !== '') {
+        // currentAddressの場合は、空文字列でも保存する（CSVインポート時は明示的に空文字列を指定できるようにする）
+        if (key === 'currentAddress') {
+          if (value !== undefined && value !== null) {
+            const trimmed = typeof value === 'string' ? value.trim() : value;
+            // 空文字列でも保存する（CSVで明示的に空文字列が指定された場合）
+            cleaned[key as keyof T] = trimmed as T[keyof T];
+          }
+        } else if (value !== undefined && value !== '') {
           cleaned[key as keyof T] = value as T[keyof T];
         }
       });
@@ -456,7 +464,9 @@ export class ApprovalDetailComponent implements OnDestroy {
               gender: csvData['性別'] || undefined,
               birthDate: csvData['生年月日'] || undefined,
               postalCode: csvData['郵便番号'] || undefined,
-              address: csvData['住所'] || undefined,
+              address: csvData['住民票住所'] || undefined,
+              // CSVインポート時は、現住所に値が入っていればそのまま保存（チェックボックスのロジックは適用しない）
+              currentAddress: csvData['現住所']?.trim() || undefined,
               department: csvData['所属部署名'] || undefined,
               workPrefecture: csvData['勤務地都道府県名'] || undefined,
               personalNumber: csvData['個人番号'] || undefined,
@@ -467,11 +477,14 @@ export class ApprovalDetailComponent implements OnDestroy {
               pensionInsuredNumber: csvData['被保険者番号（厚生年金）'] || undefined,
               healthAcquisition: csvData['健康保険 資格取得日'] || csvData['健康保険資格取得日'] || undefined,
               pensionAcquisition: csvData['厚生年金 資格取得日'] || csvData['厚生年金資格取得日'] || undefined,
-              careSecondInsured: toBoolean(
-                csvData['介護保険第2号被保険者フラグ'] ||
-                csvData['介護保険第2号フラグ'] ||
-                undefined,
-              ),
+              // 介護保険第2号被保険者フラグは生年月日から自動判定
+              careSecondInsured: csvData['生年月日']
+                ? calculateCareSecondInsured(csvData['生年月日'])
+                : toBoolean(
+                    csvData['介護保険第2号被保険者フラグ'] ||
+                    csvData['介護保険第2号フラグ'] ||
+                    undefined,
+                  ),
               childcareLeaveStart: csvData['育休開始日'] || undefined,
               childcareLeaveEnd: csvData['育休終了日'] || undefined,
               maternityLeaveStart: csvData['産休開始日'] || undefined,
