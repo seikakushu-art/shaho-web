@@ -308,6 +308,9 @@
             ＋扶養情報追加
           </button>
         </div>
+        <p class="hint warning" *ngIf="dependentValidationError">
+          {{ dependentValidationError }}
+        </p>
 
         <div *ngIf="basicInfo.hasDependent; else noDependentNotice">
           <div

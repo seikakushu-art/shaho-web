@@ -391,15 +391,7 @@ export class ApprovalDetailComponent implements OnDestroy {
 
     if (dependentsSource.length > 0) {
       for (const dep of dependentsSource) {
-        const hasData = Object.values(dep).some(
-          (value) =>
-            value !== '' &&
-            value !== null &&
-            value !== false &&
-            value !== undefined,
-        );
-        if (!hasData) continue;
-
+        if (!this.hasDependentData(dep)) continue;
         const dependentData: DependentData = {
           relationship: dep.relationship || undefined,
           nameKanji: dep.nameKanji || undefined,
@@ -632,92 +624,49 @@ export class ApprovalDetailComponent implements OnDestroy {
                 const hasDependentColumn = '扶養の有無' in csvData;
                 const hasDependent = toBoolean(csvData['扶養の有無'], true);
 
-                if (!hasDependentColumn) {
-                  // 扶養列が存在しないテンプレートでは扶養関連の処理をスキップ
-                } else if (hasDependent === true) {
-                  // 既存の扶養情報をすべて削除（更新の場合）
-                  if (!firstItem.isNew) {
-                    const existingDependents = await firstValueFrom(
-                      this.employeesService
-                        .getDependents(employeeId)
-                        .pipe(take(1)),
-                    );
-                    for (const existing of existingDependents) {
-                      if (existing.id) {
-                        await this.employeesService.deleteDependent(
-                          employeeId,
-                          existing.id,
-                        );
+                if (hasDependentColumn) {
+                  const dependentDataList: DependentData[] = [];
+
+                  if (hasDependent === true) {
+                    for (const item of items) {
+                      const itemCsvData = item.csvData;
+                      const dependentData: DependentData = {
+                        relationship: itemCsvData['扶養 続柄'] || undefined,
+                        nameKanji: itemCsvData['扶養 氏名(漢字)'] || undefined,
+                        nameKana: itemCsvData['扶養 氏名(カナ)'] || undefined,
+                        birthDate: itemCsvData['扶養 生年月日'] || undefined,
+                        gender: itemCsvData['扶養 性別'] || undefined,
+                        personalNumber:
+                          itemCsvData['扶養 個人番号'] || undefined,
+                        basicPensionNumber:
+                          itemCsvData['扶養 基礎年金番号'] || undefined,
+                        cohabitationType:
+                          itemCsvData['扶養 同居区分'] || undefined,
+                        address:
+                          itemCsvData['扶養 住所（別居の場合のみ入力）'] ||
+                          undefined,
+                        occupation: itemCsvData['扶養 職業'] || undefined,
+                        annualIncome: toNumber(
+                          itemCsvData['扶養 年収（見込みでも可）'],
+                        ),
+                        dependentStartDate:
+                          itemCsvData['扶養 被扶養者になった日'] || undefined,
+                        thirdCategoryFlag: toBoolean(
+                          itemCsvData['扶養 国民年金第3号被保険者該当フラグ'],
+                        ),
+                      };
+
+                      if (this.hasDependentData(dependentData)) {
+                        dependentDataList.push(dependentData);
                       }
                     }
                   }
 
-                  // すべての行から扶養家族情報を収集
-                  const dependentDataList: DependentData[] = [];
-
-                  for (const item of items) {
-                    const itemCsvData = item.csvData;
-                    const dependentData: DependentData = {
-                      relationship: itemCsvData['扶養 続柄'] || undefined,
-                      nameKanji: itemCsvData['扶養 氏名(漢字)'] || undefined,
-                      nameKana: itemCsvData['扶養 氏名(カナ)'] || undefined,
-                      birthDate: itemCsvData['扶養 生年月日'] || undefined,
-                      gender: itemCsvData['扶養 性別'] || undefined,
-                      personalNumber: itemCsvData['扶養 個人番号'] || undefined,
-                      basicPensionNumber:
-                        itemCsvData['扶養 基礎年金番号'] || undefined,
-                      cohabitationType:
-                        itemCsvData['扶養 同居区分'] || undefined,
-                      address:
-                        itemCsvData['扶養 住所（別居の場合のみ入力）'] ||
-                        undefined,
-                      occupation: itemCsvData['扶養 職業'] || undefined,
-                      annualIncome: toNumber(
-                        itemCsvData['扶養 年収（見込みでも可）'],
-                      ),
-                      dependentStartDate:
-                        itemCsvData['扶養 被扶養者になった日'] || undefined,
-                      thirdCategoryFlag: toBoolean(
-                        itemCsvData['扶養 国民年金第3号被保険者該当フラグ'],
-                      ),
-                    };
-
-                    // 扶養情報にデータがあるかチェック
-                    const hasDependentData = Object.values(dependentData).some(
-                      (value) =>
-                        value !== undefined &&
-                        value !== null &&
-                        value !== false &&
-                        value !== '',
-                    );
-
-                    if (hasDependentData) {
-                      dependentDataList.push(dependentData);
-                    }
-                  }
-
-                  // すべての扶養家族情報を保存
-                  for (const dependentData of dependentDataList) {
-                    await this.employeesService.addOrUpdateDependent(
-                      employeeId,
-                      dependentData,
-                    );
-                  }
-                } else if (hasDependent === false) {
-                  // 扶養の有無が「無」の場合は既存の扶養情報を削除
-                  const existingDependents = await firstValueFrom(
-                    this.employeesService
-                      .getDependents(employeeId)
-                      .pipe(take(1)),
+                  await this.syncDependents(
+                    employeeId,
+                    hasDependent,
+                    dependentDataList,
                   );
-                  for (const existing of existingDependents) {
-                    if (existing.id) {
-                      await this.employeesService.deleteDependent(
-                        employeeId,
-                        existing.id,
-                      );
-                    }
-                  }
                 }
               }
             }
@@ -1622,6 +1571,53 @@ export class ApprovalDetailComponent implements OnDestroy {
     } catch (error) {
       console.error('計算結果の保存エラー:', error);
       throw error;
+    }
+  }
+  private hasDependentData(dep: Partial<DependentData>): boolean {
+    return Object.values(dep).some(
+      (value) =>
+        value !== '' &&
+        value !== null &&
+        value !== false &&
+        value !== undefined,
+    );
+  }
+
+  private async syncDependents(
+    employeeId: string,
+    hasDependent: boolean | undefined,
+    dependents: DependentData[],
+  ): Promise<void> {
+    const filteredDependents = dependents.filter((dep) =>
+      this.hasDependentData(dep),
+    );
+    const shouldSkip =
+      hasDependent === undefined && filteredDependents.length === 0;
+
+    if (shouldSkip) {
+      return;
+    }
+
+    if (hasDependent === false || filteredDependents.length > 0) {
+      const existingDependents = await firstValueFrom(
+        this.employeesService.getDependents(employeeId).pipe(take(1)),
+      );
+      for (const existing of existingDependents) {
+        if (existing.id) {
+          await this.employeesService.deleteDependent(employeeId, existing.id);
+        }
+      }
+    }
+
+    if (hasDependent === false) {
+      return;
+    }
+
+    for (const dependentData of filteredDependents) {
+      await this.employeesService.addOrUpdateDependent(
+        employeeId,
+        dependentData,
+      );
     }
   }
 }

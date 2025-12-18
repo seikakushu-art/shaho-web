@@ -94,6 +94,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
   requestComment = '';
   selectedFiles: File[] = [];
   validationErrors: string[] = [];
+  dependentValidationError: string | null = null;
   employeeNoDuplicateError: string | null = null;
   checkingDuplicate = false;
 
@@ -615,9 +616,22 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
 
     const validation = this.attachmentService.validateFiles(this.selectedFiles);
     this.validationErrors = validation.errors;
+    this.dependentValidationError = null;
 
     if (!validation.valid && this.selectedFiles.length) {
       alert(validation.errors[0] ?? '添付ファイルの条件を確認してください。');
+      return;
+    }
+
+    const filledDependentInfos = this.filterDependentsWithData(
+      this.dependentInfos,
+    );
+    if (
+      this.basicInfo.hasDependent === true &&
+      filledDependentInfos.length === 0
+    ) {
+      this.dependentValidationError =
+        '扶養の有無を「有」にした場合は、扶養情報を1件以上入力してください。';
       return;
     }
 
@@ -657,11 +671,11 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       const welfareStandardMonthly =
         this.socialInsurance.welfareStandardMonthly || 0;
       const dependentInfosForRequest =
-        this.dependentInfos.length > 0
-          ? this.dependentInfos
-          : this.basicInfo.hasDependent === false
-            ? []
-            : undefined;
+      this.basicInfo.hasDependent === false
+      ? []
+      : filledDependentInfos.length > 0
+        ? filledDependentInfos
+        : [];
       const employeeData = {
         basicInfo: { ...this.basicInfo },
         socialInsurance: {
@@ -670,10 +684,10 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           welfareStandardMonthly,
         },
         dependentInfo:
-          this.dependentInfos.length > 0
-            ? { ...this.dependentInfos[0] }
-            : undefined,
-        // dependentInfos は hasDependent=false でのみ空配列を送り、それ以外は undefined にする
+        filledDependentInfos.length > 0
+        ? { ...filledDependentInfos[0] }
+        : undefined,
+    // dependentInfos は hasDependent=false の場合は空配列、入力済みがあれば配列を渡す（空配列は「変更なし」扱い）
         dependentInfos: dependentInfosForRequest,
       } as any;
 
@@ -910,24 +924,10 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           console.log('dependentInfo:', JSON.stringify(dependentInfo, null, 2));
 
           if (employeeId) {
-            const dependentEntriesWithFlags = dependentInfosToSave.map(
-              (depInfo) => {
-                const hasDependentData = Object.values(depInfo).some(
-                  (value) =>
-                    value !== '' &&
-                    value !== null &&
-                    value !== false &&
-                    value !== undefined,
-                );
-                return { depInfo, hasDependentData };
-              },
+            const filteredDependents = this.filterDependentsWithData(
+              dependentInfosToSave,
             );
-            const filteredDependents =
-              basicInfo.hasDependent === false
-                ? []
-                : dependentEntriesWithFlags
-                    .filter(({ hasDependentData }) => hasDependentData)
-                    .map(({ depInfo }) => depInfo);
+
 
             const shouldDeleteExistingDependents =
               basicInfo.hasDependent === false || filteredDependents.length > 0;
@@ -1099,6 +1099,22 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       }
     });
     return cleaned;
+  }
+
+  private hasDependentData(dep: Partial<DependentData>): boolean {
+    return Object.values(dep).some(
+      (value) =>
+        value !== '' &&
+        value !== null &&
+        value !== false &&
+        value !== undefined,
+    );
+  }
+
+  private filterDependentsWithData(
+    dependents: Array<Partial<DependentData>>,
+  ): Array<Partial<DependentData>> {
+    return dependents.filter((dep) => this.hasDependentData(dep));
   }
 
   private formatHasDependent(value?: boolean): string {
