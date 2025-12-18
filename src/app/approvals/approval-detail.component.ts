@@ -2,7 +2,16 @@ import { CommonModule, DatePipe, NgFor, NgIf } from '@angular/common';
 import { Component, OnDestroy, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink, Router } from '@angular/router';
-import { combineLatest, Subscription, firstValueFrom, interval, map, switchMap, tap, take } from 'rxjs';
+import {
+  combineLatest,
+  Subscription,
+  firstValueFrom,
+  interval,
+  map,
+  switchMap,
+  tap,
+  take,
+} from 'rxjs';
 import { AuthService } from '../auth/auth.service';
 import {
   ApprovalNotification,
@@ -19,9 +28,18 @@ import { RoleKey } from '../models/roles';
 import { UserDirectoryService } from '../auth/user-directory.service';
 import { InsuranceRatesService } from '../app/services/insurance-rates.service';
 import { CorporateInfoService } from '../app/services/corporate-info.service';
-import { DependentData, PayrollData, ShahoEmployee, ShahoEmployeesService } from '../app/services/shaho-employees.service';
+import {
+  DependentData,
+  PayrollData,
+  ShahoEmployee,
+  ShahoEmployeesService,
+} from '../app/services/shaho-employees.service';
 import { normalizeEmployeeNoForComparison } from '../employees/employee-import/csv-import.utils';
-import { CalculationDataService, CalculationRow, CalculationQueryParams } from '../calculations/calculation-data.service';
+import {
+  CalculationDataService,
+  CalculationRow,
+  CalculationQueryParams,
+} from '../calculations/calculation-data.service';
 import { StandardCalculationMethod } from '../calculations/calculation-types';
 import { normalizeToYearMonth } from '../calculations/calculation-utils';
 import { calculateCareSecondInsured } from '../app/services/care-insurance.utils';
@@ -81,42 +99,65 @@ export class ApprovalDetailComponent implements OnDestroy {
   ]).pipe(
     map(([approval, users]) => {
       if (!approval) return null;
-      const userMap = new Map(users.map(u => [u.email.toLowerCase(), u.displayName || u.email]));
+      const userMap = new Map(
+        users.map((u) => [u.email.toLowerCase(), u.displayName || u.email]),
+      );
       return {
         ...approval,
-        applicantDisplayName: userMap.get(approval.applicantId.toLowerCase()) || approval.applicantName || approval.applicantId,
-        stepsWithDisplayNames: approval.steps.map(step => ({
+        applicantDisplayName:
+          userMap.get(approval.applicantId.toLowerCase()) ||
+          approval.applicantName ||
+          approval.applicantId,
+        stepsWithDisplayNames: approval.steps.map((step) => ({
           ...step,
-          approverDisplayName: step.approverId 
-            ? (userMap.get(step.approverId.toLowerCase()) || step.approverName || step.approverId)
+          approverDisplayName: step.approverId
+            ? userMap.get(step.approverId.toLowerCase()) ||
+              step.approverName ||
+              step.approverId
             : step.approverName,
         })),
-        attachmentsWithDisplayNames: (approval.attachments || []).map(attachment => ({
-          ...attachment,
-          uploaderDisplayName: attachment.uploaderId
-            ? (userMap.get(attachment.uploaderId.toLowerCase()) || attachment.uploaderName || attachment.uploaderId)
-            : attachment.uploaderName || attachment.uploaderId,
-        })),
+        attachmentsWithDisplayNames: (approval.attachments || []).map(
+          (attachment) => ({
+            ...attachment,
+            uploaderDisplayName: attachment.uploaderId
+              ? userMap.get(attachment.uploaderId.toLowerCase()) ||
+                attachment.uploaderName ||
+                attachment.uploaderId
+              : attachment.uploaderName || attachment.uploaderId,
+          }),
+        ),
         historiesWithDisplayNames: [...(approval.histories || [])]
-          .map(history => ({
+          .map((history) => ({
             ...history,
-            actorDisplayName: userMap.get(history.actorId.toLowerCase()) || history.actorName || history.actorId,
+            actorDisplayName:
+              userMap.get(history.actorId.toLowerCase()) ||
+              history.actorName ||
+              history.actorId,
           }))
-          .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime()),
+          .sort(
+            (a, b) =>
+              b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime(),
+          ),
         remandComment: [...(approval.histories || [])]
-          .filter(history => history.action === 'remand')
-          .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0]?.comment,
+          .filter((history) => history.action === 'remand')
+          .sort(
+            (a, b) =>
+              b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime(),
+          )[0]?.comment,
       };
     }),
     tap((approval) => {
       this.approval = approval || undefined;
       console.log('承認詳細 - approval:', approval);
-      console.log('承認詳細 - approval.employeeDiffs:', approval?.employeeDiffs);
+      console.log(
+        '承認詳細 - approval.employeeDiffs:',
+        approval?.employeeDiffs,
+      );
       if (approval?.employeeDiffs) {
         this.employees = approval.employeeDiffs.map((diff) => {
           console.log('差分処理 - diff:', diff);
           console.log('差分処理 - diff.changes:', diff.changes);
-          
+
           // 区分が「社員情報更新」の場合は、変更がある項目だけをフィルタリング
           let filteredChanges = diff.changes;
           if (approval.category === '社員情報更新') {
@@ -127,11 +168,16 @@ export class ApprovalDetailComponent implements OnDestroy {
               return oldVal !== newVal;
             });
           }
-          
+
           return {
             employeeNo: diff.employeeNo,
             name: diff.name,
-            status: diff.status === 'warning' ? '警告' : diff.status === 'error' ? 'エラー' : 'OK',
+            status:
+              diff.status === 'warning'
+                ? '警告'
+                : diff.status === 'error'
+                  ? 'エラー'
+                  : 'OK',
             diffs: filteredChanges.map((change) => ({
               field: change.field,
               oldValue: change.oldValue ?? '',
@@ -159,10 +205,13 @@ export class ApprovalDetailComponent implements OnDestroy {
       // いずれかのステップの承認候補者であればボタンを押せるようにする
       // 実際の承認処理で前のステップのチェックを行う
       for (const step of approval.flowSnapshot.steps) {
-        const candidateIds = step.candidates?.map((c) => c.id.toLowerCase()) ?? [];
-        const stepState = approval.steps.find((s) => s.stepOrder === step.order);
+        const candidateIds =
+          step.candidates?.map((c) => c.id.toLowerCase()) ?? [];
+        const stepState = approval.steps.find(
+          (s) => s.stepOrder === step.order,
+        );
         const assignedApprover = stepState?.approverId?.toLowerCase();
-        
+
         if (candidateIds.includes(email) || assignedApprover === email) {
           return true;
         }
@@ -257,7 +306,7 @@ export class ApprovalDetailComponent implements OnDestroy {
       });
       return;
     }
-    
+
     // その他の区分の場合はモーダルを表示
     this.selectedEmployee = employee;
     this.showDiffModal = true;
@@ -286,7 +335,8 @@ export class ApprovalDetailComponent implements OnDestroy {
       throw new Error('employeeData が見つかりません');
     }
 
-    const { basicInfo, socialInsurance, dependentInfo, dependentInfos } = request.employeeData;
+    const { basicInfo, socialInsurance, dependentInfo, dependentInfos } =
+      request.employeeData;
     if (!basicInfo?.employeeNo || !basicInfo?.name) {
       throw new Error('社員番号または氏名が不足しています');
     }
@@ -315,14 +365,20 @@ export class ApprovalDetailComponent implements OnDestroy {
       careSecondInsured: socialInsurance?.careSecondInsured || false,
       healthAcquisition: socialInsurance?.healthAcquisition || undefined,
       pensionAcquisition: socialInsurance?.pensionAcquisition || undefined,
-      currentLeaveStatus: (socialInsurance as any)?.currentLeaveStatus || undefined,
-      currentLeaveStartDate: (socialInsurance as any)?.currentLeaveStartDate || undefined,
-      currentLeaveEndDate: (socialInsurance as any)?.currentLeaveEndDate || undefined,
+      currentLeaveStatus:
+        (socialInsurance as any)?.currentLeaveStatus || undefined,
+      currentLeaveStartDate:
+        (socialInsurance as any)?.currentLeaveStartDate || undefined,
+      currentLeaveEndDate:
+        (socialInsurance as any)?.currentLeaveEndDate || undefined,
       exemption: socialInsurance?.exemption || false,
     };
 
-    const cleanedEmployee = this.removeUndefinedFields(employeePayload) as ShahoEmployee;
-    const employeeRef = await this.employeesService.addEmployee(cleanedEmployee);
+    const cleanedEmployee = this.removeUndefinedFields(
+      employeePayload,
+    ) as ShahoEmployee;
+    const employeeRef =
+      await this.employeesService.addEmployee(cleanedEmployee);
     const employeeId = employeeRef.id;
 
     // 扶養情報（複数件対応。従来の単一形式もフォールバック）
@@ -336,7 +392,11 @@ export class ApprovalDetailComponent implements OnDestroy {
     if (dependentsSource.length > 0) {
       for (const dep of dependentsSource) {
         const hasData = Object.values(dep).some(
-          (value) => value !== '' && value !== null && value !== false && value !== undefined,
+          (value) =>
+            value !== '' &&
+            value !== null &&
+            value !== false &&
+            value !== undefined,
         );
         if (!hasData) continue;
 
@@ -356,8 +416,13 @@ export class ApprovalDetailComponent implements OnDestroy {
           thirdCategoryFlag: dep.thirdCategoryFlag || false,
         };
 
-        const cleanedDependent = this.removeUndefinedFields(dependentData) as DependentData;
-        await this.employeesService.addOrUpdateDependent(employeeId, cleanedDependent);
+        const cleanedDependent = this.removeUndefinedFields(
+          dependentData,
+        ) as DependentData;
+        await this.employeesService.addOrUpdateDependent(
+          employeeId,
+          cleanedDependent,
+        );
       }
     }
   }
@@ -375,7 +440,9 @@ export class ApprovalDetailComponent implements OnDestroy {
     }>,
   ): Promise<void> {
     // undefinedのフィールドを除外するヘルパー関数
-    const removeUndefinedFields = <T extends Record<string, unknown>>(obj: T): Partial<T> => {
+    const removeUndefinedFields = <T extends Record<string, unknown>>(
+      obj: T,
+    ): Partial<T> => {
       const cleaned: Partial<T> = {};
       Object.keys(obj).forEach((key) => {
         const value = obj[key];
@@ -401,13 +468,33 @@ export class ApprovalDetailComponent implements OnDestroy {
     };
 
     // ブール値変換ヘルパー関数（1/0, true/false, on/off などを変換）
-    const toBoolean = (value: string | undefined): boolean | undefined => {
-      if (!value) return undefined;
+    const toBoolean = (
+      value: string | undefined,
+      treatUndefinedAsNoChange = false,
+    ): boolean | undefined => {
+      if (value === undefined || value === null) {
+        return treatUndefinedAsNoChange ? undefined : undefined;
+      }
       const normalized = value.toLowerCase().trim();
-      if (normalized === '1' || normalized === 'true' || normalized === 'on' || normalized === 'yes' || normalized === '有') {
+      if (normalized === '') {
+        return treatUndefinedAsNoChange ? undefined : undefined;
+      }
+      if (
+        normalized === '1' ||
+        normalized === 'true' ||
+        normalized === 'on' ||
+        normalized === 'yes' ||
+        normalized === '有'
+      ) {
         return true;
       }
-      if (normalized === '0' || normalized === 'false' || normalized === 'off' || normalized === 'no' || normalized === '無') {
+      if (
+        normalized === '0' ||
+        normalized === 'false' ||
+        normalized === 'off' ||
+        normalized === 'no' ||
+        normalized === '無'
+      ) {
         return false;
       }
       return undefined;
@@ -415,13 +502,16 @@ export class ApprovalDetailComponent implements OnDestroy {
 
     try {
       // 同じ社員番号の行をグループ化（複数の扶養家族をサポート）
-      const groupedByEmployeeNo = new Map<string, Array<{
-        employeeNo: string;
-        csvData: Record<string, string>;
-        isNew: boolean;
-        existingEmployeeId?: string;
-        templateType: string;
-      }>>();
+      const groupedByEmployeeNo = new Map<
+        string,
+        Array<{
+          employeeNo: string;
+          csvData: Record<string, string>;
+          isNew: boolean;
+          existingEmployeeId?: string;
+          templateType: string;
+        }>
+      >();
 
       importData.forEach((item) => {
         const employeeNo = item.employeeNo;
@@ -432,218 +522,250 @@ export class ApprovalDetailComponent implements OnDestroy {
       });
 
       const results = await Promise.allSettled(
-        Array.from(groupedByEmployeeNo.entries()).map(async ([employeeNo, items]) => {
-          // 最初の行で従業員情報を登録/更新
-          const firstItem = items[0];
-          const csvData = firstItem.csvData;
-          const templateType = firstItem.templateType;
+        Array.from(groupedByEmployeeNo.entries()).map(
+          async ([employeeNo, items]) => {
+            // 最初の行で従業員情報を登録/更新
+            const firstItem = items[0];
+            const csvData = firstItem.csvData;
+            const templateType = firstItem.templateType;
 
-          // employeeIdを取得（テンプレートタイプによって異なる）
-          let employeeId: string;
+            // employeeIdを取得（テンプレートタイプによって異なる）
+            let employeeId: string;
 
-          if (templateType === 'payroll') {
-            // payrollテンプレートの場合は既存社員のIDを取得
-            const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
-            const employees = await firstValueFrom(this.employeesService.getEmployees().pipe(take(1)));
-            const existingEmployee = employees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === normalizedEmployeeNo);
+            if (templateType === 'payroll') {
+              // payrollテンプレートの場合は既存社員のIDを取得
+              const normalizedEmployeeNo =
+                normalizeEmployeeNoForComparison(employeeNo);
+              const employees = await firstValueFrom(
+                this.employeesService.getEmployees().pipe(take(1)),
+              );
+              const existingEmployee = employees.find(
+                (emp) =>
+                  normalizeEmployeeNoForComparison(emp.employeeNo) ===
+                  normalizedEmployeeNo,
+              );
 
-            if (!existingEmployee || !existingEmployee.id) {
-              throw new Error(`社員番号 ${employeeNo} の社員が見つかりません`);
-            }
+              if (!existingEmployee || !existingEmployee.id) {
+                throw new Error(
+                  `社員番号 ${employeeNo} の社員が見つかりません`,
+                );
+              }
 
-            employeeId = existingEmployee.id;
-          } else {
-            // その他のテンプレートの場合は社員情報を更新
-            const healthStandardMonthly = toNumber(csvData['健保標準報酬月額']);
-            const welfareStandardMonthly = toNumber(csvData['厚年標準報酬月額']) ?? healthStandardMonthly;
-            const employeeDataRaw: Partial<ShahoEmployee> = {
-              employeeNo: normalizeEmployeeNoForComparison(csvData['社員番号'] || ''),
-              name: csvData['氏名(漢字)'] || csvData['氏名漢字'] || '',
-              kana: csvData['氏名(カナ)'] || undefined,
-              gender: csvData['性別'] || undefined,
-              birthDate: csvData['生年月日'] || undefined,
-              postalCode: csvData['郵便番号'] || undefined,
-              address: csvData['住民票住所'] || undefined,
-              // CSVインポート時は、現住所に値が入っていればそのまま保存（チェックボックスのロジックは適用しない）
-              currentAddress: csvData['現住所']?.trim() || undefined,
-              department: csvData['所属部署名'] || undefined,
-              workPrefecture: csvData['勤務地都道府県名'] || undefined,
-              personalNumber: csvData['個人番号'] || undefined,
-              basicPensionNumber: csvData['基礎年金番号'] || undefined,
-              healthStandardMonthly,
-              welfareStandardMonthly,
-              healthInsuredNumber: csvData['被保険者番号（健康保険)'] || undefined,
-              pensionInsuredNumber: csvData['被保険者番号（厚生年金）'] || undefined,
-              healthAcquisition: csvData['健康保険 資格取得日'] || csvData['健康保険資格取得日'] || undefined,
-              pensionAcquisition: csvData['厚生年金 資格取得日'] || csvData['厚生年金資格取得日'] || undefined,
-              // 介護保険第2号被保険者フラグは生年月日から自動判定
-              careSecondInsured: csvData['生年月日']
-                ? calculateCareSecondInsured(csvData['生年月日'])
-                : toBoolean(
-                    csvData['介護保険第2号被保険者フラグ'] ||
-                    csvData['介護保険第2号フラグ'] ||
-                    undefined,
-                  ),
-              currentLeaveStatus: csvData['現在の休業状態'] || undefined,
-              currentLeaveStartDate: csvData['現在の休業開始日'] || undefined,
-              currentLeaveEndDate: csvData['現在の休業予定終了日'] || undefined,
-              // 扶養情報（hasDependentのみ）
-              hasDependent: toBoolean(csvData['扶養の有無']),
-            };
-
-            // undefinedのフィールドを除外
-            const employeeData = removeUndefinedFields(employeeDataRaw);
-
-            if (firstItem.isNew) {
-              // 新規登録
-              const result = await this.employeesService.addEmployee(employeeData as ShahoEmployee);
-              employeeId = result.id;
-            } else if (firstItem.existingEmployeeId) {
-              // 更新
-              await this.employeesService.updateEmployee(firstItem.existingEmployeeId, employeeData);
-              employeeId = firstItem.existingEmployeeId;
+              employeeId = existingEmployee.id;
             } else {
-              throw new Error(`既存社員のIDが見つかりません: ${firstItem.employeeNo}`);
-            }
+              // その他のテンプレートの場合は社員情報を更新
+              const healthStandardMonthly = toNumber(
+                csvData['健保標準報酬月額'],
+              );
+              const welfareStandardMonthly =
+                toNumber(csvData['厚年標準報酬月額']) ?? healthStandardMonthly;
+              const employeeDataRaw: Partial<ShahoEmployee> = {
+                employeeNo: normalizeEmployeeNoForComparison(
+                  csvData['社員番号'] || '',
+                ),
+                name: csvData['氏名(漢字)'] || csvData['氏名漢字'] || '',
+                kana: csvData['氏名(カナ)'] || undefined,
+                gender: csvData['性別'] || undefined,
+                birthDate: csvData['生年月日'] || undefined,
+                postalCode: csvData['郵便番号'] || undefined,
+                address: csvData['住民票住所'] || undefined,
+                // CSVインポート時は、現住所に値が入っていればそのまま保存（チェックボックスのロジックは適用しない）
+                currentAddress: csvData['現住所']?.trim() || undefined,
+                department: csvData['所属部署名'] || undefined,
+                workPrefecture: csvData['勤務地都道府県名'] || undefined,
+                personalNumber: csvData['個人番号'] || undefined,
+                basicPensionNumber: csvData['基礎年金番号'] || undefined,
+                healthStandardMonthly,
+                welfareStandardMonthly,
+                healthInsuredNumber:
+                  csvData['被保険者番号（健康保険)'] || undefined,
+                pensionInsuredNumber:
+                  csvData['被保険者番号（厚生年金）'] || undefined,
+                healthAcquisition:
+                  csvData['健康保険 資格取得日'] ||
+                  csvData['健康保険資格取得日'] ||
+                  undefined,
+                pensionAcquisition:
+                  csvData['厚生年金 資格取得日'] ||
+                  csvData['厚生年金資格取得日'] ||
+                  undefined,
+                // 介護保険第2号被保険者フラグは生年月日から自動判定
+                careSecondInsured: csvData['生年月日']
+                  ? calculateCareSecondInsured(csvData['生年月日'])
+                  : toBoolean(
+                      csvData['介護保険第2号被保険者フラグ'] ||
+                        csvData['介護保険第2号フラグ'] ||
+                        undefined,
+                    ),
+                currentLeaveStatus: csvData['現在の休業状態'] || undefined,
+                currentLeaveStartDate: csvData['現在の休業開始日'] || undefined,
+                currentLeaveEndDate:
+                  csvData['現在の休業予定終了日'] || undefined,
+                // 扶養情報（hasDependentのみ）
+                hasDependent: toBoolean(csvData['扶養の有無'], true),
+              };
 
-            // 扶養情報をdependentsサブコレクションに保存（複数件対応）
-            if (employeeId) {
-              const hasDependent = toBoolean(csvData['扶養の有無']);
-              
-              if (hasDependent) {
-                // 既存の扶養情報をすべて削除（更新の場合）
-                if (!firstItem.isNew) {
+              // undefinedのフィールドを除外
+              const employeeData = removeUndefinedFields(employeeDataRaw);
+
+              if (firstItem.isNew) {
+                // 新規登録
+                const result = await this.employeesService.addEmployee(
+                  employeeData as ShahoEmployee,
+                );
+                employeeId = result.id;
+              } else if (firstItem.existingEmployeeId) {
+                // 更新
+                await this.employeesService.updateEmployee(
+                  firstItem.existingEmployeeId,
+                  employeeData,
+                );
+                employeeId = firstItem.existingEmployeeId;
+              } else {
+                throw new Error(
+                  `既存社員のIDが見つかりません: ${firstItem.employeeNo}`,
+                );
+              }
+
+              // 扶養情報をdependentsサブコレクションに保存（複数件対応）
+              if (employeeId) {
+                const hasDependentColumn = '扶養の有無' in csvData;
+                const hasDependent = toBoolean(csvData['扶養の有無'], true);
+
+                if (!hasDependentColumn) {
+                  // 扶養列が存在しないテンプレートでは扶養関連の処理をスキップ
+                } else if (hasDependent === true) {
+                  // 既存の扶養情報をすべて削除（更新の場合）
+                  if (!firstItem.isNew) {
+                    const existingDependents = await firstValueFrom(
+                      this.employeesService
+                        .getDependents(employeeId)
+                        .pipe(take(1)),
+                    );
+                    for (const existing of existingDependents) {
+                      if (existing.id) {
+                        await this.employeesService.deleteDependent(
+                          employeeId,
+                          existing.id,
+                        );
+                      }
+                    }
+                  }
+
+                  // すべての行から扶養家族情報を収集
+                  const dependentDataList: DependentData[] = [];
+
+                  for (const item of items) {
+                    const itemCsvData = item.csvData;
+                    const dependentData: DependentData = {
+                      relationship: itemCsvData['扶養 続柄'] || undefined,
+                      nameKanji: itemCsvData['扶養 氏名(漢字)'] || undefined,
+                      nameKana: itemCsvData['扶養 氏名(カナ)'] || undefined,
+                      birthDate: itemCsvData['扶養 生年月日'] || undefined,
+                      gender: itemCsvData['扶養 性別'] || undefined,
+                      personalNumber: itemCsvData['扶養 個人番号'] || undefined,
+                      basicPensionNumber:
+                        itemCsvData['扶養 基礎年金番号'] || undefined,
+                      cohabitationType:
+                        itemCsvData['扶養 同居区分'] || undefined,
+                      address:
+                        itemCsvData['扶養 住所（別居の場合のみ入力）'] ||
+                        undefined,
+                      occupation: itemCsvData['扶養 職業'] || undefined,
+                      annualIncome: toNumber(
+                        itemCsvData['扶養 年収（見込みでも可）'],
+                      ),
+                      dependentStartDate:
+                        itemCsvData['扶養 被扶養者になった日'] || undefined,
+                      thirdCategoryFlag: toBoolean(
+                        itemCsvData['扶養 国民年金第3号被保険者該当フラグ'],
+                      ),
+                    };
+
+                    // 扶養情報にデータがあるかチェック
+                    const hasDependentData = Object.values(dependentData).some(
+                      (value) =>
+                        value !== undefined &&
+                        value !== null &&
+                        value !== false &&
+                        value !== '',
+                    );
+
+                    if (hasDependentData) {
+                      dependentDataList.push(dependentData);
+                    }
+                  }
+
+                  // すべての扶養家族情報を保存
+                  for (const dependentData of dependentDataList) {
+                    await this.employeesService.addOrUpdateDependent(
+                      employeeId,
+                      dependentData,
+                    );
+                  }
+                } else if (hasDependent === false) {
+                  // 扶養の有無が「無」の場合は既存の扶養情報を削除
                   const existingDependents = await firstValueFrom(
-                    this.employeesService.getDependents(employeeId).pipe(take(1))
+                    this.employeesService
+                      .getDependents(employeeId)
+                      .pipe(take(1)),
                   );
                   for (const existing of existingDependents) {
                     if (existing.id) {
-                      await this.employeesService.deleteDependent(employeeId, existing.id);
+                      await this.employeesService.deleteDependent(
+                        employeeId,
+                        existing.id,
+                      );
                     }
                   }
                 }
-
-                // すべての行から扶養家族情報を収集
-                const dependentDataList: DependentData[] = [];
-                
-                for (const item of items) {
-                  const itemCsvData = item.csvData;
-                  const dependentData: DependentData = {
-                    relationship: itemCsvData['扶養 続柄'] || undefined,
-                    nameKanji: itemCsvData['扶養 氏名(漢字)'] || undefined,
-                    nameKana: itemCsvData['扶養 氏名(カナ)'] || undefined,
-                    birthDate: itemCsvData['扶養 生年月日'] || undefined,
-                    gender: itemCsvData['扶養 性別'] || undefined,
-                    personalNumber: itemCsvData['扶養 個人番号'] || undefined,
-                    basicPensionNumber: itemCsvData['扶養 基礎年金番号'] || undefined,
-                    cohabitationType: itemCsvData['扶養 同居区分'] || undefined,
-                    address: itemCsvData['扶養 住所（別居の場合のみ入力）'] || undefined,
-                    occupation: itemCsvData['扶養 職業'] || undefined,
-                    annualIncome: toNumber(itemCsvData['扶養 年収（見込みでも可）']),
-                    dependentStartDate: itemCsvData['扶養 被扶養者になった日'] || undefined,
-                    thirdCategoryFlag: toBoolean(itemCsvData['扶養 国民年金第3号被保険者該当フラグ']),
-                  };
-
-                  // 扶養情報にデータがあるかチェック
-                  const hasDependentData = Object.values(dependentData).some(
-                    (value) => value !== undefined && value !== null && value !== false && value !== ''
-                  );
-
-                  if (hasDependentData) {
-                    dependentDataList.push(dependentData);
-                  }
-                }
-
-                // すべての扶養家族情報を保存
-                for (const dependentData of dependentDataList) {
-                  await this.employeesService.addOrUpdateDependent(employeeId, dependentData);
-                }
-              } else {
-                // 扶養の有無が「無」の場合は既存の扶養情報を削除
-                const existingDependents = await firstValueFrom(
-                  this.employeesService.getDependents(employeeId).pipe(take(1))
-                );
-                for (const existing of existingDependents) {
-                  if (existing.id) {
-                    await this.employeesService.deleteDependent(employeeId, existing.id);
-                  }
-                }
               }
             }
-          }
 
-          // 月給/賞与支払額同期用テンプレート（payrollテンプレート）の処理
-          if (templateType === 'payroll') {
-            const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
-            const employees = await firstValueFrom(this.employeesService.getEmployees().pipe(take(1)));
-            const existingEmployee = employees.find((emp) => normalizeEmployeeNoForComparison(emp.employeeNo) === normalizedEmployeeNo);
-
-            if (!existingEmployee || !existingEmployee.id) {
-              throw new Error(`社員番号 ${employeeNo} の社員が見つかりません`);
-            }
-
-            const employeeId = existingEmployee.id;
-            const payrollPromises: Promise<void>[] = [];
-
-            // 月給支払月から年月を抽出（YYYY/MM形式をYYYY-MM形式に変換）
-            const monthlyPayMonth = csvData['月給支払月'];
-            const monthlyPayAmount = csvData['月給支払額'];
-            const workedDays = csvData['支払基礎日数'];
-            const bonusPaidOn = csvData['賞与支給日'];
-            const bonusTotal = csvData['賞与総支給額'];
-
-            // 月給データの処理
-            if (monthlyPayMonth) {
-              // YYYY/MM形式をYYYY-MM形式に変換
-              const yearMonth = monthlyPayMonth.replace(/\//g, '-');
-              // 月が1桁の場合は0埋め（例: 2025-4 → 2025-04）
-              const [year, month] = yearMonth.split('-');
-              const normalizedYearMonth = `${year}-${month.padStart(2, '0')}`;
-
-              // 既存の給与データを取得（マージするため）
-              let existingPayroll;
-              try {
-                existingPayroll = await firstValueFrom(
-                  this.employeesService.getPayroll(employeeId, normalizedYearMonth).pipe(take(1))
-                );
-              } catch {
-                // データが存在しない場合はundefinedのまま
-              }
-
-              const payrollDataRaw: Partial<PayrollData> = {
-                ...existingPayroll,
-                yearMonth: normalizedYearMonth,
-                workedDays: workedDays ? Number(workedDays.replace(/,/g, '')) : (existingPayroll?.workedDays || 0),
-                amount: monthlyPayAmount
-                  ? Number(monthlyPayAmount.replace(/,/g, ''))
-                  : existingPayroll?.amount,
-                // 賞与データも同じ月に含まれる場合は追加
-                bonusPaidOn: bonusPaidOn?.trim() || existingPayroll?.bonusPaidOn || undefined,
-                bonusTotal: bonusTotal
-                  ? Number(bonusTotal.replace(/,/g, ''))
-                  : existingPayroll?.bonusTotal,
-              };
-
-              // undefined と空文字列のフィールドを除外
-              const payrollData = removeUndefinedFields(payrollDataRaw) as PayrollData;
-
-              payrollPromises.push(
-                this.employeesService.addOrUpdatePayroll(employeeId, normalizedYearMonth, payrollData),
+            // 月給/賞与支払額同期用テンプレート（payrollテンプレート）の処理
+            if (templateType === 'payroll') {
+              const normalizedEmployeeNo =
+                normalizeEmployeeNoForComparison(employeeNo);
+              const employees = await firstValueFrom(
+                this.employeesService.getEmployees().pipe(take(1)),
               );
-            } else if (bonusPaidOn) {
-              // 月給データがなく、賞与データのみの場合
-              // 賞与支給日から年月を抽出
-              const bonusDate = new Date(bonusPaidOn.replace(/\//g, '-'));
-              if (!isNaN(bonusDate.getTime())) {
-                const year = bonusDate.getFullYear();
-                const month = String(bonusDate.getMonth() + 1).padStart(2, '0');
-                const normalizedYearMonth = `${year}-${month}`;
+              const existingEmployee = employees.find(
+                (emp) =>
+                  normalizeEmployeeNoForComparison(emp.employeeNo) ===
+                  normalizedEmployeeNo,
+              );
+
+              if (!existingEmployee || !existingEmployee.id) {
+                throw new Error(
+                  `社員番号 ${employeeNo} の社員が見つかりません`,
+                );
+              }
+
+              const employeeId = existingEmployee.id;
+              const payrollPromises: Promise<void>[] = [];
+
+              // 月給支払月から年月を抽出（YYYY/MM形式をYYYY-MM形式に変換）
+              const monthlyPayMonth = csvData['月給支払月'];
+              const monthlyPayAmount = csvData['月給支払額'];
+              const workedDays = csvData['支払基礎日数'];
+              const bonusPaidOn = csvData['賞与支給日'];
+              const bonusTotal = csvData['賞与総支給額'];
+
+              // 月給データの処理
+              if (monthlyPayMonth) {
+                // YYYY/MM形式をYYYY-MM形式に変換
+                const yearMonth = monthlyPayMonth.replace(/\//g, '-');
+                // 月が1桁の場合は0埋め（例: 2025-4 → 2025-04）
+                const [year, month] = yearMonth.split('-');
+                const normalizedYearMonth = `${year}-${month.padStart(2, '0')}`;
 
                 // 既存の給与データを取得（マージするため）
                 let existingPayroll;
                 try {
                   existingPayroll = await firstValueFrom(
-                    this.employeesService.getPayroll(employeeId, normalizedYearMonth).pipe(take(1))
+                    this.employeesService
+                      .getPayroll(employeeId, normalizedYearMonth)
+                      .pipe(take(1)),
                   );
                 } catch {
                   // データが存在しない場合はundefinedのまま
@@ -652,46 +774,126 @@ export class ApprovalDetailComponent implements OnDestroy {
                 const payrollDataRaw: Partial<PayrollData> = {
                   ...existingPayroll,
                   yearMonth: normalizedYearMonth,
-                  workedDays: existingPayroll?.workedDays || 0,
-                  amount: existingPayroll?.amount,
-                  bonusPaidOn: bonusPaidOn?.trim() || undefined,
-                  bonusTotal: bonusTotal ? Number(bonusTotal.replace(/,/g, '')) : undefined,
+                  workedDays: workedDays
+                    ? Number(workedDays.replace(/,/g, ''))
+                    : existingPayroll?.workedDays || 0,
+                  amount: monthlyPayAmount
+                    ? Number(monthlyPayAmount.replace(/,/g, ''))
+                    : existingPayroll?.amount,
+                  // 賞与データも同じ月に含まれる場合は追加
+                  bonusPaidOn:
+                    bonusPaidOn?.trim() ||
+                    existingPayroll?.bonusPaidOn ||
+                    undefined,
+                  bonusTotal: bonusTotal
+                    ? Number(bonusTotal.replace(/,/g, ''))
+                    : existingPayroll?.bonusTotal,
                 };
 
                 // undefined と空文字列のフィールドを除外
-                const payrollData = removeUndefinedFields(payrollDataRaw) as PayrollData;
+                const payrollData = removeUndefinedFields(
+                  payrollDataRaw,
+                ) as PayrollData;
 
                 payrollPromises.push(
-                  this.employeesService.addOrUpdatePayroll(employeeId, normalizedYearMonth, payrollData),
+                  this.employeesService.addOrUpdatePayroll(
+                    employeeId,
+                    normalizedYearMonth,
+                    payrollData,
+                  ),
                 );
+              } else if (bonusPaidOn) {
+                // 月給データがなく、賞与データのみの場合
+                // 賞与支給日から年月を抽出
+                const bonusDate = new Date(bonusPaidOn.replace(/\//g, '-'));
+                if (!isNaN(bonusDate.getTime())) {
+                  const year = bonusDate.getFullYear();
+                  const month = String(bonusDate.getMonth() + 1).padStart(
+                    2,
+                    '0',
+                  );
+                  const normalizedYearMonth = `${year}-${month}`;
+
+                  // 既存の給与データを取得（マージするため）
+                  let existingPayroll;
+                  try {
+                    existingPayroll = await firstValueFrom(
+                      this.employeesService
+                        .getPayroll(employeeId, normalizedYearMonth)
+                        .pipe(take(1)),
+                    );
+                  } catch {
+                    // データが存在しない場合はundefinedのまま
+                  }
+
+                  const payrollDataRaw: Partial<PayrollData> = {
+                    ...existingPayroll,
+                    yearMonth: normalizedYearMonth,
+                    workedDays: existingPayroll?.workedDays || 0,
+                    amount: existingPayroll?.amount,
+                    bonusPaidOn: bonusPaidOn?.trim() || undefined,
+                    bonusTotal: bonusTotal
+                      ? Number(bonusTotal.replace(/,/g, ''))
+                      : undefined,
+                  };
+
+                  // undefined と空文字列のフィールドを除外
+                  const payrollData = removeUndefinedFields(
+                    payrollDataRaw,
+                  ) as PayrollData;
+
+                  payrollPromises.push(
+                    this.employeesService.addOrUpdatePayroll(
+                      employeeId,
+                      normalizedYearMonth,
+                      payrollData,
+                    ),
+                  );
+                }
+              }
+
+              // すべての給与データを保存
+              if (payrollPromises.length > 0) {
+                await Promise.all(payrollPromises);
               }
             }
 
-            // すべての給与データを保存
-            if (payrollPromises.length > 0) {
-              await Promise.all(payrollPromises);
-            }
-          }
-
-          return { success: true, employeeNo: employeeNo, action: firstItem.isNew ? '新規登録' : '更新' };
-        }),
+            return {
+              success: true,
+              employeeNo: employeeNo,
+              action: firstItem.isNew ? '新規登録' : '更新',
+            };
+          },
+        ),
       );
 
-      const successCount = results.filter((r) => r.status === 'fulfilled').length;
-      const failureCount = results.filter((r) => r.status === 'rejected').length;
+      const successCount = results.filter(
+        (r) => r.status === 'fulfilled',
+      ).length;
+      const failureCount = results.filter(
+        (r) => r.status === 'rejected',
+      ).length;
 
       if (failureCount === 0) {
         console.log(`${successCount}件の社員データを正常に保存しました。`);
       } else {
         const errors = results
           .filter((r) => r.status === 'rejected')
-          .map((r) => (r as PromiseRejectedResult).reason?.message || '不明なエラー')
+          .map(
+            (r) =>
+              (r as PromiseRejectedResult).reason?.message || '不明なエラー',
+          )
           .join('\n');
-        console.error(`${successCount}件成功、${failureCount}件失敗しました。\n\nエラー:\n${errors}`);
+        console.error(
+          `${successCount}件成功、${failureCount}件失敗しました。\n\nエラー:\n${errors}`,
+        );
         throw new Error(`一部のデータの保存に失敗しました: ${errors}`);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : '承認後のデータ保存中にエラーが発生しました';
+      const message =
+        error instanceof Error
+          ? error.message
+          : '承認後のデータ保存中にエラーが発生しました';
       console.error(`エラー: ${message}`, error);
       throw error;
     }
@@ -707,7 +909,9 @@ export class ApprovalDetailComponent implements OnDestroy {
       if (Array.isArray(value)) {
         const normalized = value
           .map((item) =>
-            item && typeof item === 'object' ? this.removeUndefinedFields(item as object) : item,
+            item && typeof item === 'object'
+              ? this.removeUndefinedFields(item as object)
+              : item,
           )
           .filter((item) => item !== undefined);
         if (normalized.length) {
@@ -738,7 +942,10 @@ export class ApprovalDetailComponent implements OnDestroy {
 
   isOverdue(approval: ApprovalRequest | undefined): boolean {
     if (!approval?.dueDate) return false;
-    return approval.status === 'pending' && approval.dueDate.toDate().getTime() < Date.now();
+    return (
+      approval.status === 'pending' &&
+      approval.dueDate.toDate().getTime() < Date.now()
+    );
   }
 
   formatFileSize(size: number): string {
@@ -750,8 +957,6 @@ export class ApprovalDetailComponent implements OnDestroy {
     }
     return `${size} B`;
   }
-
-
 
   stepLabel(step: ApprovalStepState): string {
     switch (step.status) {
@@ -765,9 +970,13 @@ export class ApprovalDetailComponent implements OnDestroy {
   }
 
   candidateNames(stepOrder: number): string {
-    const candidateStep = this.approval?.flowSnapshot?.steps.find((s) => s.order === stepOrder);
+    const candidateStep = this.approval?.flowSnapshot?.steps.find(
+      (s) => s.order === stepOrder,
+    );
     if (!candidateStep) return '未設定';
-    return candidateStep.candidates.map((candidate) => candidate.displayName).join(' / ');
+    return candidateStep.candidates
+      .map((candidate) => candidate.displayName)
+      .join(' / ');
   }
 
   async saveApproval(action: 'approve' | 'remand') {
@@ -788,10 +997,13 @@ export class ApprovalDetailComponent implements OnDestroy {
 
     let userStepOrder: number | undefined;
     for (const step of this.approval.flowSnapshot?.steps ?? []) {
-      const candidateIds = step.candidates?.map((c) => c.id.toLowerCase()) ?? [];
-      const stepState = this.approval.steps.find((s) => s.stepOrder === step.order);
+      const candidateIds =
+        step.candidates?.map((c) => c.id.toLowerCase()) ?? [];
+      const stepState = this.approval.steps.find(
+        (s) => s.stepOrder === step.order,
+      );
       const assignedApprover = stepState?.approverId?.toLowerCase();
-      
+
       if (candidateIds.includes(userEmail) || assignedApprover === userEmail) {
         userStepOrder = step.order;
         break;
@@ -808,9 +1020,14 @@ export class ApprovalDetailComponent implements OnDestroy {
       for (let i = 1; i < userStepOrder; i++) {
         const previousStep = this.approval.steps.find((s) => s.stepOrder === i);
         if (!previousStep || previousStep.status !== 'approved') {
-          const previousFlowStep = this.approval.flowSnapshot?.steps.find((s) => s.order === i);
+          const previousFlowStep = this.approval.flowSnapshot?.steps.find(
+            (s) => s.order === i,
+          );
           const stepName = previousFlowStep?.name || `ステップ${i}`;
-          this.addToast(`ステップ${i}（${stepName}）が承認されていないため、ステップ${userStepOrder}を承認できません。`, 'warning');
+          this.addToast(
+            `ステップ${i}（${stepName}）が承認されていないため、ステップ${userStepOrder}を承認できません。`,
+            'warning',
+          );
           return;
         }
       }
@@ -839,11 +1056,18 @@ export class ApprovalDetailComponent implements OnDestroy {
 
       if (!result) return;
       const actionText = action === 'approve' ? '承認しました' : '差戻しました';
-      this.addToast(`申請を${actionText}（コメント: ${this.approvalComment || 'なし'}）`, 'success');
+      this.addToast(
+        `申請を${actionText}（コメント: ${this.approvalComment || 'なし'}）`,
+        'success',
+      );
       this.approvalComment = '';
 
       // 新規社員登録の最終承認時に社員データを保存
-      if (action === 'approve' && result.request.status === 'approved' && result.request.category === '新規社員登録') {
+      if (
+        action === 'approve' &&
+        result.request.status === 'approved' &&
+        result.request.category === '新規社員登録'
+      ) {
         try {
           await this.persistNewEmployee(result.request);
           this.addToast('承認済みの社員データを登録しました。', 'success');
@@ -854,10 +1078,18 @@ export class ApprovalDetailComponent implements OnDestroy {
       }
 
       // CSVインポート（社員情報一括更新）の最終承認時に社員データを保存
-      if (action === 'approve' && result.request.status === 'approved' && result.request.category === '社員情報一括更新' && result.request.importEmployeeData) {
+      if (
+        action === 'approve' &&
+        result.request.status === 'approved' &&
+        result.request.category === '社員情報一括更新' &&
+        result.request.importEmployeeData
+      ) {
         try {
           await this.saveApprovedImportData(result.request.importEmployeeData);
-          this.addToast('承認済みのCSVインポートデータを保存しました。', 'success');
+          this.addToast(
+            '承認済みのCSVインポートデータを保存しました。',
+            'success',
+          );
         } catch (error) {
           console.error('CSVインポートデータの保存に失敗しました', error);
           this.addToast('CSVインポートデータの保存に失敗しました。', 'warning');
@@ -865,21 +1097,35 @@ export class ApprovalDetailComponent implements OnDestroy {
       }
 
       // 法人情報更新の承認が完了した場合、データを保存
-      if (action === 'approve' && result.request.status === 'approved' && result.request.category === '法人情報更新' && result.request.corporateInfoData) {
+      if (
+        action === 'approve' &&
+        result.request.status === 'approved' &&
+        result.request.category === '法人情報更新' &&
+        result.request.corporateInfoData
+      ) {
         try {
           // 最終承認者の名前を取得
           const finalApproverHistory = result.request.histories
-            ?.filter(h => h.action === 'approve')
-            .sort((a, b) => b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime())[0];
-          
+            ?.filter((h) => h.action === 'approve')
+            .sort(
+              (a, b) =>
+                b.createdAt.toDate().getTime() - a.createdAt.toDate().getTime(),
+            )[0];
+
           // ユーザー表示名を取得
           let approverDisplayName = approverName;
           if (finalApproverHistory) {
             const users = await firstValueFrom(this.userDirectory.getUsers());
-            const userMap = new Map(users.map(u => [u.email.toLowerCase(), u.displayName || u.email]));
-            approverDisplayName = userMap.get(finalApproverHistory.actorId.toLowerCase()) 
-              || finalApproverHistory.actorName 
-              || finalApproverHistory.actorId;
+            const userMap = new Map(
+              users.map((u) => [
+                u.email.toLowerCase(),
+                u.displayName || u.email,
+              ]),
+            );
+            approverDisplayName =
+              userMap.get(finalApproverHistory.actorId.toLowerCase()) ||
+              finalApproverHistory.actorName ||
+              finalApproverHistory.actorId;
           }
 
           // 承認者名を含めて保存
@@ -887,7 +1133,9 @@ export class ApprovalDetailComponent implements OnDestroy {
             ...result.request.corporateInfoData,
             approvedBy: approverDisplayName,
           };
-          await this.corporateInfoService.saveCorporateInfo(payloadWithApprover);
+          await this.corporateInfoService.saveCorporateInfo(
+            payloadWithApprover,
+          );
           this.addToast('法人情報のデータを保存しました。', 'success');
         } catch (error) {
           console.error('法人情報の保存に失敗しました', error);
@@ -896,7 +1144,12 @@ export class ApprovalDetailComponent implements OnDestroy {
       }
 
       // 保険料率更新の承認が完了した場合、データを保存
-      if (action === 'approve' && result.request.status === 'approved' && result.request.category === '保険料率更新' && result.request.insuranceRateData) {
+      if (
+        action === 'approve' &&
+        result.request.status === 'approved' &&
+        result.request.category === '保険料率更新' &&
+        result.request.insuranceRateData
+      ) {
         try {
           // 履歴を保持するため、常に新しいレコードとして保存（idはundefined）
           const payloadToSave = {
@@ -912,17 +1165,30 @@ export class ApprovalDetailComponent implements OnDestroy {
       }
 
       // 計算結果保存の承認が完了した場合、データを保存
-      if (action === 'approve' && result.request.status === 'approved' && result.request.category === '計算結果保存' && result.request.calculationResultRows && result.request.calculationQueryParams) {
+      if (
+        action === 'approve' &&
+        result.request.status === 'approved' &&
+        result.request.category === '計算結果保存' &&
+        result.request.calculationResultRows &&
+        result.request.calculationQueryParams
+      ) {
         try {
           const queryParams = result.request.calculationQueryParams;
-          if (!queryParams.type || (queryParams.type !== 'standard' && queryParams.type !== 'bonus' && queryParams.type !== 'insurance')) {
+          if (
+            !queryParams.type ||
+            (queryParams.type !== 'standard' &&
+              queryParams.type !== 'bonus' &&
+              queryParams.type !== 'insurance')
+          ) {
             throw new Error('計算種別が不正です');
           }
           const validQuery: CalculationQueryParams = {
             type: queryParams.type as 'standard' | 'bonus' | 'insurance',
             targetMonth: queryParams.targetMonth || '',
             method: queryParams.method || '',
-            standardMethod: (queryParams.standardMethod as StandardCalculationMethod) || '定時決定',
+            standardMethod:
+              (queryParams.standardMethod as StandardCalculationMethod) ||
+              '定時決定',
             insurances: queryParams.insurances || [],
             includeBonusInMonth: queryParams.includeBonusInMonth,
             department: queryParams.department,
@@ -930,33 +1196,34 @@ export class ApprovalDetailComponent implements OnDestroy {
             employeeNo: queryParams.employeeNo,
             bonusPaidOn: queryParams.bonusPaidOn,
           };
-          const validRows: CalculationRow[] = result.request.calculationResultRows.map(row => ({
-            employeeNo: row.employeeNo,
-            name: row.name,
-            department: row.department,
-            location: row.location,
-            month: row.month,
-            monthlySalary: row.monthlySalary,
-            healthStandardMonthly: row.healthStandardMonthly,
-            welfareStandardMonthly: row.welfareStandardMonthly,
-            healthEmployeeMonthly: row.healthEmployeeMonthly,
-            healthEmployerMonthly: row.healthEmployerMonthly,
-            nursingEmployeeMonthly: row.nursingEmployeeMonthly,
-            nursingEmployerMonthly: row.nursingEmployerMonthly,
-            welfareEmployeeMonthly: row.welfareEmployeeMonthly,
-            welfareEmployerMonthly: row.welfareEmployerMonthly,
-            bonusPaymentDate: row.bonusPaymentDate,
-            bonusTotalPay: row.bonusTotalPay,
-            healthEmployeeBonus: row.healthEmployeeBonus,
-            healthEmployerBonus: row.healthEmployerBonus,
-            nursingEmployeeBonus: row.nursingEmployeeBonus,
-            nursingEmployerBonus: row.nursingEmployerBonus,
-            welfareEmployeeBonus: row.welfareEmployeeBonus,
-            welfareEmployerBonus: row.welfareEmployerBonus,
-            standardHealthBonus: row.standardHealthBonus,
-            standardWelfareBonus: row.standardWelfareBonus,
-            error: row.error,
-          }));
+          const validRows: CalculationRow[] =
+            result.request.calculationResultRows.map((row) => ({
+              employeeNo: row.employeeNo,
+              name: row.name,
+              department: row.department,
+              location: row.location,
+              month: row.month,
+              monthlySalary: row.monthlySalary,
+              healthStandardMonthly: row.healthStandardMonthly,
+              welfareStandardMonthly: row.welfareStandardMonthly,
+              healthEmployeeMonthly: row.healthEmployeeMonthly,
+              healthEmployerMonthly: row.healthEmployerMonthly,
+              nursingEmployeeMonthly: row.nursingEmployeeMonthly,
+              nursingEmployerMonthly: row.nursingEmployerMonthly,
+              welfareEmployeeMonthly: row.welfareEmployeeMonthly,
+              welfareEmployerMonthly: row.welfareEmployerMonthly,
+              bonusPaymentDate: row.bonusPaymentDate,
+              bonusTotalPay: row.bonusTotalPay,
+              healthEmployeeBonus: row.healthEmployeeBonus,
+              healthEmployerBonus: row.healthEmployerBonus,
+              nursingEmployeeBonus: row.nursingEmployeeBonus,
+              nursingEmployerBonus: row.nursingEmployerBonus,
+              welfareEmployeeBonus: row.welfareEmployeeBonus,
+              welfareEmployerBonus: row.welfareEmployerBonus,
+              standardHealthBonus: row.standardHealthBonus,
+              standardWelfareBonus: row.standardWelfareBonus,
+              error: row.error,
+            }));
           await this.persistCalculationResults(validRows, validQuery);
           this.addToast('計算結果を保存しました。', 'success');
         } catch (error) {
@@ -966,11 +1233,17 @@ export class ApprovalDetailComponent implements OnDestroy {
       }
 
       // 計算結果保存の場合は、計算種別を含めたタイトルを生成
-      let requestTitle = result.request.title || result.request.flowSnapshot?.name || result.request.id || '申請';
+      let requestTitle =
+        result.request.title ||
+        result.request.flowSnapshot?.name ||
+        result.request.id ||
+        '申請';
       const category = result.request.category || this.approval?.category;
       if (category === '計算結果保存') {
         // this.approval を優先して計算種別を取得（最新のデータを持っている可能性が高い）
-        const calculationType = this.approval?.calculationQueryParams?.type || result.request.calculationQueryParams?.type;
+        const calculationType =
+          this.approval?.calculationQueryParams?.type ||
+          result.request.calculationQueryParams?.type;
         if (calculationType && calculationTypeLabels[calculationType]) {
           const calculationLabel = calculationTypeLabels[calculationType];
           requestTitle = `${calculationLabel}の計算結果`;
@@ -981,8 +1254,10 @@ export class ApprovalDetailComponent implements OnDestroy {
             calculationType,
             resultRequestCategory: result.request.category,
             approvalCategory: this.approval?.category,
-            resultRequestCalculationQueryParams: result.request.calculationQueryParams,
-            approvalCalculationQueryParams: this.approval?.calculationQueryParams,
+            resultRequestCalculationQueryParams:
+              result.request.calculationQueryParams,
+            approvalCalculationQueryParams:
+              this.approval?.calculationQueryParams,
           });
         }
       }
@@ -1000,23 +1275,30 @@ export class ApprovalDetailComponent implements OnDestroy {
         type: action === 'approve' ? 'success' : 'warning',
       };
 
-      const nextStepNotifications: ApprovalNotification[] = result.nextAssignees.map((assignee) => ({
-        id: `ntf-${Date.now()}-${assignee}`,
-        requestId: result.request.id!,
-        recipientId: assignee,
-        message:
-          action === 'approve'
-            ? `${requestTitle} のステップ${result.request.currentStep}を承認してください`
-            : `${requestTitle} が差戻しされました。申請者と調整してください。`,
-        unread: true,
-        createdAt: new Date(),
-        type: action === 'approve' ? 'info' : 'warning',
-      }));
+      const nextStepNotifications: ApprovalNotification[] =
+        result.nextAssignees.map((assignee) => ({
+          id: `ntf-${Date.now()}-${assignee}`,
+          requestId: result.request.id!,
+          recipientId: assignee,
+          message:
+            action === 'approve'
+              ? `${requestTitle} のステップ${result.request.currentStep}を承認してください`
+              : `${requestTitle} が差戻しされました。申請者と調整してください。`,
+          unread: true,
+          createdAt: new Date(),
+          type: action === 'approve' ? 'info' : 'warning',
+        }));
 
-      this.notificationService.pushBatch([applicantNotification, ...nextStepNotifications]);
+      this.notificationService.pushBatch([
+        applicantNotification,
+        ...nextStepNotifications,
+      ]);
     } catch (error) {
       console.error('approval action failed', error);
-      const errorMessage = error instanceof Error ? error.message : '承認処理中にエラーが発生しました。';
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : '承認処理中にエラーが発生しました。';
       this.addToast(errorMessage, 'warning');
     }
   }
@@ -1035,7 +1317,10 @@ export class ApprovalDetailComponent implements OnDestroy {
 
     const canResubmit = await firstValueFrom(this.canResubmit$);
     if (!canResubmit) {
-      this.addToast('再申請できません。申請者本人で、差し戻し状態の申請のみ再申請できます。', 'warning');
+      this.addToast(
+        '再申請できません。申請者本人で、差し戻し状態の申請のみ再申請できます。',
+        'warning',
+      );
       return;
     }
 
@@ -1052,25 +1337,33 @@ export class ApprovalDetailComponent implements OnDestroy {
         return;
       }
 
-      this.addToast('申請を再申請しました。承認フローが最初から開始されます。', 'success');
+      this.addToast(
+        '申請を再申請しました。承認フローが最初から開始されます。',
+        'success',
+      );
 
       // 承認者への通知
       const firstStep = resubmitted.flowSnapshot?.steps[0];
       if (firstStep?.candidates) {
-        const notifications: ApprovalNotification[] = firstStep.candidates.map((candidate) => ({
-          id: `ntf-${Date.now()}-${candidate.id}`,
-          requestId: resubmitted.id!,
-          recipientId: candidate.id,
-          message: `${resubmitted.title} が再申請されました。ステップ1を承認してください`,
-          unread: true,
-          createdAt: new Date(),
-          type: 'info',
-        }));
+        const notifications: ApprovalNotification[] = firstStep.candidates.map(
+          (candidate) => ({
+            id: `ntf-${Date.now()}-${candidate.id}`,
+            requestId: resubmitted.id!,
+            recipientId: candidate.id,
+            message: `${resubmitted.title} が再申請されました。ステップ1を承認してください`,
+            unread: true,
+            createdAt: new Date(),
+            type: 'info',
+          }),
+        );
         this.notificationService.pushBatch(notifications);
       }
     } catch (error) {
       console.error('resubmit failed', error);
-      const errorMessage = error instanceof Error ? error.message : '再申請処理中にエラーが発生しました。';
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : '再申請処理中にエラーが発生しました。';
       this.addToast(errorMessage, 'warning');
     }
   }
@@ -1096,8 +1389,14 @@ export class ApprovalDetailComponent implements OnDestroy {
           try {
             const employeeId = employeeMap.get(row.employeeNo);
             if (!employeeId) {
-              console.warn(`社員番号 ${row.employeeNo} の社員IDが見つかりません`);
-              return { success: false, employeeNo: row.employeeNo, error: '社員IDが見つかりません' };
+              console.warn(
+                `社員番号 ${row.employeeNo} の社員IDが見つかりません`,
+              );
+              return {
+                success: false,
+                employeeNo: row.employeeNo,
+                error: '社員IDが見つかりません',
+              };
             }
 
             console.log(`保険料計算: 社員番号=${row.employeeNo}`, {
@@ -1148,24 +1447,44 @@ export class ApprovalDetailComponent implements OnDestroy {
               bonusPaidOn: row.bonusPaymentDate || undefined,
               bonusTotal: row.bonusTotalPay || undefined,
               standardHealthBonus:
-                row.standardHealthBonus > 0 ? row.standardHealthBonus : undefined,
+                row.standardHealthBonus > 0
+                  ? row.standardHealthBonus
+                  : undefined,
               standardWelfareBonus:
-                row.standardWelfareBonus > 0 ? row.standardWelfareBonus : undefined,
+                row.standardWelfareBonus > 0
+                  ? row.standardWelfareBonus
+                  : undefined,
               // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
               standardBonus:
-                row.standardHealthBonus || row.standardWelfareBonus || undefined,
+                row.standardHealthBonus ||
+                row.standardWelfareBonus ||
+                undefined,
               // 健康保険料、介護保険料、厚生年金保険料（月額）を従業員負担分のみで保存
               healthInsuranceMonthly:
-                (row.healthEmployeeMonthly || 0) > 0 ? row.healthEmployeeMonthly : undefined,
+                (row.healthEmployeeMonthly || 0) > 0
+                  ? row.healthEmployeeMonthly
+                  : undefined,
               careInsuranceMonthly:
-                (row.nursingEmployeeMonthly || 0) > 0 ? row.nursingEmployeeMonthly : undefined,
+                (row.nursingEmployeeMonthly || 0) > 0
+                  ? row.nursingEmployeeMonthly
+                  : undefined,
               pensionMonthly:
-                (row.welfareEmployeeMonthly || 0) > 0 ? row.welfareEmployeeMonthly : undefined,
+                (row.welfareEmployeeMonthly || 0) > 0
+                  ? row.welfareEmployeeMonthly
+                  : undefined,
               // 健康保険料、介護保険料、厚生年金保険料（賞与）を従業員負担分のみで保存
               healthInsuranceBonus:
-                (row.healthEmployeeBonus || 0) > 0 ? row.healthEmployeeBonus : undefined,
-              careInsuranceBonus: (row.nursingEmployeeBonus || 0) > 0 ? row.nursingEmployeeBonus : undefined,
-              pensionBonus: (row.welfareEmployeeBonus || 0) > 0 ? row.welfareEmployeeBonus : undefined,
+                (row.healthEmployeeBonus || 0) > 0
+                  ? row.healthEmployeeBonus
+                  : undefined,
+              careInsuranceBonus:
+                (row.nursingEmployeeBonus || 0) > 0
+                  ? row.nursingEmployeeBonus
+                  : undefined,
+              pensionBonus:
+                (row.welfareEmployeeBonus || 0) > 0
+                  ? row.welfareEmployeeBonus
+                  : undefined,
             };
 
             Object.keys(payrollData).forEach((key) => {
@@ -1175,16 +1494,25 @@ export class ApprovalDetailComponent implements OnDestroy {
             });
 
             // 保存するデータの詳細をログ出力
-            console.log(`給与データを保存します: 社員番号=${row.employeeNo}, 年月=${yearMonth}`, {
-              ...payrollData,
-              // 保険料の詳細も表示（月額・賞与ともに従業員負担分のみ保存）
-              '健康保険料（月額・従業員負担）': payrollData.healthInsuranceMonthly || '未設定',
-              '介護保険料（月額・従業員負担）': payrollData.careInsuranceMonthly || '未設定',
-              '厚生年金保険料（月額・従業員負担）': payrollData.pensionMonthly || '未設定',
-              '健康保険料（賞与・従業員負担）': payrollData.healthInsuranceBonus || '未設定',
-              '介護保険料（賞与・従業員負担）': payrollData.careInsuranceBonus || '未設定',
-              '厚生年金保険料（賞与・従業員負担）': payrollData.pensionBonus || '未設定',
-            });
+            console.log(
+              `給与データを保存します: 社員番号=${row.employeeNo}, 年月=${yearMonth}`,
+              {
+                ...payrollData,
+                // 保険料の詳細も表示（月額・賞与ともに従業員負担分のみ保存）
+                '健康保険料（月額・従業員負担）':
+                  payrollData.healthInsuranceMonthly || '未設定',
+                '介護保険料（月額・従業員負担）':
+                  payrollData.careInsuranceMonthly || '未設定',
+                '厚生年金保険料（月額・従業員負担）':
+                  payrollData.pensionMonthly || '未設定',
+                '健康保険料（賞与・従業員負担）':
+                  payrollData.healthInsuranceBonus || '未設定',
+                '介護保険料（賞与・従業員負担）':
+                  payrollData.careInsuranceBonus || '未設定',
+                '厚生年金保険料（賞与・従業員負担）':
+                  payrollData.pensionBonus || '未設定',
+              },
+            );
             await this.employeesService.addOrUpdatePayroll(
               employeeId,
               yearMonth,
@@ -1195,54 +1523,94 @@ export class ApprovalDetailComponent implements OnDestroy {
             const updatePayload: Partial<ShahoEmployee> = {};
             // 標準報酬月額計算の場合、0以外の値（0も含む）を保存する
             // ただし、undefinedやnullの場合は保存しない
-            if (row.healthStandardMonthly !== undefined && row.healthStandardMonthly !== null) {
+            if (
+              row.healthStandardMonthly !== undefined &&
+              row.healthStandardMonthly !== null
+            ) {
               updatePayload.healthStandardMonthly = row.healthStandardMonthly;
             }
-            if (row.welfareStandardMonthly !== undefined && row.welfareStandardMonthly !== null) {
+            if (
+              row.welfareStandardMonthly !== undefined &&
+              row.welfareStandardMonthly !== null
+            ) {
               updatePayload.welfareStandardMonthly = row.welfareStandardMonthly;
             }
             if (Object.keys(updatePayload).length > 0) {
-              console.log(`標準報酬月額を更新します: 社員番号=${row.employeeNo}`, updatePayload);
-              await this.employeesService.updateEmployee(employeeId, updatePayload);
+              console.log(
+                `標準報酬月額を更新します: 社員番号=${row.employeeNo}`,
+                updatePayload,
+              );
+              await this.employeesService.updateEmployee(
+                employeeId,
+                updatePayload,
+              );
               console.log(`標準報酬月額の更新完了: 社員番号=${row.employeeNo}`);
             } else {
-              console.log(`標準報酬月額の更新スキップ: 社員番号=${row.employeeNo} (更新データなし)`);
+              console.log(
+                `標準報酬月額の更新スキップ: 社員番号=${row.employeeNo} (更新データなし)`,
+              );
             }
 
             return { success: true, employeeNo: row.employeeNo };
           } catch (error) {
-            console.error(`社員番号 ${row.employeeNo} の保存に失敗しました:`, error);
-            return { success: false, employeeNo: row.employeeNo, error: error instanceof Error ? error.message : '不明なエラー' };
+            console.error(
+              `社員番号 ${row.employeeNo} の保存に失敗しました:`,
+              error,
+            );
+            return {
+              success: false,
+              employeeNo: row.employeeNo,
+              error: error instanceof Error ? error.message : '不明なエラー',
+            };
           }
         });
 
       const results = await Promise.allSettled(savePromises);
-      const successCount = results.filter((r) => r.status === 'fulfilled' && r.value?.success).length;
-      const failureCount = results.filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success)).length;
-      
-      console.log(`社員情報の保存結果: 成功=${successCount}件, 失敗=${failureCount}件`);
-      
+      const successCount = results.filter(
+        (r) => r.status === 'fulfilled' && r.value?.success,
+      ).length;
+      const failureCount = results.filter(
+        (r) =>
+          r.status === 'rejected' ||
+          (r.status === 'fulfilled' && !r.value?.success),
+      ).length;
+
+      console.log(
+        `社員情報の保存結果: 成功=${successCount}件, 失敗=${failureCount}件`,
+      );
+
       if (failureCount > 0) {
         const failures = results
-          .filter((r) => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success))
+          .filter(
+            (r) =>
+              r.status === 'rejected' ||
+              (r.status === 'fulfilled' && !r.value?.success),
+          )
           .map((r) => {
             if (r.status === 'rejected') {
               return `不明なエラー: ${r.reason}`;
             }
-            const value = r.value as { success: boolean; employeeNo: string; error?: string };
+            const value = r.value as {
+              success: boolean;
+              employeeNo: string;
+              error?: string;
+            };
             return `社員番号 ${value.employeeNo}: ${value.error || '不明なエラー'}`;
           });
         console.warn('保存に失敗した社員:', failures);
       }
-      
+
       const calculationTypeLabels: Record<string, string> = {
         standard: '標準報酬月額',
         bonus: '標準賞与額',
         insurance: '社会保険料',
       };
-      const calculationTypeLabel = calculationTypeLabels[query.type] || query.type.toUpperCase();
-      
-      console.log(`計算履歴を保存します: 種別=${calculationTypeLabel}, 行数=${validRows.filter((row) => !row.error).length}`);
+      const calculationTypeLabel =
+        calculationTypeLabels[query.type] || query.type.toUpperCase();
+
+      console.log(
+        `計算履歴を保存します: 種別=${calculationTypeLabel}, 行数=${validRows.filter((row) => !row.error).length}`,
+      );
       await this.calculationDataService.saveCalculationHistory(
         query,
         validRows.filter((row) => !row.error),

@@ -574,7 +574,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           }
 
           await this.saveApprovedImportData(approvedRequest.importEmployeeData);
-          
+
           console.log('saveApprovedImportDataが完了しました');
           console.log('========================================');
         },
@@ -776,10 +776,19 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         const value = obj[key];
         // currentAddressの場合は空文字列でない限り保存（undefinedやnull、空文字列は除外）
         if (key === 'currentAddress') {
-          if (value !== undefined && value !== null && value !== 'undefined' && String(value).trim() !== '') {
+          if (
+            value !== undefined &&
+            value !== null &&
+            value !== 'undefined' &&
+            String(value).trim() !== ''
+          ) {
             cleaned[key as keyof T] = value as T[keyof T];
           }
-        } else if (value !== undefined && value !== '' && value !== 'undefined') {
+        } else if (
+          value !== undefined &&
+          value !== '' &&
+          value !== 'undefined'
+        ) {
           cleaned[key as keyof T] = value as T[keyof T];
         }
       });
@@ -829,9 +838,15 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
             // ブール値変換ヘルパー関数（1/0, true/false, on/off などを変換）
             const toBoolean = (
               value: string | undefined,
+              treatUndefinedAsNoChange = false,
             ): boolean | undefined => {
-              if (!value) return undefined;
+              if (value === undefined || value === null) {
+                return treatUndefinedAsNoChange ? undefined : undefined;
+              }
               const normalized = value.toLowerCase().trim();
+              if (normalized === '') {
+                return treatUndefinedAsNoChange ? undefined : undefined;
+              }
               if (
                 normalized === '1' ||
                 normalized === 'true' ||
@@ -859,16 +874,15 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
               kana: csvData['氏名(カナ)'] || undefined,
               gender: csvData['性別'] || undefined,
               birthDate: csvData['生年月日'] || undefined,
-                postalCode: csvData['郵便番号'] || undefined,
-                address: csvData['住民票住所'] || undefined,
-                // CSVインポート時は、現住所に値が入っていればそのまま保存（チェックボックスのロジックは適用しない）
-                currentAddress: csvData['現住所']?.trim() || undefined,
-                department: csvData['所属部署名'] || undefined,
+              postalCode: csvData['郵便番号'] || undefined,
+              address: csvData['住民票住所'] || undefined,
+              // CSVインポート時は、現住所に値が入っていればそのまま保存（チェックボックスのロジックは適用しない）
+              currentAddress: csvData['現住所']?.trim() || undefined,
+              department: csvData['所属部署名'] || undefined,
               workPrefecture: csvData['勤務地都道府県名'] || undefined,
               personalNumber: csvData['個人番号'] || undefined,
               basicPensionNumber: csvData['基礎年金番号'] || undefined,
-              healthStandardMonthly:
-                toNumber(csvData['健保標準報酬月額']),
+              healthStandardMonthly: toNumber(csvData['健保標準報酬月額']),
               welfareStandardMonthly:
                 toNumber(csvData['厚年標準報酬月額']) ||
                 toNumber(csvData['健保標準報酬月額']),
@@ -889,14 +903,14 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 ? calculateCareSecondInsured(csvData['生年月日'])
                 : toBoolean(
                     csvData['介護保険第2号被保険者フラグ'] ||
-                    csvData['介護保険第2号フラグ'] ||
-                    undefined,
+                      csvData['介護保険第2号フラグ'] ||
+                      undefined,
                   ),
               currentLeaveStatus: csvData['現在の休業状態'] || undefined,
               currentLeaveStartDate: csvData['現在の休業開始日'] || undefined,
               currentLeaveEndDate: csvData['現在の休業予定終了日'] || undefined,
               // 扶養情報（hasDependentのみ）
-              hasDependent: toBoolean(csvData['扶養の有無']),
+              hasDependent: toBoolean(csvData['扶養の有無'], true),
             };
 
             // undefinedのフィールドを除外
@@ -922,8 +936,12 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
             // 扶養情報をdependentsサブコレクションに保存
             if (employeeId) {
-              const hasDependent = toBoolean(csvData['扶養の有無']);
-              if (hasDependent) {
+              const hasDependentColumn = '扶養の有無' in csvData;
+              const hasDependent = toBoolean(csvData['扶養の有無'], true);
+
+              if (!hasDependentColumn) {
+                // 扶養列が存在しないテンプレートでは扶養関連の処理をスキップ
+              } else if (hasDependent === true) {
                 const dependentData: DependentData = {
                   relationship: csvData['扶養 続柄'] || undefined,
                   nameKanji: csvData['扶養 氏名(漢字)'] || undefined,
@@ -982,7 +1000,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                     );
                   }
                 }
-              } else {
+              } else if (hasDependent === false) {
                 // 扶養の有無が「無」の場合は既存の扶養情報を削除
                 const existingDependents = await firstValueFrom(
                   this.employeesService.getDependents(employeeId).pipe(take(1)),
@@ -1193,7 +1211,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     console.log('【saveApprovedImportDataメソッドが呼ばれました】');
     console.log('========================================');
     console.log(`importDataの件数: ${importData.length}`);
-    
+
     // undefinedのフィールドを除外するヘルパー関数
     // currentAddressは空文字列でない限り保存する（CSVインポート時）
     const removeUndefinedFields = <T extends Record<string, unknown>>(
@@ -1204,10 +1222,19 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         const value = obj[key];
         // currentAddressの場合は空文字列でない限り保存（undefinedやnull、空文字列は除外）
         if (key === 'currentAddress') {
-          if (value !== undefined && value !== null && value !== 'undefined' && String(value).trim() !== '') {
+          if (
+            value !== undefined &&
+            value !== null &&
+            value !== 'undefined' &&
+            String(value).trim() !== ''
+          ) {
             cleaned[key as keyof T] = value as T[keyof T];
           }
-        } else if (value !== undefined && value !== '' && value !== 'undefined') {
+        } else if (
+          value !== undefined &&
+          value !== '' &&
+          value !== 'undefined'
+        ) {
           cleaned[key as keyof T] = value as T[keyof T];
         }
       });
@@ -1222,9 +1249,17 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     };
 
     // ブール値変換ヘルパー関数（1/0, true/false, on/off などを変換）
-    const toBoolean = (value: string | undefined): boolean | undefined => {
-      if (!value) return undefined;
+    const toBoolean = (
+      value: string | undefined,
+      treatUndefinedAsNoChange = false,
+    ): boolean | undefined => {
+      if (value === undefined || value === null) {
+        return treatUndefinedAsNoChange ? undefined : undefined;
+      }
       const normalized = value.toLowerCase().trim();
+      if (normalized === '') {
+        return treatUndefinedAsNoChange ? undefined : undefined;
+      }
       if (
         normalized === '1' ||
         normalized === 'true' ||
@@ -1318,8 +1353,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 workPrefecture: csvData['勤務地都道府県名'] || undefined,
                 personalNumber: csvData['個人番号'] || undefined,
                 basicPensionNumber: csvData['基礎年金番号'] || undefined,
-                healthStandardMonthly:
-                  toNumber(csvData['健保標準報酬月額']),
+                healthStandardMonthly: toNumber(csvData['健保標準報酬月額']),
                 welfareStandardMonthly:
                   toNumber(csvData['厚年標準報酬月額']) ||
                   toNumber(csvData['健保標準報酬月額']),
@@ -1340,14 +1374,15 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                   ? calculateCareSecondInsured(csvData['生年月日'])
                   : toBoolean(
                       csvData['介護保険第2号被保険者フラグ'] ||
-                      csvData['介護保険第2号フラグ'] ||
-                      undefined,
+                        csvData['介護保険第2号フラグ'] ||
+                        undefined,
                     ),
                 currentLeaveStatus: csvData['現在の休業状態'] || undefined,
                 currentLeaveStartDate: csvData['現在の休業開始日'] || undefined,
-                currentLeaveEndDate: csvData['現在の休業予定終了日'] || undefined,
+                currentLeaveEndDate:
+                  csvData['現在の休業予定終了日'] || undefined,
                 // 扶養情報（hasDependentのみ）
-                hasDependent: toBoolean(csvData['扶養の有無']),
+                hasDependent: toBoolean(csvData['扶養の有無'], true),
               };
 
               // undefinedのフィールドを除外
@@ -1374,9 +1409,12 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
               // 扶養情報をdependentsサブコレクションに保存（複数件対応）
               if (employeeId) {
-                const hasDependent = toBoolean(csvData['扶養の有無']);
+                const hasDependentColumn = '扶養の有無' in csvData;
+                const hasDependent = toBoolean(csvData['扶養の有無'], true);
 
-                if (hasDependent) {
+                if (!hasDependentColumn) {
+                  // 扶養列が存在しないテンプレートでは扶養関連の処理をスキップ
+                } else if (hasDependent === true) {
                   // 既存の扶養情報をすべて削除（更新の場合）
                   if (!firstItem.isNew) {
                     const existingDependents = await firstValueFrom(
@@ -1445,7 +1483,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                       dependentData,
                     );
                   }
-                } else {
+                } else if (hasDependent === false) {
                   // 扶養の有無が「無」の場合は既存の扶養情報を削除
                   const existingDependents = await firstValueFrom(
                     this.employeesService
@@ -2094,7 +2132,10 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     // ダウンロードリンクを作成
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.]/g, '-')
+      .slice(0, 19);
     link.setAttribute('href', url);
     link.setAttribute('download', `エラーレポート_${timestamp}.csv`);
     link.style.visibility = 'hidden';
