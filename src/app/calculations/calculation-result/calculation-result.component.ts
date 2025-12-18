@@ -1014,15 +1014,21 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         }
 
         // 介護保険の合計raw値
+        // 対象外の社員（第2号被保険者ではない社員）を除外するため、
+        // 実際に介護保険料が計算されている場合のみ合計に含める
         if (summaryRefs.nursing && nursingRate) {
           const totalRate = parseRate(nursingRate.totalRate);
-          // 月例分
-          if (row.healthStandardMonthly) {
-            rawNursingTotal += row.healthStandardMonthly * totalRate;
+          // 月例分：介護保険料が実際に計算されている場合のみ
+          if (row.nursingEmployeeMonthly > 0 || row.nursingEmployerMonthly > 0) {
+            if (row.healthStandardMonthly) {
+              rawNursingTotal += row.healthStandardMonthly * totalRate;
+            }
           }
-          // 賞与分（標準報酬月額が0でも賞与がある場合は含める）
-          if (row.standardHealthBonus > 0) {
-            rawNursingTotal += row.standardHealthBonus * totalRate;
+          // 賞与分：介護保険料が実際に計算されている場合のみ
+          if (row.nursingEmployeeBonus > 0 || row.nursingEmployerBonus > 0) {
+            if (row.standardHealthBonus > 0) {
+              rawNursingTotal += row.standardHealthBonus * totalRate;
+            }
           }
         }
 
