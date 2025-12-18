@@ -213,10 +213,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           careSecondInsured: emp.careSecondInsured,
           healthAcquisition: emp.healthAcquisition,
           pensionAcquisition: emp.pensionAcquisition,
-          childcareLeaveStart: emp.childcareLeaveStart,
-          childcareLeaveEnd: emp.childcareLeaveEnd,
-          maternityLeaveStart: emp.maternityLeaveStart,
-          maternityLeaveEnd: emp.maternityLeaveEnd,
+          currentLeaveStatus: emp.currentLeaveStatus,
+          currentLeaveStartDate: emp.currentLeaveStartDate,
+          currentLeaveEndDate: emp.currentLeaveEndDate,
           exemption: emp.exemption,
         };
       },
@@ -893,10 +892,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                     csvData['介護保険第2号フラグ'] ||
                     undefined,
                   ),
-              childcareLeaveStart: csvData['育休開始日'] || undefined,
-              childcareLeaveEnd: csvData['育休終了日'] || undefined,
-              maternityLeaveStart: csvData['産休開始日'] || undefined,
-              maternityLeaveEnd: csvData['産休終了日'] || undefined,
+              currentLeaveStatus: csvData['現在の休業状態'] || undefined,
+              currentLeaveStartDate: csvData['現在の休業開始日'] || undefined,
+              currentLeaveEndDate: csvData['現在の休業予定終了日'] || undefined,
               // 扶養情報（hasDependentのみ）
               hasDependent: toBoolean(csvData['扶養の有無']),
             };
@@ -1345,10 +1343,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                       csvData['介護保険第2号フラグ'] ||
                       undefined,
                     ),
-                childcareLeaveStart: csvData['育休開始日'] || undefined,
-                childcareLeaveEnd: csvData['育休終了日'] || undefined,
-                maternityLeaveStart: csvData['産休開始日'] || undefined,
-                maternityLeaveEnd: csvData['産休終了日'] || undefined,
+                currentLeaveStatus: csvData['現在の休業状態'] || undefined,
+                currentLeaveStartDate: csvData['現在の休業開始日'] || undefined,
+                currentLeaveEndDate: csvData['現在の休業予定終了日'] || undefined,
                 // 扶養情報（hasDependentのみ）
                 hasDependent: toBoolean(csvData['扶養の有無']),
               };
@@ -1943,10 +1940,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       '健康保険 資格取得日',
       '厚生年金 資格取得日',
       '介護保険第2号被保険者フラグ',
-      '育休開始日',
-      '育休終了日',
-      '産休開始日',
-      '産休終了日',
+      '現在の休業状態',
+      '現在の休業開始日',
+      '現在の休業予定終了日',
       '扶養の有無',
       '扶養 続柄',
       '扶養 氏名(漢字)',
@@ -1983,8 +1979,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       'YYYY/MM/DD',
       'YYYY/MM/DD',
       '0/1/true/false',
-      'YYYY/MM/DD',
-      'YYYY/MM/DD',
+      'なし/産前産後/育児',
       'YYYY/MM/DD',
       'YYYY/MM/DD',
       '有/無/0/1/true/false',
@@ -2048,6 +2043,60 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
     link.setAttribute('download', '月給/賞与支払額同期用テンプレート.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  downloadErrorReport(): void {
+    if (this.errors.length === 0) {
+      alert('エラーがありません。');
+      return;
+    }
+
+    // CSVヘッダー
+    const headers = ['行番号', '社員番号', '氏名', '項目名', 'エラー内容'];
+
+    // CSVエスケープ関数
+    const escapeForCsv = (value: string | null | undefined): string => {
+      if (value === null || value === undefined) {
+        return '';
+      }
+      const str = String(value);
+      // カンマ、ダブルクォート、改行を含む場合はダブルクォートで囲む
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+      }
+      return str;
+    };
+
+    // エラーデータを行に変換
+    const rows = this.errors.map((error) => [
+      escapeForCsv(String(error.rowIndex || '')),
+      escapeForCsv(error.employeeNo || ''),
+      escapeForCsv(error.name || ''),
+      escapeForCsv(error.fieldName || ''),
+      escapeForCsv(error.message || ''),
+    ]);
+
+    // CSVコンテンツを作成（UTF-8 BOM付きでExcel互換性を確保）
+    const csvContent =
+      '\uFEFF' +
+      headers.join(',') +
+      '\n' +
+      rows.map((row) => row.join(',')).join('\n');
+
+    // Blobオブジェクトを作成（UTF-8、LF改行）
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+
+    // ダウンロードリンクを作成
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `エラーレポート_${timestamp}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();

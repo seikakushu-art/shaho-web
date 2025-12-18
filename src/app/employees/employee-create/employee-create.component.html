@@ -253,38 +253,29 @@
             </p>
           </div>
           <div>
-            <label>育休開始日</label>
+            <label>現在の休業状態</label>
+            <select name="currentLeaveStatus" [(ngModel)]="socialInsurance.currentLeaveStatus" [disabled]="!editMode">
+              <option value="">選択してください</option>
+              <option value="なし">なし</option>
+              <option value="産前産後">産前産後</option>
+              <option value="育児">育児</option>
+            </select>
+          </div>
+          <div>
+            <label>現在の休業開始日</label>
             <input
               type="date"
-              name="childcareLeaveStart"
-              [(ngModel)]="socialInsurance.childcareLeaveStart"
+              name="currentLeaveStartDate"
+              [(ngModel)]="socialInsurance.currentLeaveStartDate"
               [readonly]="!editMode"
             />
           </div>
           <div>
-            <label>育休終了日</label>
+            <label>現在の休業予定終了日</label>
             <input
               type="date"
-              name="childcareLeaveEnd"
-              [(ngModel)]="socialInsurance.childcareLeaveEnd"
-              [readonly]="!editMode"
-            />
-          </div>
-          <div>
-            <label>産休開始日</label>
-            <input
-              type="date"
-              name="maternityLeaveStart"
-              [(ngModel)]="socialInsurance.maternityLeaveStart"
-              [readonly]="!editMode"
-            />
-          </div>
-          <div>
-            <label>産休終了日</label>
-            <input
-              type="date"
-              name="maternityLeaveEnd"
-              [(ngModel)]="socialInsurance.maternityLeaveEnd"
+              name="currentLeaveEndDate"
+              [(ngModel)]="socialInsurance.currentLeaveEndDate"
               [readonly]="!editMode"
             />
           </div>

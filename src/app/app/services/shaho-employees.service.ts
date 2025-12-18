@@ -45,10 +45,9 @@ export interface ShahoEmployee {
   careSecondInsured?: boolean;
   healthAcquisition?: string;
   pensionAcquisition?: string;
-  childcareLeaveStart?: string;
-  childcareLeaveEnd?: string;
-  maternityLeaveStart?: string;
-  maternityLeaveEnd?: string;
+  currentLeaveStatus?: string;
+  currentLeaveStartDate?: string;
+  currentLeaveEndDate?: string;
   exemption?: boolean;
   // 監査情報
   createdAt?: string | Date;
@@ -103,10 +102,9 @@ export type ExternalEmployeeRecord = {
   healthAcquisition?: string; // 健康保険 資格取得日
   pensionAcquisition?: string; // 厚生年金 資格取得日
   careSecondInsured?: boolean | string | number; // 介護保険第2号被保険者フラグ
-  childcareLeaveStart?: string; // 育休開始日
-  childcareLeaveEnd?: string; // 育休終了日
-  maternityLeaveStart?: string; // 産休開始日
-  maternityLeaveEnd?: string; // 産休終了日
+  currentLeaveStatus?: string; // 現在の休業状態（なし／産前産後／育児）
+  currentLeaveStartDate?: string; // 現在の休業開始日
+  currentLeaveEndDate?: string; // 現在の休業予定終了日
   hasDependent?: boolean | string | number; // 扶養の有無
   dependents?: ExternalDependentRecord[]; // 扶養家族情報配列
   payrolls?: ExternalPayrollRecord[]; // 給与データ配列
@@ -406,10 +404,9 @@ export class ShahoEmployeesService {
         healthAcquisition: record.healthAcquisition?.trim(),
         pensionAcquisition: record.pensionAcquisition?.trim(),
         careSecondInsured: toBoolean(record.careSecondInsured),
-        childcareLeaveStart: record.childcareLeaveStart?.trim(),
-        childcareLeaveEnd: record.childcareLeaveEnd?.trim(),
-        maternityLeaveStart: record.maternityLeaveStart?.trim(),
-        maternityLeaveEnd: record.maternityLeaveEnd?.trim(),
+        currentLeaveStatus: record.currentLeaveStatus?.trim(),
+        currentLeaveStartDate: record.currentLeaveStartDate?.trim(),
+        currentLeaveEndDate: record.currentLeaveEndDate?.trim(),
         hasDependent: toBoolean(record.hasDependent),
       };
 

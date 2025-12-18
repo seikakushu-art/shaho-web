@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, map, Observable, switchMap, of } from 'rxjs';
 import { ApprovalNotification } from '../models/approvals';
-import { Firestore, collection, collectionData, doc, setDoc, query, where, orderBy, limit, Timestamp } from '@angular/fire/firestore';
+import { Firestore, collection, collectionData, doc, setDoc, deleteDoc, query, where, orderBy, limit, Timestamp } from '@angular/fire/firestore';
 
 interface FirestoreNotification {
   id: string;
@@ -112,5 +112,36 @@ export class ApprovalNotificationService {
           .length,
       ),
     );
+  }
+
+  async delete(notificationId: string) {
+    const updated = this.notificationsSubject.value.filter((notification) => notification.id !== notificationId);
+    this.notificationsSubject.next(updated);
+    
+    // Firestoreから削除
+    const docRef = doc(this.notificationsRef, notificationId);
+    await deleteDoc(docRef);
+  }
+
+  async deleteBatch(notificationIds: string[]) {
+    const updated = this.notificationsSubject.value.filter((notification) => !notificationIds.includes(notification.id));
+    this.notificationsSubject.next(updated);
+    
+    // Firestoreから一括削除
+    const promises = notificationIds.map((notificationId) => {
+      const docRef = doc(this.notificationsRef, notificationId);
+      return deleteDoc(docRef);
+    });
+    await Promise.all(promises);
+  }
+
+  async deleteAllForRecipient(recipientId: string) {
+    const notifications = this.notificationsSubject.value;
+    const targetNotifications = notifications.filter((notification) => notification.recipientId?.toLowerCase() === recipientId.toLowerCase());
+    const notificationIds = targetNotifications.map((n) => n.id);
+    
+    if (notificationIds.length === 0) return;
+    
+    await this.deleteBatch(notificationIds);
   }
 }

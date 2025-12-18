@@ -96,10 +96,9 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       careSecondInsured: false,
       healthAcquisition: '',
       pensionAcquisition: '',
-      childcareLeaveStart: '',
-      childcareLeaveEnd: '',
-      maternityLeaveStart: '',
-      maternityLeaveEnd: '',
+      currentLeaveStatus: '',
+      currentLeaveStartDate: '',
+      currentLeaveEndDate: '',
       exemption: false,
     };
   
@@ -325,10 +324,9 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         careSecondInsured,
         healthAcquisition: this.formatDateForInput(employee.healthAcquisition) || '',
         pensionAcquisition: this.formatDateForInput(employee.pensionAcquisition) || '',
-        childcareLeaveStart: this.formatDateForInput(employee.childcareLeaveStart) || '',
-        childcareLeaveEnd: this.formatDateForInput(employee.childcareLeaveEnd) || '',
-        maternityLeaveStart: this.formatDateForInput(employee.maternityLeaveStart) || '',
-        maternityLeaveEnd: this.formatDateForInput(employee.maternityLeaveEnd) || '',
+        currentLeaveStatus: employee.currentLeaveStatus || '',
+        currentLeaveStartDate: this.formatDateForInput(employee.currentLeaveStartDate) || '',
+        currentLeaveEndDate: this.formatDateForInput(employee.currentLeaveEndDate) || '',
         exemption: employee.exemption ?? this.socialInsurance.exemption,
       };
     
@@ -680,10 +678,9 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
               careSecondInsured: socialInsurance.careSecondInsured || false,
               healthAcquisition: socialInsurance.healthAcquisition || undefined,
               pensionAcquisition: socialInsurance.pensionAcquisition || undefined,
-              childcareLeaveStart: socialInsurance.childcareLeaveStart || undefined,
-              childcareLeaveEnd: socialInsurance.childcareLeaveEnd || undefined,
-              maternityLeaveStart: socialInsurance.maternityLeaveStart || undefined,
-              maternityLeaveEnd: socialInsurance.maternityLeaveEnd || undefined,
+              currentLeaveStatus: socialInsurance.currentLeaveStatus || undefined,
+              currentLeaveStartDate: socialInsurance.currentLeaveStartDate || undefined,
+              currentLeaveEndDate: socialInsurance.currentLeaveEndDate || undefined,
               exemption: socialInsurance.exemption || false,
             };
 
@@ -992,17 +989,14 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       if (this.socialInsurance.pensionAcquisition) {
         changes.push({ field: '厚生年金取得年月日', oldValue: null, newValue: this.socialInsurance.pensionAcquisition });
       }
-      if (this.socialInsurance.childcareLeaveStart) {
-        changes.push({ field: '育児休業開始日', oldValue: null, newValue: this.socialInsurance.childcareLeaveStart });
+      if (this.socialInsurance.currentLeaveStatus) {
+        changes.push({ field: '現在の休業状態', oldValue: null, newValue: this.socialInsurance.currentLeaveStatus });
       }
-      if (this.socialInsurance.childcareLeaveEnd) {
-        changes.push({ field: '育児休業終了日', oldValue: null, newValue: this.socialInsurance.childcareLeaveEnd });
+      if (this.socialInsurance.currentLeaveStartDate) {
+        changes.push({ field: '現在の休業開始日', oldValue: null, newValue: this.socialInsurance.currentLeaveStartDate });
       }
-      if (this.socialInsurance.maternityLeaveStart) {
-        changes.push({ field: '産前産後休業開始日', oldValue: null, newValue: this.socialInsurance.maternityLeaveStart });
-      }
-      if (this.socialInsurance.maternityLeaveEnd) {
-        changes.push({ field: '産前産後休業終了日', oldValue: null, newValue: this.socialInsurance.maternityLeaveEnd });
+      if (this.socialInsurance.currentLeaveEndDate) {
+        changes.push({ field: '現在の休業予定終了日', oldValue: null, newValue: this.socialInsurance.currentLeaveEndDate });
       }
       changes.push({ field: '保険料免除', oldValue: null, newValue: this.socialInsurance.exemption ? 'はい' : 'いいえ' });
     
@@ -1164,21 +1158,17 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       if (originalPensionAcquisition !== this.socialInsurance.pensionAcquisition) {
         changes.push({ field: '厚生年金取得年月日', oldValue: originalPensionAcquisition || null, newValue: this.socialInsurance.pensionAcquisition || null });
       }
-      const originalChildcareLeaveStart = this.formatDateForInput(original.childcareLeaveStart);
-      if (originalChildcareLeaveStart !== this.socialInsurance.childcareLeaveStart) {
-        changes.push({ field: '育児休業開始日', oldValue: originalChildcareLeaveStart || null, newValue: this.socialInsurance.childcareLeaveStart || null });
+      const originalCurrentLeaveStatus = original.currentLeaveStatus || '';
+      if (originalCurrentLeaveStatus !== this.socialInsurance.currentLeaveStatus) {
+        changes.push({ field: '現在の休業状態', oldValue: originalCurrentLeaveStatus || null, newValue: this.socialInsurance.currentLeaveStatus || null });
       }
-      const originalChildcareLeaveEnd = this.formatDateForInput(original.childcareLeaveEnd);
-      if (originalChildcareLeaveEnd !== this.socialInsurance.childcareLeaveEnd) {
-        changes.push({ field: '育児休業終了日', oldValue: originalChildcareLeaveEnd || null, newValue: this.socialInsurance.childcareLeaveEnd || null });
+      const originalCurrentLeaveStartDate = this.formatDateForInput(original.currentLeaveStartDate);
+      if (originalCurrentLeaveStartDate !== this.socialInsurance.currentLeaveStartDate) {
+        changes.push({ field: '現在の休業開始日', oldValue: originalCurrentLeaveStartDate || null, newValue: this.socialInsurance.currentLeaveStartDate || null });
       }
-      const originalMaternityLeaveStart = this.formatDateForInput(original.maternityLeaveStart);
-      if (originalMaternityLeaveStart !== this.socialInsurance.maternityLeaveStart) {
-        changes.push({ field: '産前産後休業開始日', oldValue: originalMaternityLeaveStart || null, newValue: this.socialInsurance.maternityLeaveStart || null });
-      }
-      const originalMaternityLeaveEnd = this.formatDateForInput(original.maternityLeaveEnd);
-      if (originalMaternityLeaveEnd !== this.socialInsurance.maternityLeaveEnd) {
-        changes.push({ field: '産前産後休業終了日', oldValue: originalMaternityLeaveEnd || null, newValue: this.socialInsurance.maternityLeaveEnd || null });
+      const originalCurrentLeaveEndDate = this.formatDateForInput(original.currentLeaveEndDate);
+      if (originalCurrentLeaveEndDate !== this.socialInsurance.currentLeaveEndDate) {
+        changes.push({ field: '現在の休業予定終了日', oldValue: originalCurrentLeaveEndDate || null, newValue: this.socialInsurance.currentLeaveEndDate || null });
       }
       if ((original.exemption ?? false) !== this.socialInsurance.exemption) {
         changes.push({ field: '保険料免除', oldValue: (original.exemption ?? false) ? 'はい' : 'いいえ', newValue: this.socialInsurance.exemption ? 'はい' : 'いいえ' });

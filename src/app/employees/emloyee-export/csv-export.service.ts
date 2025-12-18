@@ -249,6 +249,26 @@ export class CsvExportService {
           header: '介護第2号被保険者',
           value: (employee) => (employee.careSecondInsured ? 'はい' : 'いいえ'),
         },
+        {
+          header: '健康保険 資格取得日',
+          value: (employee) => this.formatDate(employee.healthAcquisition),
+        },
+        {
+          header: '厚生年金 資格取得日',
+          value: (employee) => this.formatDate(employee.pensionAcquisition),
+        },
+        {
+          header: '現在の休業状態',
+          value: (employee) => employee.currentLeaveStatus || '',
+        },
+        {
+          header: '現在の休業開始日',
+          value: (employee) => this.formatDate(employee.currentLeaveStartDate),
+        },
+        {
+          header: '現在の休業予定終了日',
+          value: (employee) => this.formatDate(employee.currentLeaveEndDate),
+        },
       );
     }
 

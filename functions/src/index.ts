@@ -33,10 +33,9 @@ type ExternalEmployeeRecord = {
   pensionInsuredNumber?: string;
   healthAcquisition?: string;
   pensionAcquisition?: string;
-  childcareLeaveStart?: string;
-  childcareLeaveEnd?: string;
-  maternityLeaveStart?: string;
-  maternityLeaveEnd?: string;
+  currentLeaveStatus?: string;
+  currentLeaveStartDate?: string;
+  currentLeaveEndDate?: string;
   careSecondInsured?: boolean | string;
   exemption?: boolean | string;
   payrolls?: ExternalPayrollRecord[]; // 給与データ配列
@@ -80,10 +79,9 @@ interface ShahoEmployee {
   careSecondInsured?: boolean;
   healthAcquisition?: string;
   pensionAcquisition?: string;
-  childcareLeaveStart?: string;
-  childcareLeaveEnd?: string;
-  maternityLeaveStart?: string;
-  maternityLeaveEnd?: string;
+  currentLeaveStatus?: string;
+  currentLeaveStartDate?: string;
+  currentLeaveEndDate?: string;
   exemption?: boolean;
   createdAt?: string | Date;
   updatedAt?: string | Date;
@@ -399,10 +397,9 @@ export const receiveEmployees = functions.https.onRequest(
           pensionInsuredNumber: normalizeString(record.pensionInsuredNumber),
           healthAcquisition: normalizeString(record.healthAcquisition),
           pensionAcquisition: normalizeString(record.pensionAcquisition),
-          childcareLeaveStart: normalizeString(record.childcareLeaveStart),
-          childcareLeaveEnd: normalizeString(record.childcareLeaveEnd),
-          maternityLeaveStart: normalizeString(record.maternityLeaveStart),
-          maternityLeaveEnd: normalizeString(record.maternityLeaveEnd),
+          currentLeaveStatus: normalizeString(record.currentLeaveStatus),
+          currentLeaveStartDate: normalizeString(record.currentLeaveStartDate),
+          currentLeaveEndDate: normalizeString(record.currentLeaveEndDate),
           careSecondInsured: normalizeBoolean(record.careSecondInsured),
           exemption: normalizeBoolean(record.exemption),
         };

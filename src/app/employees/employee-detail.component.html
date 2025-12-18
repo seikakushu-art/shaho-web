@@ -158,23 +158,17 @@
                             date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
-                        <label>育休開始日</label>
-                        <p class="value">{{ socialInsurance.childcareLeaveStart ? (socialInsurance.childcareLeaveStart |
+                        <label>現在の休業状態</label>
+                        <p class="value">{{ socialInsurance.currentLeaveStatus || '—' }}</p>
+                    </div>
+                    <div>
+                        <label>現在の休業開始日</label>
+                        <p class="value">{{ socialInsurance.currentLeaveStartDate ? (socialInsurance.currentLeaveStartDate |
                             date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
-                        <label>育休終了日</label>
-                        <p class="value">{{ socialInsurance.childcareLeaveEnd ? (socialInsurance.childcareLeaveEnd |
-                            date: 'yyyy/MM/dd') : '—' }}</p>
-                    </div>
-                    <div>
-                        <label>産休開始日</label>
-                        <p class="value">{{ socialInsurance.maternityLeaveStart ? (socialInsurance.maternityLeaveStart |
-                            date: 'yyyy/MM/dd') : '—' }}</p>
-                    </div>
-                    <div>
-                        <label>産休終了日</label>
-                        <p class="value">{{ socialInsurance.maternityLeaveEnd ? (socialInsurance.maternityLeaveEnd |
+                        <label>現在の休業予定終了日</label>
+                        <p class="value">{{ socialInsurance.currentLeaveEndDate ? (socialInsurance.currentLeaveEndDate |
                             date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>

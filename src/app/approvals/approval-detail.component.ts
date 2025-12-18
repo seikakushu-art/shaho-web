@@ -315,10 +315,9 @@ export class ApprovalDetailComponent implements OnDestroy {
       careSecondInsured: socialInsurance?.careSecondInsured || false,
       healthAcquisition: socialInsurance?.healthAcquisition || undefined,
       pensionAcquisition: socialInsurance?.pensionAcquisition || undefined,
-      childcareLeaveStart: socialInsurance?.childcareLeaveStart || undefined,
-      childcareLeaveEnd: socialInsurance?.childcareLeaveEnd || undefined,
-      maternityLeaveStart: socialInsurance?.maternityLeaveStart || undefined,
-      maternityLeaveEnd: socialInsurance?.maternityLeaveEnd || undefined,
+      currentLeaveStatus: (socialInsurance as any)?.currentLeaveStatus || undefined,
+      currentLeaveStartDate: (socialInsurance as any)?.currentLeaveStartDate || undefined,
+      currentLeaveEndDate: (socialInsurance as any)?.currentLeaveEndDate || undefined,
       exemption: socialInsurance?.exemption || false,
     };
 
@@ -485,10 +484,9 @@ export class ApprovalDetailComponent implements OnDestroy {
                     csvData['介護保険第2号フラグ'] ||
                     undefined,
                   ),
-              childcareLeaveStart: csvData['育休開始日'] || undefined,
-              childcareLeaveEnd: csvData['育休終了日'] || undefined,
-              maternityLeaveStart: csvData['産休開始日'] || undefined,
-              maternityLeaveEnd: csvData['産休終了日'] || undefined,
+              currentLeaveStatus: csvData['現在の休業状態'] || undefined,
+              currentLeaveStartDate: csvData['現在の休業開始日'] || undefined,
+              currentLeaveEndDate: csvData['現在の休業予定終了日'] || undefined,
               // 扶養情報（hasDependentのみ）
               hasDependent: toBoolean(csvData['扶養の有無']),
             };

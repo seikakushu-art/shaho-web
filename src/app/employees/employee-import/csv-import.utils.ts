@@ -17,10 +17,8 @@ const DATE_FIELDS = [
   '健康保険資格取得日',
   '厚生年金 資格取得日',
   '厚生年金資格取得日',
-  '育休開始日',
-  '育休終了日',
-  '産休開始日',
-  '産休終了日',
+  '現在の休業開始日',
+  '現在の休業予定終了日',
 ];
 const YEAR_MONTH_FIELDS = [
   '算定対象期間開始年月',
@@ -1039,10 +1037,9 @@ export interface ExistingEmployee {
   careSecondInsured?: boolean;
   healthAcquisition?: string;
   pensionAcquisition?: string;
-  childcareLeaveStart?: string;
-  childcareLeaveEnd?: string;
-  maternityLeaveStart?: string;
-  maternityLeaveEnd?: string;
+  currentLeaveStatus?: string;
+  currentLeaveStartDate?: string;
+  currentLeaveEndDate?: string;
   exemption?: boolean;
   [key: string]: unknown; // その他のフィールド
 }
@@ -1412,10 +1409,9 @@ export function calculateDifferences(
       '厚生年金 資格取得日': 'pensionAcquisition',
       '介護保険第2号被保険者フラグ': 'careSecondInsured',
       介護保険第2号フラグ: 'careSecondInsured',
-      育休開始日: 'childcareLeaveStart',
-      育休終了日: 'childcareLeaveEnd',
-      産休開始日: 'maternityLeaveStart',
-      産休終了日: 'maternityLeaveEnd',
+      '現在の休業状態': 'currentLeaveStatus',
+      '現在の休業開始日': 'currentLeaveStartDate',
+      '現在の休業予定終了日': 'currentLeaveEndDate',
     };
 
     // 扶養家族情報の処理：扶養 氏名(漢字)で既存扶養家族を検索
@@ -1567,10 +1563,8 @@ export function calculateDifferences(
         '健康保険 資格取得日',
         '厚生年金資格取得日',
         '厚生年金 資格取得日',
-        '育休開始日',
-        '育休終了日',
-        '産休開始日',
-        '産休終了日',
+        '現在の休業開始日',
+        '現在の休業予定終了日',
       ];
 
       // 日付フィールドの正規化関数（YYYY/MM/DD形式に統一）

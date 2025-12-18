@@ -172,10 +172,9 @@ export interface ApprovalRequest {
       careSecondInsured: boolean;
       healthAcquisition: string;
       pensionAcquisition: string;
-      childcareLeaveStart: string;
-      childcareLeaveEnd: string;
-      maternityLeaveStart: string;
-      maternityLeaveEnd: string;
+      currentLeaveStatus: string;
+      currentLeaveStartDate: string;
+      currentLeaveEndDate: string;
       exemption: boolean;
     };
     dependentInfo?: {

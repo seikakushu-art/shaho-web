@@ -104,6 +104,11 @@
             </div>
         </div>
         <div class="table-wrapper" *ngIf="summary.errorCount > 0">
+            <div class="action-bar">
+                <button type="button" class="ghost" (click)="downloadErrorReport()">
+                    エラーレポートをダウンロード（CSV）
+                </button>
+            </div>
             <table>
                 <thead>
                     <tr>

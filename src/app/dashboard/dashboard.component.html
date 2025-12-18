@@ -16,6 +16,15 @@
         <div>
           <h2>通知</h2>
         </div>
+        <div class="notification-header-actions" *ngIf="allNotifications.length > 0">
+          <button 
+            class="delete-all-button" 
+            (click)="deleteAllNotifications()"
+            title="すべての通知を削除"
+          >
+            一括削除
+          </button>
+        </div>
       </header>
 
       <ul class="notifications">

@@ -31,10 +31,9 @@ interface SocialInsuranceInfo {
   careSecondInsured: boolean;
   healthAcquisition: string;
   pensionAcquisition: string;
-  childcareLeaveStart: string;
-  childcareLeaveEnd: string;
-  maternityLeaveStart: string;
-  maternityLeaveEnd: string;
+  currentLeaveStatus: string;
+  currentLeaveStartDate: string;
+  currentLeaveEndDate: string;
   exemption: boolean;
 }
 
@@ -173,10 +172,9 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     careSecondInsured: false,
     healthAcquisition: '',
     pensionAcquisition: '',
-    childcareLeaveStart: '',
-    childcareLeaveEnd: '',
-    maternityLeaveStart: '',
-    maternityLeaveEnd: '',
+    currentLeaveStatus: '',
+    currentLeaveStartDate: '',
+    currentLeaveEndDate: '',
     exemption: false,
   };
 
@@ -929,10 +927,9 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
       healthAcquisition: this.formatDateForInput(employee.healthAcquisition),
       pensionAcquisition: this.formatDateForInput(employee.pensionAcquisition),
-      childcareLeaveStart: this.formatDateForInput(employee.childcareLeaveStart),
-      childcareLeaveEnd: this.formatDateForInput(employee.childcareLeaveEnd),
-      maternityLeaveStart: this.formatDateForInput(employee.maternityLeaveStart),
-      maternityLeaveEnd: this.formatDateForInput(employee.maternityLeaveEnd),
+      currentLeaveStatus: employee.currentLeaveStatus ?? '',
+      currentLeaveStartDate: this.formatDateForInput(employee.currentLeaveStartDate),
+      currentLeaveEndDate: this.formatDateForInput(employee.currentLeaveEndDate),
       careSecondInsured: employee.careSecondInsured ?? this.socialInsurance.careSecondInsured,
       exemption: employee.exemption ?? this.socialInsurance.exemption,
     };
