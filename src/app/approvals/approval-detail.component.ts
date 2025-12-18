@@ -420,6 +420,150 @@ export class ApprovalDetailComponent implements OnDestroy {
   }
 
   /**
+   * 承認済みの社員情報更新申請を社員コレクションへ反映
+   */
+  private async persistUpdatedEmployee(request: ApprovalRequest): Promise<void> {
+    if (!request.employeeData) {
+      throw new Error('employeeData が見つかりません');
+    }
+
+    // employeeDiffsから既存社員IDを取得
+    const employeeDiff = request.employeeDiffs?.[0];
+    if (!employeeDiff?.existingEmployeeId) {
+      throw new Error('既存社員IDが見つかりません');
+    }
+
+    const employeeId = employeeDiff.existingEmployeeId;
+    const { basicInfo, socialInsurance, dependentInfo, dependentInfos } =
+      request.employeeData;
+    if (!basicInfo?.employeeNo || !basicInfo?.name) {
+      throw new Error('社員番号または氏名が不足しています');
+    }
+
+    // 最終承認者の名前を取得
+    let approverDisplayName: string | undefined;
+    if (request.histories) {
+      const approvalHistories = request.histories.filter(
+        (h) => h.action === 'approve',
+      );
+
+      if (approvalHistories.length > 0) {
+        const latestHistory = approvalHistories.sort((a, b) => {
+          const aTime = a.createdAt?.toDate?.()?.getTime() || 0;
+          const bTime = b.createdAt?.toDate?.()?.getTime() || 0;
+          return bTime - aTime;
+        })[0];
+
+        if (latestHistory.actorId) {
+          try {
+            const users = await firstValueFrom(this.userDirectory.getUsers());
+            const userMap = new Map(
+              users.map((u) => [
+                u.email.toLowerCase(),
+                u.displayName || u.email,
+              ]),
+            );
+            approverDisplayName =
+              userMap.get(latestHistory.actorId.toLowerCase()) ||
+              latestHistory.actorName ||
+              latestHistory.actorId;
+          } catch (error) {
+            console.error('承認者情報の取得に失敗しました:', error);
+            approverDisplayName =
+              latestHistory.actorName || latestHistory.actorId;
+          }
+        }
+      }
+    }
+
+    const healthStandardMonthly = socialInsurance?.healthStandardMonthly ?? 0;
+    const welfareStandardMonthly = socialInsurance?.welfareStandardMonthly ?? 0;
+
+    // employeeDataをShahoEmployee形式に変換
+    const currentAddress = basicInfo.isCurrentAddressSameAsResident
+      ? undefined
+      : basicInfo.currentAddress || undefined;
+
+    const employeePayload: Partial<ShahoEmployee> = {
+      employeeNo: basicInfo.employeeNo,
+      name: basicInfo.name,
+      kana: basicInfo.kana || undefined,
+      gender: basicInfo.gender || undefined,
+      birthDate: basicInfo.birthDate || undefined,
+      postalCode: basicInfo.postalCode || undefined,
+      address: basicInfo.address || undefined,
+      currentAddress: currentAddress,
+      department: basicInfo.department || undefined,
+      workPrefecture: basicInfo.workPrefecture || undefined,
+      personalNumber: basicInfo.myNumber || undefined,
+      basicPensionNumber: basicInfo.basicPensionNumber || undefined,
+      hasDependent: basicInfo.hasDependent ?? undefined,
+      healthStandardMonthly: healthStandardMonthly || undefined,
+      welfareStandardMonthly: welfareStandardMonthly || undefined,
+      standardBonusAnnualTotal: socialInsurance?.healthCumulative || undefined,
+      healthInsuredNumber: socialInsurance?.healthInsuredNumber || undefined,
+      pensionInsuredNumber: socialInsurance?.pensionInsuredNumber || undefined,
+      careSecondInsured: socialInsurance?.careSecondInsured || false,
+      healthAcquisition: socialInsurance?.healthAcquisition || undefined,
+      pensionAcquisition: socialInsurance?.pensionAcquisition || undefined,
+      currentLeaveStatus:
+        (socialInsurance as any)?.currentLeaveStatus || undefined,
+      currentLeaveStartDate:
+        (socialInsurance as any)?.currentLeaveStartDate || undefined,
+      currentLeaveEndDate:
+        (socialInsurance as any)?.currentLeaveEndDate || undefined,
+      exemption: socialInsurance?.exemption || false,
+      approvedBy: approverDisplayName,
+    };
+
+    const cleanedEmployee = this.removeUndefinedFields(
+      employeePayload,
+    ) as Partial<ShahoEmployee>;
+
+    // 社員情報を更新
+    await this.employeesService.updateEmployee(employeeId, cleanedEmployee);
+
+    // 扶養情報を同期
+    const dependentsSource =
+      dependentInfos && dependentInfos.length > 0
+        ? dependentInfos
+        : dependentInfo
+          ? [dependentInfo]
+          : [];
+
+    const dependentDataList: DependentData[] = [];
+    for (const dep of dependentsSource) {
+      if (!this.hasDependentData(dep)) continue;
+      const dependentData: DependentData = {
+        relationship: dep.relationship || undefined,
+        nameKanji: dep.nameKanji || undefined,
+        nameKana: dep.nameKana || undefined,
+        birthDate: dep.birthDate || undefined,
+        gender: dep.gender || undefined,
+        personalNumber: dep.personalNumber || undefined,
+        basicPensionNumber: dep.basicPensionNumber || undefined,
+        cohabitationType: dep.cohabitationType || undefined,
+        address: dep.address || undefined,
+        occupation: dep.occupation || undefined,
+        annualIncome: dep.annualIncome ?? undefined,
+        dependentStartDate: dep.dependentStartDate || undefined,
+        thirdCategoryFlag: dep.thirdCategoryFlag || false,
+      };
+
+      const cleanedDependent = this.removeUndefinedFields(
+        dependentData,
+      ) as DependentData;
+      dependentDataList.push(cleanedDependent);
+    }
+
+    await this.syncDependents(
+      employeeId,
+      basicInfo.hasDependent,
+      dependentDataList,
+    );
+  }
+
+  /**
    * 承認済みのCSVインポートデータを社員コレクションへ反映
    */
   private async saveApprovedImportData(
@@ -1023,6 +1167,23 @@ export class ApprovalDetailComponent implements OnDestroy {
         } catch (error) {
           console.error('社員データの保存に失敗しました', error);
           this.addToast('社員データの保存に失敗しました。', 'warning');
+        }
+      }
+
+      // 社員情報更新の最終承認時に社員データを保存
+      if (
+        action === 'approve' &&
+        result.request.status === 'approved' &&
+        result.request.category === '社員情報更新' &&
+        result.request.employeeData &&
+        result.request.employeeDiffs?.[0]?.existingEmployeeId
+      ) {
+        try {
+          await this.persistUpdatedEmployee(result.request);
+          this.addToast('承認済みの社員データを更新しました。', 'success');
+        } catch (error) {
+          console.error('社員データの更新に失敗しました', error);
+          this.addToast('社員データの更新に失敗しました。', 'warning');
         }
       }
 
