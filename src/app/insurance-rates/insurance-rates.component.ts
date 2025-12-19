@@ -920,24 +920,13 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       console.log('completeRequest.employeeDiffs[0].changes:', completeRequest.employeeDiffs?.[0]?.changes);
 
       // startApprovalProcessに渡す（内部でsaveRequestが呼ばれるが、既に保存済みのIDがあるので更新される）
+      // 注意: 反映処理は承認側（approval-detail.component.ts）で実行されるため、
+      // ここでは反映処理を行わない（二重実行を防ぐため）
       const result = await this.approvalWorkflowService.startApprovalProcess({
       request: completeRequest,
       onApproved: async () => {
-        if (!this.pendingPayload) return;
-        // 履歴を保持するため、常に新しいレコードとして保存（idはundefined）
-        const payloadToSave = {
-          ...this.pendingPayload,
-          id: undefined,
-        };
-        await this.insuranceRatesService.saveRates(payloadToSave);
-        this.message = '承認が完了したため保険料率を保存しました。';
-        this.awaitingApproval = false;
-        this.approvalRequestId = null;
-        this.pendingPayload = undefined;
-        this.selectedFiles = [];
-        this.validationErrors = [];
-        this.requestComment = '';
-        this.loadHistory();
+        // 承認完了時の通知のみ（反映処理は承認側で実行）
+        console.log('承認が完了しました。反映処理は承認側で実行されます。');
       },
       onFailed: () => {
         this.awaitingApproval = false;

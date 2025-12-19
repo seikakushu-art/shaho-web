@@ -554,29 +554,13 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       this.validationErrors = [];
 
       // 承認プロセスを開始
+      // 注意: 反映処理は承認側（approval-detail.component.ts）で実行されるため、
+      // ここでは反映処理を行わない（二重実行を防ぐため）
       const result = await this.workflowService.startApprovalProcess({
         request: { ...saved, id: saved.id },
         onApproved: async () => {
-          // 承認完了時に社員データを保存
-          if (!saved.id) {
-            console.error('saved.idがありません');
-            return;
-          }
-
-          // 承認依頼から最新のデータを取得
-          const approvedRequest = await firstValueFrom(
-            this.workflowService.getRequest(saved.id).pipe(take(1)),
-          );
-
-          if (!approvedRequest?.importEmployeeData) {
-            console.error('承認依頼にimportEmployeeDataが見つかりません');
-            return;
-          }
-
-          await this.saveApprovedImportData(approvedRequest.importEmployeeData);
-
-          console.log('saveApprovedImportDataが完了しました');
-          console.log('========================================');
+          // 承認完了時の通知のみ（反映処理は承認側で実行）
+          console.log('承認が完了しました。反映処理は承認側で実行されます。');
         },
         onFailed: () => {
           // 承認が失敗した場合の処理

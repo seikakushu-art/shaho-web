@@ -196,8 +196,6 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   }[] = [
     { key: 'monthlySalary', label: '月給支払額', category: 'monthly' },
     { key: 'workedDays', label: '支払基礎日数', category: 'monthly' },
-    { key: 'healthStandardMonthly', label: '健保標準報酬月額', category: 'monthly' },
-    { key: 'welfareStandardMonthly', label: '厚年標準報酬月額', category: 'monthly' },
     { key: 'healthInsuranceMonthly', label: '健康保険（月給）', category: 'monthly' },
     { key: 'careInsuranceMonthly', label: '介護保険（月給）', category: 'monthly' },
     { key: 'pensionMonthly', label: '厚生年金（月給）', category: 'monthly' },

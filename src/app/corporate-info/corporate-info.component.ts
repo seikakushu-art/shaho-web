@@ -350,65 +350,14 @@ export class CorporateInfoComponent implements OnInit, OnDestroy  {
       this.selectedFiles = [];
       this.validationErrors = [];
 
+      // 承認プロセスを開始
+      // 注意: 反映処理は承認側（approval-detail.component.ts）で実行されるため、
+      // ここでは反映処理を行わない（二重実行を防ぐため）
       const result = await this.approvalWorkflowService.startApprovalProcess({
         request: { ...saved, id: saved.id },
         onApproved: async () => {
-          if (!this.pendingPayload || !saved.id) return;
-          
-          // 承認依頼から最新のデータを取得
-          const approvedRequest = await firstValueFrom(
-            this.approvalWorkflowService.getRequest(saved.id).pipe(take(1))
-          );
-          
-          if (!approvedRequest) {
-            await this.corporateInfoService.saveCorporateInfo(this.pendingPayload);
-            this.message = '承認が完了しました。法人情報を更新しました。';
-            this.editMode = false;
-            this.pendingPayload = undefined;
-            this.pendingRequestId = undefined;
-            return;
-          }
-
-          // 最終承認者の名前を取得
-          let approverDisplayName: string | undefined;
-          if (approvedRequest.histories) {
-            const approvalHistories = approvedRequest.histories.filter(
-              (h) => h.action === 'approve',
-            );
-            
-            if (approvalHistories.length > 0) {
-              // 最新の承認履歴を取得
-              const latestHistory = approvalHistories.sort((a, b) => {
-                const aTime = a.createdAt?.toDate?.()?.getTime() || 0;
-                const bTime = b.createdAt?.toDate?.()?.getTime() || 0;
-                return bTime - aTime;
-              })[0];
-              
-              // app_usersから承認者のdisplayNameを取得
-              if (latestHistory.actorId) {
-                try {
-                  const approver = await firstValueFrom(
-                    this.userDirectory.getUserByEmail(latestHistory.actorId)
-                  );
-                  approverDisplayName = approver?.displayName || latestHistory.actorName || latestHistory.actorId;
-                } catch (error) {
-                  console.error('承認者情報の取得に失敗しました:', error);
-                  approverDisplayName = latestHistory.actorName || latestHistory.actorId;
-                }
-              }
-            }
-          }
-
-          // 承認者名を含めて保存
-          const payloadWithApprover = {
-            ...this.pendingPayload,
-            approvedBy: approverDisplayName,
-          };
-          await this.corporateInfoService.saveCorporateInfo(payloadWithApprover);
-          this.message = '承認が完了しました。法人情報を更新しました。';
-          this.editMode = false;
-          this.pendingPayload = undefined;
-          this.pendingRequestId = undefined;
+          // 承認完了時の通知のみ（反映処理は承認側で実行）
+          console.log('承認が完了しました。反映処理は承認側で実行されます。');
         },
         onFailed: () => {
           this.pendingPayload = undefined;
