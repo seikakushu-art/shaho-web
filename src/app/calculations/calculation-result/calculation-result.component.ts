@@ -117,6 +117,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
   standardMethod: StandardCalculationMethod = '定時決定';
   activeInsurances: string[] = [];
   includeBonusInMonth = true;
+  bonusOnly = false;
   departmentFilter = '';
   locationFilter = '';
   employeeNoFilter = '';
@@ -475,6 +476,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
               this.standardMethod = (calcParams.standardMethod as StandardCalculationMethod) ?? '定時決定';
               this.activeInsurances = calcParams.insurances ?? [];
               this.includeBonusInMonth = calcParams.includeBonusInMonth ?? true;
+              this.bonusOnly = calcParams.bonusOnly ?? false;
               this.departmentFilter = calcParams.department ?? '';
               this.locationFilter = calcParams.location ?? '';
               this.employeeNoFilter = calcParams.employeeNo ?? '';
@@ -511,6 +513,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
             this.standardMethod = (calcParams.standardMethod as StandardCalculationMethod) ?? '定時決定';
             this.activeInsurances = calcParams.insurances ?? [];
             this.includeBonusInMonth = calcParams.includeBonusInMonth ?? true;
+            this.bonusOnly = calcParams.bonusOnly ?? false;
             this.departmentFilter = calcParams.department ?? '';
             this.locationFilter = calcParams.location ?? '';
             this.employeeNoFilter = calcParams.employeeNo ?? '';
@@ -542,6 +545,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       .filter(Boolean);
     this.includeBonusInMonth =
       params.get('includeBonusInMonth') === 'false' ? false : true;
+    this.bonusOnly = params.get('bonusOnly') === 'true' ? true : false;
     this.departmentFilter = params.get('department') ?? '';
     this.locationFilter = params.get('location') ?? '';
     this.employeeNoFilter = params.get('employeeNo') ?? '';
@@ -644,6 +648,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       location: this.locationFilter || undefined,
       employeeNo: this.employeeNoFilter || undefined,
       includeBonusInMonth: this.includeBonusInMonth,
+      bonusOnly: this.bonusOnly || undefined,
       bonusPaidOn: this.bonusPaidOnFilter || undefined,
     };
   }
@@ -999,13 +1004,17 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         // 健康保険の合計raw値
         if (summaryRefs.health && healthRate) {
           const totalRate = parseRate(healthRate.totalRate);
-          // 月例分
-          if (row.healthStandardMonthly) {
-            rawHealthTotal += row.healthStandardMonthly * totalRate;
+          // 月例分：実際に月例分の保険料が計算されている場合のみ
+          if (row.healthEmployeeMonthly > 0 || row.healthEmployerMonthly > 0) {
+            if (row.healthStandardMonthly) {
+              rawHealthTotal += row.healthStandardMonthly * totalRate;
+            }
           }
-          // 賞与分（標準報酬月額が0でも賞与がある場合は含める）
-          if (row.standardHealthBonus > 0) {
-            rawHealthTotal += row.standardHealthBonus * totalRate;
+          // 賞与分：実際に賞与分の保険料が計算されている場合のみ
+          if (row.healthEmployeeBonus > 0 || row.healthEmployerBonus > 0) {
+            if (row.standardHealthBonus > 0) {
+              rawHealthTotal += row.standardHealthBonus * totalRate;
+            }
           }
         }
 
@@ -1031,13 +1040,17 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         // 厚生年金の合計raw値
         if (summaryRefs.welfare && rateRecord.pensionRate) {
           const totalRate = parseRate(rateRecord.pensionRate.totalRate);
-          // 月例分
-          if (row.welfareStandardMonthly) {
-            rawWelfareTotal += row.welfareStandardMonthly * totalRate;
+          // 月例分：実際に月例分の保険料が計算されている場合のみ
+          if (row.welfareEmployeeMonthly > 0 || row.welfareEmployerMonthly > 0) {
+            if (row.welfareStandardMonthly) {
+              rawWelfareTotal += row.welfareStandardMonthly * totalRate;
+            }
           }
-          // 賞与分（標準報酬月額が0でも賞与がある場合は含める）
-          if (row.standardWelfareBonus > 0) {
-            rawWelfareTotal += row.standardWelfareBonus * totalRate;
+          // 賞与分：実際に賞与分の保険料が計算されている場合のみ
+          if (row.welfareEmployeeBonus > 0 || row.welfareEmployerBonus > 0) {
+            if (row.standardWelfareBonus > 0) {
+              rawWelfareTotal += row.standardWelfareBonus * totalRate;
+            }
           }
         }
       }
@@ -1275,6 +1288,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     this.standardMethod = query.standardMethod;
     this.activeInsurances = query.insurances;
     this.includeBonusInMonth = query.includeBonusInMonth ?? true;
+    this.bonusOnly = query.bonusOnly ?? false;
     this.departmentFilter = query.department ?? '';
     this.locationFilter = query.location ?? '';
     this.employeeNoFilter = query.employeeNo ?? '';
@@ -1448,6 +1462,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           standardMethod: this.standardMethod,
           insurances: this.activeInsurances,
           includeBonusInMonth: this.includeBonusInMonth,
+          bonusOnly: this.bonusOnly,
           department: this.departmentFilter,
           location: this.locationFilter,
           employeeNo: this.employeeNoFilter,
@@ -1584,41 +1599,56 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           }
         }
 
-        const payrollData: any = {
-          yearMonth: yearMonth,
+        // 月次データを準備
+        const payrollMonthData: any = {
           amount: row.monthlySalary || undefined,
-          bonusPaidOn: row.bonusPaymentDate || undefined,
-          bonusTotal: row.bonusTotalPay || undefined,
-          standardHealthBonus:
-            row.standardHealthBonus > 0 ? row.standardHealthBonus : undefined,
-          standardWelfareBonus:
-            row.standardWelfareBonus > 0 ? row.standardWelfareBonus : undefined,
-          // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
-          standardBonus:
-            row.standardHealthBonus || row.standardWelfareBonus || undefined,
           healthInsuranceMonthly:
             healthMonthlyTotal > 0 ? healthMonthlyTotal : undefined,
           careInsuranceMonthly:
             careMonthlyTotal > 0 ? careMonthlyTotal : undefined,
           pensionMonthly:
             pensionMonthlyTotal > 0 ? pensionMonthlyTotal : undefined,
-          healthInsuranceBonus:
-            healthBonusTotal > 0 ? healthBonusTotal : undefined,
-          careInsuranceBonus: careBonusTotal > 0 ? careBonusTotal : undefined,
-          pensionBonus: pensionBonusTotal > 0 ? pensionBonusTotal : undefined,
         };
 
-        
-        Object.keys(payrollData).forEach((key) => {
-          if (payrollData[key] === undefined) {
-            delete payrollData[key];
+        // undefinedのフィールドを除外
+        Object.keys(payrollMonthData).forEach((key) => {
+          if (payrollMonthData[key] === undefined) {
+            delete payrollMonthData[key];
           }
         });
 
-        await this.employeesService.addOrUpdatePayroll(
+        // 賞与明細データを準備
+        let bonusPaymentData: any | undefined;
+        if (row.bonusPaymentDate && row.bonusTotalPay !== undefined && row.bonusTotalPay > 0) {
+          bonusPaymentData = {
+            bonusPaidOn: row.bonusPaymentDate,
+            bonusTotal: row.bonusTotalPay,
+            standardHealthBonus:
+              row.standardHealthBonus > 0 ? row.standardHealthBonus : undefined,
+            standardWelfareBonus:
+              row.standardWelfareBonus > 0 ? row.standardWelfareBonus : undefined,
+            standardBonus:
+              row.standardHealthBonus || row.standardWelfareBonus || undefined,
+            healthInsuranceBonus:
+              healthBonusTotal > 0 ? healthBonusTotal : undefined,
+            careInsuranceBonus: careBonusTotal > 0 ? careBonusTotal : undefined,
+            pensionBonus: pensionBonusTotal > 0 ? pensionBonusTotal : undefined,
+          };
+
+          // undefinedのフィールドを除外
+          Object.keys(bonusPaymentData).forEach((key) => {
+            if (bonusPaymentData[key] === undefined) {
+              delete bonusPaymentData[key];
+            }
+          });
+        }
+
+        // 新しい構造で保存（Transaction使用）
+        await this.employeesService.addOrUpdatePayrollMonth(
           employeeId,
           yearMonth,
-          payrollData,
+          payrollMonthData,
+          bonusPaymentData,
         );
         const standardMonthlyUpdate: Record<string, number> = {};
         if (row.healthStandardMonthly && row.healthStandardMonthly > 0) {

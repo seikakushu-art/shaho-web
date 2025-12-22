@@ -75,10 +75,17 @@
     </div>
     <div class="field" *ngIf="calculationType === 'insurance'">
       <label>
-        <input type="checkbox" [(ngModel)]="includeBonusInMonth" />
+        <input type="checkbox" [(ngModel)]="includeBonusInMonth" [disabled]="bonusOnly" (change)="onIncludeBonusInMonthChange()" />
         対象月に賞与を含める
       </label>
       <div class="hint" style="font-size: 0.85em; color: #666;">標準賞与額は自動計算されます。</div>
+    </div>
+    <div class="field" *ngIf="calculationType === 'insurance'">
+      <label>
+        <input type="checkbox" [(ngModel)]="bonusOnly" [disabled]="includeBonusInMonth" (change)="onBonusOnlyChange()" />
+        賞与のみ計算
+      </label>
+      <div class="hint" style="font-size: 0.85em; color: #666;">対象年月の賞与の社会保険料のみ計算され、月例分は計算されません。</div>
     </div>
     <div class="field">
       <label>保険種別</label>

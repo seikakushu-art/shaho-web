@@ -40,6 +40,7 @@ export interface CalculationContext {
   standardCalculationMethod: StandardCalculationMethod;
   activeInsurances: InsuranceKey[];
   includeBonusInMonth?: boolean;
+  bonusOnly?: boolean;
 }
 
 export function parseRate(rate?: string): number {

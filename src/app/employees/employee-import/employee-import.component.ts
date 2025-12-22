@@ -1032,48 +1032,38 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
               const [year, month] = yearMonth.split('-');
               const normalizedYearMonth = `${year}-${month.padStart(2, '0')}`;
 
-              // 既存の給与データを取得（マージするため）
-              let existingPayroll: PayrollData | undefined;
-              try {
-                existingPayroll = await firstValueFrom(
-                  this.employeesService.getPayroll(
-                    employeeId,
-                    normalizedYearMonth,
-                  ),
-                );
-              } catch {
-                // データが存在しない場合はundefinedのまま
-              }
-
-              const payrollDataRaw: Partial<PayrollData> = {
-                ...existingPayroll,
-                yearMonth: normalizedYearMonth,
+              // 月次データを準備
+              const payrollMonthData: any = {
                 workedDays: workedDays
                   ? Number(workedDays.replace(/,/g, ''))
-                  : existingPayroll?.workedDays || 0,
+                  : undefined,
                 amount: monthlyPayAmount
                   ? Number(monthlyPayAmount.replace(/,/g, ''))
-                  : existingPayroll?.amount,
-                // 賞与データも同じ月に含まれる場合は追加
-                bonusPaidOn:
-                  bonusPaidOn?.trim() ||
-                  existingPayroll?.bonusPaidOn ||
-                  undefined,
-                bonusTotal: bonusTotal
-                  ? Number(bonusTotal.replace(/,/g, ''))
-                  : existingPayroll?.bonusTotal,
+                  : undefined,
               };
 
-              // undefined と空文字列のフィールドを除外
-              const payrollData = removeUndefinedFields(
-                payrollDataRaw,
-              ) as PayrollData;
+              // undefinedのフィールドを除外
+              Object.keys(payrollMonthData).forEach((key) => {
+                if (payrollMonthData[key] === undefined) {
+                  delete payrollMonthData[key];
+                }
+              });
+
+              // 賞与データがある場合は賞与明細として追加
+              let bonusPaymentData: any | undefined;
+              if (bonusPaidOn?.trim() && bonusTotal) {
+                bonusPaymentData = {
+                  bonusPaidOn: bonusPaidOn.trim(),
+                  bonusTotal: Number(bonusTotal.replace(/,/g, '')),
+                };
+              }
 
               payrollPromises.push(
-                this.employeesService.addOrUpdatePayroll(
+                this.employeesService.addOrUpdatePayrollMonth(
                   employeeId,
                   normalizedYearMonth,
-                  payrollData,
+                  payrollMonthData,
+                  bonusPaymentData,
                 ),
               );
             } else if (bonusPaidOn) {
@@ -1085,40 +1075,27 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 const month = String(bonusDate.getMonth() + 1).padStart(2, '0');
                 const normalizedYearMonth = `${year}-${month}`;
 
-                // 既存の給与データを取得（マージするため）
-                let existingPayroll: PayrollData | undefined;
-                try {
-                  existingPayroll = await firstValueFrom(
-                    this.employeesService.getPayroll(
-                      employeeId,
-                      normalizedYearMonth,
-                    ),
-                  );
-                } catch {
-                  // データが存在しない場合はundefinedのまま
-                }
-
-                const payrollDataRaw: Partial<PayrollData> = {
-                  ...existingPayroll,
-                  yearMonth: normalizedYearMonth,
-                  workedDays: existingPayroll?.workedDays || 0,
-                  amount: existingPayroll?.amount,
-                  bonusPaidOn: bonusPaidOn?.trim() || undefined,
+                // 賞与明細データを準備
+                const bonusPaymentData: any = {
+                  bonusPaidOn: bonusPaidOn.trim(),
                   bonusTotal: bonusTotal
                     ? Number(bonusTotal.replace(/,/g, ''))
                     : undefined,
                 };
 
-                // undefined と空文字列のフィールドを除外
-                const payrollData = removeUndefinedFields(
-                  payrollDataRaw,
-                ) as PayrollData;
+                // undefinedのフィールドを除外
+                Object.keys(bonusPaymentData).forEach((key) => {
+                  if (bonusPaymentData[key] === undefined) {
+                    delete bonusPaymentData[key];
+                  }
+                });
 
                 payrollPromises.push(
-                  this.employeesService.addOrUpdatePayroll(
+                  this.employeesService.addOrUpdatePayrollMonth(
                     employeeId,
                     normalizedYearMonth,
-                    payrollData,
+                    {}, // 月次データなし
+                    bonusPaymentData,
                   ),
                 );
               }

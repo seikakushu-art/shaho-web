@@ -33,6 +33,7 @@ export class CalculationTargetComponent implements OnInit {
   targetMonth = '';
   bonusPaymentDate = '';
   includeBonusInMonth = true;
+  bonusOnly = false;
   standardCalculationMethod: StandardCalculationMethod = '定時決定';
   department = '';
   location = '';
@@ -87,6 +88,11 @@ export class CalculationTargetComponent implements OnInit {
     this.location = params.get('location') ?? this.location;
     this.employeeNo = params.get('employeeNo') ?? this.employeeNo;
     this.includeBonusInMonth = params.get('includeBonusInMonth') === 'false' ? false : this.includeBonusInMonth;
+    this.bonusOnly = params.get('bonusOnly') === 'true' ? true : false;
+    // 相互排他チェック: 両方がtrueの場合はincludeBonusInMonthを優先
+    if (this.bonusOnly && this.includeBonusInMonth) {
+      this.bonusOnly = false;
+    }
 
     this.restoreInsuranceSelections(params.get('insurances'));
     this.loadEmployeeMetadata();
@@ -268,6 +274,18 @@ export class CalculationTargetComponent implements OnInit {
       .slice(-1)[0]?.bonusPaidOn;
   }
 
+  onIncludeBonusInMonthChange() {
+    if (this.includeBonusInMonth && this.bonusOnly) {
+      this.bonusOnly = false;
+    }
+  }
+
+  onBonusOnlyChange() {
+    if (this.bonusOnly && this.includeBonusInMonth) {
+      this.includeBonusInMonth = false;
+    }
+  }
+
   onSubmit() {
     const insurances = Object.keys(this.insuranceSelections)
       .filter((k) => this.insuranceSelections[k as InsuranceKey])
@@ -305,6 +323,7 @@ export class CalculationTargetComponent implements OnInit {
         standardMethod: this.standardCalculationMethod,
         bonusPaidOn: bonusPaidOnParam,
         includeBonusInMonth: this.includeBonusInMonth,
+        bonusOnly: this.bonusOnly || undefined,
         department: this.department || undefined,
         location: this.location || undefined,
         employeeNo: this.employeeNo || undefined,

@@ -112,6 +112,7 @@ export interface ApprovalRequest {
     standardMethod?: string;
     insurances?: string[];
     includeBonusInMonth?: boolean;
+    bonusOnly?: boolean;
     department?: string;
     location?: string;
     employeeNo?: string;

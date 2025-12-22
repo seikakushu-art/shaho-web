@@ -77,6 +77,7 @@ export interface CalculationQueryParams {
   location?: string;
   employeeNo?: string;
   includeBonusInMonth?: boolean;
+  bonusOnly?: boolean;
   bonusPaidOn?: string;
 }
 
@@ -137,6 +138,7 @@ export class CalculationDataService {
               standardCalculationMethod: standardMethod,
               activeInsurances,
               includeBonusInMonth: params.includeBonusInMonth,
+              bonusOnly: params.bonusOnly,
             };
 
             const filtered = this.filterEmployees(employees, params);
@@ -489,15 +491,19 @@ export class CalculationDataService {
 
     // 一時免除フラグがONの場合は、すべての保険料を0にする
     const isExempted = employee.exemption === true;
+    // bonusOnlyがtrueの場合は月例分を0にする
+    const shouldCalculateMonthly = !(context.bonusOnly ?? false);
+    // bonusOnlyがtrueの場合は賞与分を計算する（includeBonusInMonthの値に関係なく）
+    const shouldCalculateBonus = (context.bonusOnly ?? false) || (context.includeBonusInMonth ?? true);
 
-    const healthMonthly = isExempted || !context.activeInsurances.includes('health')
+    const healthMonthly = isExempted || !context.activeInsurances.includes('health') || !shouldCalculateMonthly
     ? { employee: 0, employer: 0, total: 0 }
       : calculateInsurancePremium(healthStandardMonthly, healthRate);
     const nursingMonthly =
-      isExempted || !context.activeInsurances.includes('nursing') || !careSecondInsured
+      isExempted || !context.activeInsurances.includes('nursing') || !careSecondInsured || !shouldCalculateMonthly
       ? { employee: 0, employer: 0, total: 0 }
         : calculateInsurancePremium(healthStandardMonthly, nursingRate);
-    const welfareMonthly = isExempted || !context.activeInsurances.includes('welfare')
+    const welfareMonthly = isExempted || !context.activeInsurances.includes('welfare') || !shouldCalculateMonthly
       ? { employee: 0, employer: 0, total: 0 }
       : calculatePensionPremium(
         welfareStandardMonthly,
@@ -507,20 +513,20 @@ export class CalculationDataService {
     const healthBonus =
       isExempted ||
       !context.activeInsurances.includes('health') ||
-      !(context.includeBonusInMonth ?? true)
+      !shouldCalculateBonus
         ? { employee: 0, employer: 0, total: 0 }
         : calculateInsurancePremium(standardHealthBonus, healthRate);
     const nursingBonus =
       isExempted ||
       !context.activeInsurances.includes('nursing') ||
       !careSecondInsured ||
-      !(context.includeBonusInMonth ?? true)
+      !shouldCalculateBonus
         ? { employee: 0, employer: 0, total: 0 }
         : calculateInsurancePremium(standardHealthBonus, nursingRate);
     const welfareBonus =
       isExempted ||
       !context.activeInsurances.includes('welfare') ||
-      !(context.includeBonusInMonth ?? true)
+      !shouldCalculateBonus
         ? { employee: 0, employer: 0, total: 0 }
         : calculatePensionPremium( standardWelfareBonus, rateRecord.pensionRate);
 

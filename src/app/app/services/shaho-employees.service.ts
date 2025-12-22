@@ -13,6 +13,8 @@ import {
   orderBy,
   getDocs,
   writeBatch,
+  runTransaction,
+  getDoc,
 } from '@angular/fire/firestore';
 import { Auth } from '@angular/fire/auth';
 import { Observable, combineLatest, map, of, switchMap, firstValueFrom, take } from 'rxjs';
@@ -125,6 +127,62 @@ export type ExternalSyncResult = {
 };
 
 
+/**
+ * 月次給与ドキュメント（集計・表示用）
+ * shaho_employees/{empId}/payrollMonths/{YYYYMM}
+ */
+export interface PayrollMonth {
+  id?: string; // FirestoreドキュメントID（YYYYMM形式）
+  yearMonth: string; // 2025-04 形式（後方互換性のため）
+  // 月給関連
+  workedDays?: number; // 支払基礎日数
+  amount?: number; // 報酬額（月給支払額）
+  healthStandardMonthly?: number;
+  welfareStandardMonthly?: number;
+  healthInsuranceMonthly?: number;
+  careInsuranceMonthly?: number;
+  pensionMonthly?: number;
+  // 賞与集計値
+  monthlyBonusTotal?: number; // 同月内の賞与総支給額の合計
+  monthlyStandardBonusTotal?: number; // 同月内の標準賞与額の合計
+  monthlyStandardHealthBonusTotal?: number; // 同月内の標準賞与額（健・介）の合計
+  monthlyStandardWelfareBonusTotal?: number; // 同月内の標準賞与額（厚生年金）の合計
+  premiumTotalToDate?: number; // 累計保険料（必要に応じて）
+  // 監査情報
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  createdBy?: string;
+  updatedBy?: string;
+  approvedBy?: string; // 承認者
+}
+
+/**
+ * 賞与明細（支給回ごと）
+ * shaho_employees/{empId}/payrollMonths/{YYYYMM}/bonusPayments/{bonusPaymentId}
+ */
+export interface BonusPayment {
+  id?: string; // FirestoreドキュメントID（bonusPaymentId）
+  sourcePaymentId?: string; // 基幹システムの支給ID（あれば）
+  bonusPaidOn: string; // 賞与支給日（YYYY-MM-DD形式）
+  bonusTotal: number; // 賞与総支給額
+  standardHealthBonus?: number; // 標準賞与額（健・介）
+  standardWelfareBonus?: number; // 標準賞与額（厚生年金）
+  standardBonus?: number; // 後方互換性のためのフィールド（非推奨）
+  healthInsuranceBonus?: number;
+  careInsuranceBonus?: number;
+  pensionBonus?: number;
+  // 監査情報
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+  createdBy?: string;
+  updatedBy?: string;
+  approvedBy?: string; // 承認者
+}
+
+/**
+ * 後方互換性のための既存インターフェース（非推奨）
+ * @deprecated PayrollMonth と BonusPayment を使用してください
+ */
 export interface PayrollData {
   id?: string; // FirestoreドキュメントID
   yearMonth: string; // 2025-04 形式
@@ -757,7 +815,283 @@ export class ShahoEmployeesService {
   // 給与データ（payrolls）の操作メソッド
 
   /**
-   * 給与データを追加または更新
+   * bonusPaymentIdを生成（決定的ID）
+   * @param sourcePaymentId 基幹システムの支給ID（あれば）
+   * @param bonusPaidOn 賞与支給日（YYYY-MM-DD形式）
+   * @param bonusTotal 賞与総支給額
+   * @param existingIds 既存のIDリスト（重複チェック用）
+   */
+  private generateBonusPaymentId(
+    sourcePaymentId: string | undefined,
+    bonusPaidOn: string,
+    bonusTotal: number,
+    existingIds: string[] = [],
+  ): string {
+    // 基幹システムの支給IDがあればそれを優先
+    if (sourcePaymentId && sourcePaymentId.trim()) {
+      return sourcePaymentId.trim();
+    }
+
+    // YYYYMMDD形式に変換
+    const dateStr = bonusPaidOn.replace(/\//g, '-').split('T')[0]; // YYYY-MM-DD形式を想定
+    const yyyymmdd = dateStr.replace(/-/g, '').substring(0, 8); // YYYYMMDD
+
+    // 既存のIDから同日のIDを抽出してseqを決定
+    const sameDayIds = existingIds.filter((id) => id.startsWith(yyyymmdd));
+    const seq = sameDayIds.length + 1;
+
+    // YYYYMMDD-{amount}-{seq} 形式
+    return `${yyyymmdd}-${bonusTotal}-${seq}`;
+  }
+
+  /**
+   * 年月をYYYYMM形式に変換（2025-04 -> 202504）
+   */
+  private yearMonthToYYYYMM(yearMonth: string): string {
+    return yearMonth.replace('-', '');
+  }
+
+  /**
+   * YYYYMM形式を年月に変換（202504 -> 2025-04）
+   */
+  private yyyymmToYearMonth(yyyymm: string): string {
+    if (yyyymm.length === 6) {
+      return `${yyyymm.substring(0, 4)}-${yyyymm.substring(4, 6)}`;
+    }
+    return yyyymm; // 既に2025-04形式の場合はそのまま
+  }
+
+  /**
+   * 月次給与データと賞与明細を追加または更新（Transaction使用）
+   * @param employeeId 社員ID
+   * @param yearMonth 年月（2025-04形式）
+   * @param payrollMonthData 月次給与データ
+   * @param bonusPaymentData 賞与明細データ（オプション）
+   */
+  async addOrUpdatePayrollMonth(
+    employeeId: string,
+    yearMonth: string,
+    payrollMonthData: Partial<PayrollMonth>,
+    bonusPaymentData?: Partial<BonusPayment>,
+  ): Promise<void> {
+    const yyyymm = this.yearMonthToYYYYMM(yearMonth);
+    const now = new Date().toISOString();
+    const currentUser = this.auth.currentUser;
+    const userId =
+      currentUser?.displayName ||
+      currentUser?.email ||
+      currentUser?.uid ||
+      'system';
+
+    await runTransaction(this.firestore, async (transaction) => {
+      // 月次ドキュメントの参照
+      const payrollMonthRef = doc(
+        this.firestore,
+        'shaho_employees',
+        employeeId,
+        'payrollMonths',
+        yyyymm,
+      );
+
+      // 既存の月次ドキュメントを取得
+      const payrollMonthSnap = await transaction.get(payrollMonthRef);
+      const existingPayrollMonth = payrollMonthSnap.exists()
+        ? (payrollMonthSnap.data() as PayrollMonth)
+        : undefined;
+
+      // 賞与明細を追加する場合
+      if (bonusPaymentData && bonusPaymentData.bonusPaidOn && bonusPaymentData.bonusTotal !== undefined) {
+        // 既存の賞与明細を取得してID生成に使用
+        const bonusPaymentsRef = collection(
+          this.firestore,
+          'shaho_employees',
+          employeeId,
+          'payrollMonths',
+          yyyymm,
+          'bonusPayments',
+        );
+        const bonusPaymentsSnap = await getDocs(bonusPaymentsRef);
+        const existingBonusIds = bonusPaymentsSnap.docs.map((d) => d.id);
+
+        // bonusPaymentIdを生成
+        const bonusPaymentId = this.generateBonusPaymentId(
+          bonusPaymentData.sourcePaymentId,
+          bonusPaymentData.bonusPaidOn,
+          bonusPaymentData.bonusTotal,
+          existingBonusIds,
+        );
+
+        // 賞与明細ドキュメントの参照
+        const bonusPaymentRef = doc(
+          this.firestore,
+          'shaho_employees',
+          employeeId,
+          'payrollMonths',
+          yyyymm,
+          'bonusPayments',
+          bonusPaymentId,
+        );
+
+        // 既存の賞与明細を取得
+        const bonusPaymentSnap = await transaction.get(bonusPaymentRef);
+        const existingBonusPayment = bonusPaymentSnap.exists()
+          ? (bonusPaymentSnap.data() as BonusPayment)
+          : undefined;
+
+        // 賞与明細を保存
+        const bonusPayment: BonusPayment = {
+          ...bonusPaymentData,
+          id: bonusPaymentId,
+          bonusPaidOn: bonusPaymentData.bonusPaidOn,
+          bonusTotal: bonusPaymentData.bonusTotal,
+          updatedAt: now,
+          updatedBy: userId,
+          createdAt: existingBonusPayment?.createdAt || now,
+          createdBy: existingBonusPayment?.createdBy || userId,
+        };
+
+        transaction.set(bonusPaymentRef, bonusPayment, { merge: true });
+
+        // 月次集計値を更新
+        const existingBonusTotal = existingPayrollMonth?.monthlyBonusTotal || 0;
+        const existingStandardHealthBonusTotal =
+          existingPayrollMonth?.monthlyStandardHealthBonusTotal || 0;
+        const existingStandardWelfareBonusTotal =
+          existingPayrollMonth?.monthlyStandardWelfareBonusTotal || 0;
+
+        // 既存の賞与明細の値を差し引く
+        const oldBonusTotal = existingBonusPayment?.bonusTotal || 0;
+        const oldStandardHealthBonus = existingBonusPayment?.standardHealthBonus || 0;
+        const oldStandardWelfareBonus = existingBonusPayment?.standardWelfareBonus || 0;
+
+        // 新しい値を加算
+        const newBonusTotal =
+          existingBonusTotal - oldBonusTotal + bonusPaymentData.bonusTotal;
+        const newStandardHealthBonusTotal =
+          existingStandardHealthBonusTotal -
+          oldStandardHealthBonus +
+          (bonusPaymentData.standardHealthBonus || 0);
+        const newStandardWelfareBonusTotal =
+          existingStandardWelfareBonusTotal -
+          oldStandardWelfareBonus +
+          (bonusPaymentData.standardWelfareBonus || 0);
+
+        payrollMonthData.monthlyBonusTotal = newBonusTotal;
+        payrollMonthData.monthlyStandardHealthBonusTotal =
+          newStandardHealthBonusTotal;
+        payrollMonthData.monthlyStandardWelfareBonusTotal =
+          newStandardWelfareBonusTotal;
+        payrollMonthData.monthlyStandardBonusTotal =
+          newStandardHealthBonusTotal + newStandardWelfareBonusTotal;
+      }
+
+      // 月次ドキュメントを保存（既存データをマージ）
+      const payrollMonth: PayrollMonth = {
+        ...existingPayrollMonth, // 既存データを保持
+        ...payrollMonthData, // 新しいデータで上書き
+        id: yyyymm,
+        yearMonth: yearMonth,
+        updatedAt: now,
+        updatedBy: userId,
+        createdAt: existingPayrollMonth?.createdAt || now,
+        createdBy: existingPayrollMonth?.createdBy || userId,
+      };
+
+      transaction.set(payrollMonthRef, payrollMonth, { merge: true });
+    });
+  }
+
+  /**
+   * 月次給与データを取得
+   * @param employeeId 社員ID
+   * @param yearMonth 年月（2025-04形式）
+   */
+  getPayrollMonth(
+    employeeId: string,
+    yearMonth: string,
+  ): Observable<PayrollMonth | undefined> {
+    const yyyymm = this.yearMonthToYYYYMM(yearMonth);
+    const payrollMonthRef = doc(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'payrollMonths',
+      yyyymm,
+    );
+    return docData(payrollMonthRef, { idField: 'id' }) as Observable<
+      PayrollMonth | undefined
+    >;
+  }
+
+  /**
+   * 月次給与データ一覧を取得
+   * @param employeeId 社員ID
+   */
+  getPayrollMonths(employeeId: string): Observable<PayrollMonth[]> {
+    const payrollMonthsRef = collection(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'payrollMonths',
+    );
+    const q = query(payrollMonthsRef, orderBy('id', 'desc'));
+    return collectionData(q, { idField: 'id' }) as Observable<PayrollMonth[]>;
+  }
+
+  /**
+   * 賞与明細を取得
+   * @param employeeId 社員ID
+   * @param yearMonth 年月（2025-04形式）
+   * @param bonusPaymentId 賞与明細ID
+   */
+  getBonusPayment(
+    employeeId: string,
+    yearMonth: string,
+    bonusPaymentId: string,
+  ): Observable<BonusPayment | undefined> {
+    const yyyymm = this.yearMonthToYYYYMM(yearMonth);
+    const bonusPaymentRef = doc(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'payrollMonths',
+      yyyymm,
+      'bonusPayments',
+      bonusPaymentId,
+    );
+    return docData(bonusPaymentRef, { idField: 'id' }) as Observable<
+      BonusPayment | undefined
+    >;
+  }
+
+  /**
+   * 賞与明細一覧を取得
+   * @param employeeId 社員ID
+   * @param yearMonth 年月（2025-04形式）
+   */
+  getBonusPayments(
+    employeeId: string,
+    yearMonth: string,
+  ): Observable<BonusPayment[]> {
+    const yyyymm = this.yearMonthToYYYYMM(yearMonth);
+    const bonusPaymentsRef = collection(
+      this.firestore,
+      'shaho_employees',
+      employeeId,
+      'payrollMonths',
+      yyyymm,
+      'bonusPayments',
+    );
+    const q = query(bonusPaymentsRef, orderBy('bonusPaidOn', 'desc'));
+    return collectionData(q, { idField: 'id' }) as Observable<
+      BonusPayment[]
+    >;
+  }
+
+  /**
+   * 給与データを追加または更新（後方互換性のため残す）
+   * 新しい構造（payrollMonths/bonusPayments）に変換して保存
+   * @deprecated addOrUpdatePayrollMonth を使用してください
    * @param employeeId 社員ID
    * @param yearMonth 年月（2025-04形式）
    * @param payrollData 給与データ
@@ -767,6 +1101,43 @@ export class ShahoEmployeesService {
     yearMonth: string,
     payrollData: PayrollData,
   ) {
+    // 月次データと賞与データを分離
+    const payrollMonthData: Partial<PayrollMonth> = {
+      workedDays: payrollData.workedDays,
+      amount: payrollData.amount,
+      healthStandardMonthly: payrollData.healthStandardMonthly,
+      welfareStandardMonthly: payrollData.welfareStandardMonthly,
+      healthInsuranceMonthly: payrollData.healthInsuranceMonthly,
+      careInsuranceMonthly: payrollData.careInsuranceMonthly,
+      pensionMonthly: payrollData.pensionMonthly,
+      approvedBy: payrollData.approvedBy,
+    };
+
+    // 賞与データがある場合
+    let bonusPaymentData: Partial<BonusPayment> | undefined;
+    if (payrollData.bonusPaidOn && payrollData.bonusTotal !== undefined) {
+      bonusPaymentData = {
+        bonusPaidOn: payrollData.bonusPaidOn,
+        bonusTotal: payrollData.bonusTotal,
+        standardHealthBonus: payrollData.standardHealthBonus,
+        standardWelfareBonus: payrollData.standardWelfareBonus,
+        standardBonus: payrollData.standardBonus,
+        healthInsuranceBonus: payrollData.healthInsuranceBonus,
+        careInsuranceBonus: payrollData.careInsuranceBonus,
+        pensionBonus: payrollData.pensionBonus,
+        approvedBy: payrollData.approvedBy,
+      };
+    }
+
+    // 新しい構造で保存
+    await this.addOrUpdatePayrollMonth(
+      employeeId,
+      yearMonth,
+      payrollMonthData,
+      bonusPaymentData,
+    );
+
+    // 後方互換性のため、古い構造にも保存（非推奨）
     const payrollRef = doc(
       this.firestore,
       'shaho_employees',
@@ -776,8 +1147,11 @@ export class ShahoEmployeesService {
     );
     const now = new Date().toISOString();
     const currentUser = this.auth.currentUser;
-    // ユーザーが設定したID（displayName）を優先的に使用
-    const userId = currentUser?.displayName || currentUser?.email || currentUser?.uid || 'system';
+    const userId =
+      currentUser?.displayName ||
+      currentUser?.email ||
+      currentUser?.uid ||
+      'system';
 
     const data: PayrollData = {
       ...payrollData,
@@ -792,7 +1166,8 @@ export class ShahoEmployeesService {
   }
 
   /**
-   * 特定の月の給与データを取得
+   * 特定の月の給与データを取得（後方互換性のため）
+   * 新しい構造から取得を試み、なければ古い構造から取得
    * @param employeeId 社員ID
    * @param yearMonth 年月（2025-04形式）
    */
@@ -800,31 +1175,121 @@ export class ShahoEmployeesService {
     employeeId: string,
     yearMonth: string,
   ): Observable<PayrollData | undefined> {
-    const payrollRef = doc(
-      this.firestore,
-      'shaho_employees',
-      employeeId,
-      'payrolls',
-      yearMonth,
+    // 新しい構造から取得を試みる
+    return this.getPayrollMonth(employeeId, yearMonth).pipe(
+      switchMap((payrollMonth) => {
+        if (payrollMonth) {
+          // 賞与明細も取得
+          return this.getBonusPayments(employeeId, yearMonth).pipe(
+            map((bonusPayments) => {
+              // 最初の賞与明細を取得（後方互換性のため）
+              const firstBonus = bonusPayments.length > 0 ? bonusPayments[0] : undefined;
+              
+              // PayrollData形式に変換
+              const payrollData: PayrollData = {
+                id: payrollMonth.id,
+                yearMonth: payrollMonth.yearMonth,
+                workedDays: payrollMonth.workedDays,
+                amount: payrollMonth.amount,
+                healthStandardMonthly: payrollMonth.healthStandardMonthly,
+                welfareStandardMonthly: payrollMonth.welfareStandardMonthly,
+                healthInsuranceMonthly: payrollMonth.healthInsuranceMonthly,
+                careInsuranceMonthly: payrollMonth.careInsuranceMonthly,
+                pensionMonthly: payrollMonth.pensionMonthly,
+                bonusPaidOn: firstBonus?.bonusPaidOn,
+                bonusTotal: firstBonus?.bonusTotal,
+                standardHealthBonus: firstBonus?.standardHealthBonus,
+                standardWelfareBonus: firstBonus?.standardWelfareBonus,
+                standardBonus: firstBonus?.standardBonus,
+                healthInsuranceBonus: firstBonus?.healthInsuranceBonus,
+                careInsuranceBonus: firstBonus?.careInsuranceBonus,
+                pensionBonus: firstBonus?.pensionBonus,
+                createdAt: payrollMonth.createdAt,
+                updatedAt: payrollMonth.updatedAt,
+                createdBy: payrollMonth.createdBy,
+                updatedBy: payrollMonth.updatedBy,
+                approvedBy: payrollMonth.approvedBy,
+              };
+              return payrollData;
+            }),
+          );
+        }
+        
+        // 新しい構造にない場合は古い構造から取得
+        const payrollRef = doc(
+          this.firestore,
+          'shaho_employees',
+          employeeId,
+          'payrolls',
+          yearMonth,
+        );
+        return docData(payrollRef, { idField: 'id' }) as Observable<
+          PayrollData | undefined
+        >;
+      }),
     );
-    return docData(payrollRef, { idField: 'id' }) as Observable<
-      PayrollData | undefined
-    >;
   }
 
   /**
-   * 社員の給与データ一覧を取得
+   * 社員の給与データ一覧を取得（後方互換性のため）
+   * 新しい構造から取得を試み、なければ古い構造から取得
    * @param employeeId 社員ID
    */
   getPayrolls(employeeId: string): Observable<PayrollData[]> {
-    const payrollsRef = collection(
-      this.firestore,
-      'shaho_employees',
-      employeeId,
-      'payrolls',
+    // 新しい構造から取得を試みる
+    return this.getPayrollMonths(employeeId).pipe(
+      switchMap((payrollMonths) => {
+        if (payrollMonths && payrollMonths.length > 0) {
+          // 各月次データに対して賞与明細を取得
+          const payrollDataPromises = payrollMonths.map((payrollMonth) =>
+            this.getBonusPayments(employeeId, payrollMonth.yearMonth).pipe(
+              map((bonusPayments) => {
+                // 最初の賞与明細を取得（後方互換性のため）
+                const firstBonus = bonusPayments.length > 0 ? bonusPayments[0] : undefined;
+                
+                // PayrollData形式に変換
+                const payrollData: PayrollData = {
+                  id: payrollMonth.id,
+                  yearMonth: payrollMonth.yearMonth,
+                  workedDays: payrollMonth.workedDays,
+                  amount: payrollMonth.amount,
+                  healthStandardMonthly: payrollMonth.healthStandardMonthly,
+                  welfareStandardMonthly: payrollMonth.welfareStandardMonthly,
+                  healthInsuranceMonthly: payrollMonth.healthInsuranceMonthly,
+                  careInsuranceMonthly: payrollMonth.careInsuranceMonthly,
+                  pensionMonthly: payrollMonth.pensionMonthly,
+                  bonusPaidOn: firstBonus?.bonusPaidOn,
+                  bonusTotal: firstBonus?.bonusTotal,
+                  standardHealthBonus: firstBonus?.standardHealthBonus,
+                  standardWelfareBonus: firstBonus?.standardWelfareBonus,
+                  standardBonus: firstBonus?.standardBonus,
+                  healthInsuranceBonus: firstBonus?.healthInsuranceBonus,
+                  careInsuranceBonus: firstBonus?.careInsuranceBonus,
+                  pensionBonus: firstBonus?.pensionBonus,
+                  createdAt: payrollMonth.createdAt,
+                  updatedAt: payrollMonth.updatedAt,
+                  createdBy: payrollMonth.createdBy,
+                  updatedBy: payrollMonth.updatedBy,
+                  approvedBy: payrollMonth.approvedBy,
+                };
+                return payrollData;
+              }),
+            ),
+          );
+          return combineLatest(payrollDataPromises);
+        }
+        
+        // 新しい構造にない場合は古い構造から取得
+        const payrollsRef = collection(
+          this.firestore,
+          'shaho_employees',
+          employeeId,
+          'payrolls',
+        );
+        const q = query(payrollsRef, orderBy('yearMonth', 'desc'));
+        return collectionData(q, { idField: 'id' }) as Observable<PayrollData[]>;
+      }),
     );
-    const q = query(payrollsRef, orderBy('yearMonth', 'desc'));
-    return collectionData(q, { idField: 'id' }) as Observable<PayrollData[]>;
   }
 
   // 扶養情報（dependents）の操作メソッド

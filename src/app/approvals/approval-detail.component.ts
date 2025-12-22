@@ -882,47 +882,38 @@ export class ApprovalDetailComponent implements OnDestroy {
                 const [year, month] = yearMonth.split('-');
                 const normalizedYearMonth = `${year}-${month.padStart(2, '0')}`;
 
-                // 既存の給与データを取得（マージするため）
-                let existingPayroll;
-                try {
-                  existingPayroll = await firstValueFrom(
-                    this.employeesService
-                      .getPayroll(employeeId, normalizedYearMonth)
-                      .pipe(take(1)),
-                  );
-                } catch {
-                  // データが存在しない場合はundefinedのまま
-                }
-
-                const payrollDataRaw: Partial<PayrollData> = {
-                  ...existingPayroll,
-                  yearMonth: normalizedYearMonth,
+                // 月次データを準備
+                const payrollMonthData: any = {
                   workedDays: workedDays
                     ? Number(workedDays.replace(/,/g, ''))
-                    : existingPayroll?.workedDays || 0,
+                    : undefined,
                   amount: monthlyPayAmount
                     ? Number(monthlyPayAmount.replace(/,/g, ''))
-                    : existingPayroll?.amount,
-                  // 賞与データも同じ月に含まれる場合は追加
-                  bonusPaidOn:
-                    bonusPaidOn?.trim() ||
-                    existingPayroll?.bonusPaidOn ||
-                    undefined,
-                  bonusTotal: bonusTotal
-                    ? Number(bonusTotal.replace(/,/g, ''))
-                    : existingPayroll?.bonusTotal,
+                    : undefined,
                 };
 
-                // undefined と空文字列のフィールドを除外
-                const payrollData = removeUndefinedFields(
-                  payrollDataRaw,
-                ) as PayrollData;
+                // undefinedのフィールドを除外
+                Object.keys(payrollMonthData).forEach((key) => {
+                  if (payrollMonthData[key] === undefined) {
+                    delete payrollMonthData[key];
+                  }
+                });
+
+                // 賞与データがある場合は賞与明細として追加
+                let bonusPaymentData: any | undefined;
+                if (bonusPaidOn?.trim() && bonusTotal) {
+                  bonusPaymentData = {
+                    bonusPaidOn: bonusPaidOn.trim(),
+                    bonusTotal: Number(bonusTotal.replace(/,/g, '')),
+                  };
+                }
 
                 payrollPromises.push(
-                  this.employeesService.addOrUpdatePayroll(
+                  this.employeesService.addOrUpdatePayrollMonth(
                     employeeId,
                     normalizedYearMonth,
-                    payrollData,
+                    payrollMonthData,
+                    bonusPaymentData,
                   ),
                 );
               } else if (bonusPaidOn) {
@@ -937,39 +928,27 @@ export class ApprovalDetailComponent implements OnDestroy {
                   );
                   const normalizedYearMonth = `${year}-${month}`;
 
-                  // 既存の給与データを取得（マージするため）
-                  let existingPayroll;
-                  try {
-                    existingPayroll = await firstValueFrom(
-                      this.employeesService
-                        .getPayroll(employeeId, normalizedYearMonth)
-                        .pipe(take(1)),
-                    );
-                  } catch {
-                    // データが存在しない場合はundefinedのまま
-                  }
-
-                  const payrollDataRaw: Partial<PayrollData> = {
-                    ...existingPayroll,
-                    yearMonth: normalizedYearMonth,
-                    workedDays: existingPayroll?.workedDays || 0,
-                    amount: existingPayroll?.amount,
-                    bonusPaidOn: bonusPaidOn?.trim() || undefined,
+                  // 賞与明細データを準備
+                  const bonusPaymentData: any = {
+                    bonusPaidOn: bonusPaidOn.trim(),
                     bonusTotal: bonusTotal
                       ? Number(bonusTotal.replace(/,/g, ''))
                       : undefined,
                   };
 
-                  // undefined と空文字列のフィールドを除外
-                  const payrollData = removeUndefinedFields(
-                    payrollDataRaw,
-                  ) as PayrollData;
+                  // undefinedのフィールドを除外
+                  Object.keys(bonusPaymentData).forEach((key) => {
+                    if (bonusPaymentData[key] === undefined) {
+                      delete bonusPaymentData[key];
+                    }
+                  });
 
                   payrollPromises.push(
-                    this.employeesService.addOrUpdatePayroll(
+                    this.employeesService.addOrUpdatePayrollMonth(
                       employeeId,
                       normalizedYearMonth,
-                      payrollData,
+                      {}, // 月次データなし
+                      bonusPaymentData,
                     ),
                   );
                 }
@@ -1581,24 +1560,9 @@ export class ApprovalDetailComponent implements OnDestroy {
               }
             }
 
-            const payrollData: any = {
-              yearMonth: yearMonth,
+            // 月次データを準備（従業員負担分のみ保存）
+            const payrollMonthData: any = {
               amount: row.monthlySalary || undefined,
-              bonusPaidOn: row.bonusPaymentDate || undefined,
-              bonusTotal: row.bonusTotalPay || undefined,
-              standardHealthBonus:
-                row.standardHealthBonus > 0
-                  ? row.standardHealthBonus
-                  : undefined,
-              standardWelfareBonus:
-                row.standardWelfareBonus > 0
-                  ? row.standardWelfareBonus
-                  : undefined,
-              // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
-              standardBonus:
-                row.standardHealthBonus ||
-                row.standardWelfareBonus ||
-                undefined,
               // 健康保険料、介護保険料、厚生年金保険料（月額）を従業員負担分のみで保存
               healthInsuranceMonthly:
                 (row.healthEmployeeMonthly || 0) > 0
@@ -1612,51 +1576,84 @@ export class ApprovalDetailComponent implements OnDestroy {
                 (row.welfareEmployeeMonthly || 0) > 0
                   ? row.welfareEmployeeMonthly
                   : undefined,
-              // 健康保険料、介護保険料、厚生年金保険料（賞与）を従業員負担分のみで保存
-              healthInsuranceBonus:
-                (row.healthEmployeeBonus || 0) > 0
-                  ? row.healthEmployeeBonus
-                  : undefined,
-              careInsuranceBonus:
-                (row.nursingEmployeeBonus || 0) > 0
-                  ? row.nursingEmployeeBonus
-                  : undefined,
-              pensionBonus:
-                (row.welfareEmployeeBonus || 0) > 0
-                  ? row.welfareEmployeeBonus
-                  : undefined,
             };
 
-            Object.keys(payrollData).forEach((key) => {
-              if (payrollData[key] === undefined) {
-                delete payrollData[key];
+            // undefinedのフィールドを除外
+            Object.keys(payrollMonthData).forEach((key) => {
+              if (payrollMonthData[key] === undefined) {
+                delete payrollMonthData[key];
               }
             });
+
+            // 賞与明細データを準備（従業員負担分のみ保存）
+            let bonusPaymentData: any | undefined;
+            if (row.bonusPaymentDate && row.bonusTotalPay !== undefined && row.bonusTotalPay > 0) {
+              bonusPaymentData = {
+                bonusPaidOn: row.bonusPaymentDate,
+                bonusTotal: row.bonusTotalPay,
+                standardHealthBonus:
+                  row.standardHealthBonus > 0
+                    ? row.standardHealthBonus
+                    : undefined,
+                standardWelfareBonus:
+                  row.standardWelfareBonus > 0
+                    ? row.standardWelfareBonus
+                    : undefined,
+                standardBonus:
+                  row.standardHealthBonus ||
+                  row.standardWelfareBonus ||
+                  undefined,
+                // 健康保険料、介護保険料、厚生年金保険料（賞与）を従業員負担分のみで保存
+                healthInsuranceBonus:
+                  (row.healthEmployeeBonus || 0) > 0
+                    ? row.healthEmployeeBonus
+                    : undefined,
+                careInsuranceBonus:
+                  (row.nursingEmployeeBonus || 0) > 0
+                    ? row.nursingEmployeeBonus
+                    : undefined,
+                pensionBonus:
+                  (row.welfareEmployeeBonus || 0) > 0
+                    ? row.welfareEmployeeBonus
+                    : undefined,
+              };
+
+              // undefinedのフィールドを除外
+              Object.keys(bonusPaymentData).forEach((key) => {
+                if (bonusPaymentData[key] === undefined) {
+                  delete bonusPaymentData[key];
+                }
+              });
+            }
 
             // 保存するデータの詳細をログ出力
             console.log(
               `給与データを保存します: 社員番号=${row.employeeNo}, 年月=${yearMonth}`,
               {
-                ...payrollData,
+                payrollMonthData,
+                bonusPaymentData,
                 // 保険料の詳細も表示（月額・賞与ともに従業員負担分のみ保存）
                 '健康保険料（月額・従業員負担）':
-                  payrollData.healthInsuranceMonthly || '未設定',
+                  payrollMonthData.healthInsuranceMonthly || '未設定',
                 '介護保険料（月額・従業員負担）':
-                  payrollData.careInsuranceMonthly || '未設定',
+                  payrollMonthData.careInsuranceMonthly || '未設定',
                 '厚生年金保険料（月額・従業員負担）':
-                  payrollData.pensionMonthly || '未設定',
+                  payrollMonthData.pensionMonthly || '未設定',
                 '健康保険料（賞与・従業員負担）':
-                  payrollData.healthInsuranceBonus || '未設定',
+                  bonusPaymentData?.healthInsuranceBonus || '未設定',
                 '介護保険料（賞与・従業員負担）':
-                  payrollData.careInsuranceBonus || '未設定',
+                  bonusPaymentData?.careInsuranceBonus || '未設定',
                 '厚生年金保険料（賞与・従業員負担）':
-                  payrollData.pensionBonus || '未設定',
+                  bonusPaymentData?.pensionBonus || '未設定',
               },
             );
-            await this.employeesService.addOrUpdatePayroll(
+
+            // 新しい構造で保存（Transaction使用）
+            await this.employeesService.addOrUpdatePayrollMonth(
               employeeId,
               yearMonth,
-              payrollData,
+              payrollMonthData,
+              bonusPaymentData,
             );
             console.log(`給与データの保存完了: 社員番号=${row.employeeNo}`);
 
