@@ -7,9 +7,20 @@ import { provideFirebaseApp } from '@angular/fire/app';
 import { provideAuth } from '@angular/fire/auth';
 import { provideFirestore } from '@angular/fire/firestore';
 import { CorporateInfoService } from '../app/services/corporate-info.service';
-import { InsuranceRateRecord, InsuranceRatesService, PrefectureRate} from '../app/services/insurance-rates.service';
-import { ShahoEmployee, ShahoEmployeesService } from '../app/services/shaho-employees.service';
-import { CalculationDataService, CalculationQueryParams } from './calculation-data.service';
+import {
+  InsuranceRateRecord,
+  InsuranceRatesService,
+  PrefectureRate,
+} from '../app/services/insurance-rates.service';
+import {
+  ShahoEmployee,
+  ShahoEmployeesService,
+} from '../app/services/shaho-employees.service';
+import {
+  CalculationDataService,
+  CalculationQueryParams,
+} from './calculation-data.service';
+import { calculateStandardBonus } from './calculation-utils';
 
 class EmployeesStub {
   employees: ShahoEmployee[] = [];
@@ -136,6 +147,298 @@ function createPremiumRateRecord(
   return rate;
 }
 
+type BonusCase = {
+  caseId: string;
+  bonusPaidOn: string;
+  bonusGrossThisPayment: number;
+  priorBonusGrossSameMonth: number;
+  priorKenpoStdBonusFiscalYTD: number;
+  expectedKenpoStdBonusThisPayment: number;
+  expectedKouseiStdBonusThisPayment: number;
+  expectedKenpoFiscalYTD_After: number;
+  expectedKouseiMonthTotal_After: number;
+  note: string;
+};
+
+const standardBonusCases: BonusCase[] = [
+  {
+    caseId: 'B01',
+    bonusPaidOn: '2025-06-10',
+    bonusGrossThisPayment: 0,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 0,
+    expectedKouseiStdBonusThisPayment: 0,
+    expectedKenpoFiscalYTD_After: 0,
+    expectedKouseiMonthTotal_After: 0,
+    note: '最小値',
+  },
+  {
+    caseId: 'B02',
+    bonusPaidOn: '2025-06-10',
+    bonusGrossThisPayment: 999,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 0,
+    expectedKouseiStdBonusThisPayment: 0,
+    expectedKenpoFiscalYTD_After: 0,
+    expectedKouseiMonthTotal_After: 0,
+    note: '1000円未満→0',
+  },
+  {
+    caseId: 'B03',
+    bonusPaidOn: '2025-06-10',
+    bonusGrossThisPayment: 1000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 1000,
+    expectedKouseiStdBonusThisPayment: 1000,
+    expectedKenpoFiscalYTD_After: 1000,
+    expectedKouseiMonthTotal_After: 1000,
+    note: 'ちょうど1000円',
+  },
+  {
+    caseId: 'B04',
+    bonusPaidOn: '2025-06-10',
+    bonusGrossThisPayment: 1001,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 1000,
+    expectedKouseiStdBonusThisPayment: 1000,
+    expectedKenpoFiscalYTD_After: 1000,
+    expectedKouseiMonthTotal_After: 1000,
+    note: '1001→1000',
+  },
+  {
+    caseId: 'B05',
+    bonusPaidOn: '2025-06-10',
+    bonusGrossThisPayment: 1999,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 1000,
+    expectedKouseiStdBonusThisPayment: 1000,
+    expectedKenpoFiscalYTD_After: 1000,
+    expectedKouseiMonthTotal_After: 1000,
+    note: '1999→1000',
+  },
+  {
+    caseId: 'B06',
+    bonusPaidOn: '2025-06-10',
+    bonusGrossThisPayment: 2000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 2000,
+    expectedKouseiStdBonusThisPayment: 2000,
+    expectedKenpoFiscalYTD_After: 2000,
+    expectedKouseiMonthTotal_After: 2000,
+    note: 'ちょうど2000円',
+  },
+  {
+    caseId: 'M01a',
+    bonusPaidOn: '2025-07-10',
+    bonusGrossThisPayment: 999,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 0,
+    expectedKouseiStdBonusThisPayment: 0,
+    expectedKenpoFiscalYTD_After: 0,
+    expectedKouseiMonthTotal_After: 0,
+    note: '同月複数①',
+  },
+  {
+    caseId: 'M01b',
+    bonusPaidOn: '2025-07-25',
+    bonusGrossThisPayment: 1001,
+    priorBonusGrossSameMonth: 999,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 2000,
+    expectedKouseiStdBonusThisPayment: 2000,
+    expectedKenpoFiscalYTD_After: 2000,
+    expectedKouseiMonthTotal_After: 2000,
+    note: '同月複数②：合算してから1000円未満切捨て',
+  },
+  {
+    caseId: 'P01',
+    bonusPaidOn: '2025-08-05',
+    bonusGrossThisPayment: 1499999,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 1499000,
+    expectedKouseiStdBonusThisPayment: 1499000,
+    expectedKenpoFiscalYTD_After: 1499000,
+    expectedKouseiMonthTotal_After: 1499000,
+    note: '150万直前（千円未満切捨てで149.9万）',
+  },
+  {
+    caseId: 'P02',
+    bonusPaidOn: '2025-08-05',
+    bonusGrossThisPayment: 1500000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 1500000,
+    expectedKouseiStdBonusThisPayment: 1500000,
+    expectedKenpoFiscalYTD_After: 1500000,
+    expectedKouseiMonthTotal_After: 1500000,
+    note: 'ちょうど150万',
+  },
+  {
+    caseId: 'P03',
+    bonusPaidOn: '2025-08-05',
+    bonusGrossThisPayment: 1500999,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 1500000,
+    expectedKouseiStdBonusThisPayment: 1500000,
+    expectedKenpoFiscalYTD_After: 1500000,
+    expectedKouseiMonthTotal_After: 1500000,
+    note: '1500999→1500000',
+  },
+  {
+    caseId: 'P04',
+    bonusPaidOn: '2025-08-05',
+    bonusGrossThisPayment: 1501000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 1501000,
+    expectedKouseiStdBonusThisPayment: 1500000,
+    expectedKenpoFiscalYTD_After: 1501000,
+    expectedKouseiMonthTotal_After: 1500000,
+    note: '1501000→1501000（厚年は150万で頭打ち）',
+  },
+  {
+    caseId: 'P05a',
+    bonusPaidOn: '2025-09-10',
+    bonusGrossThisPayment: 800000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 800000,
+    expectedKouseiStdBonusThisPayment: 800000,
+    expectedKenpoFiscalYTD_After: 800000,
+    expectedKouseiMonthTotal_After: 800000,
+    note: '同月複数で上限到達①',
+  },
+  {
+    caseId: 'P05b',
+    bonusPaidOn: '2025-09-25',
+    bonusGrossThisPayment: 800500,
+    priorBonusGrossSameMonth: 800000,
+    priorKenpoStdBonusFiscalYTD: 800000,
+    expectedKenpoStdBonusThisPayment: 800000,
+    expectedKouseiStdBonusThisPayment: 700000,
+    expectedKenpoFiscalYTD_After: 1600000,
+    expectedKouseiMonthTotal_After: 1500000,
+    note: '同月複数②：月合算が150万超→厚年は差分700,000',
+  },
+  {
+    caseId: 'P06',
+    bonusPaidOn: '2025-10-20',
+    bonusGrossThisPayment: 2000,
+    priorBonusGrossSameMonth: 1499999,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 2000,
+    expectedKouseiStdBonusThisPayment: 1000,
+    expectedKenpoFiscalYTD_After: 2000,
+    expectedKouseiMonthTotal_After: 1500000,
+    note: '同月直前が149.9万、今回2000→月合算で150万到達（厚年差分1000）',
+  },
+  {
+    caseId: 'K01',
+    bonusPaidOn: '2025-11-01',
+    bonusGrossThisPayment: 5729999,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 5729000,
+    expectedKouseiStdBonusThisPayment: 1500000,
+    expectedKenpoFiscalYTD_After: 5729000,
+    expectedKouseiMonthTotal_After: 1500000,
+    note: '健保 年度上限直前（572.9万）',
+  },
+  {
+    caseId: 'K02',
+    bonusPaidOn: '2025-11-01',
+    bonusGrossThisPayment: 5730000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 5730000,
+    expectedKouseiStdBonusThisPayment: 1500000,
+    expectedKenpoFiscalYTD_After: 5730000,
+    expectedKouseiMonthTotal_After: 1500000,
+    note: '健保 年度上限ちょうど',
+  },
+  {
+    caseId: 'K03',
+    bonusPaidOn: '2025-11-01',
+    bonusGrossThisPayment: 5730999,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 5730000,
+    expectedKouseiStdBonusThisPayment: 1500000,
+    expectedKenpoFiscalYTD_After: 5730000,
+    expectedKouseiMonthTotal_After: 1500000,
+    note: '健保 年度上限超（切捨てで573万）',
+  },
+  {
+    caseId: 'K04',
+    bonusPaidOn: '2025-12-10',
+    bonusGrossThisPayment: 10000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 5729000,
+    expectedKenpoStdBonusThisPayment: 1000,
+    expectedKouseiStdBonusThisPayment: 10000,
+    expectedKenpoFiscalYTD_After: 5730000,
+    expectedKouseiMonthTotal_After: 10000,
+    note: '健保 既に572.9万→残り1,000だけ計上',
+  },
+  {
+    caseId: 'K05',
+    bonusPaidOn: '2026-01-15',
+    bonusGrossThisPayment: 1000000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 5730000,
+    expectedKenpoStdBonusThisPayment: 0,
+    expectedKouseiStdBonusThisPayment: 1000000,
+    expectedKenpoFiscalYTD_After: 5730000,
+    expectedKouseiMonthTotal_After: 1000000,
+    note: '健保 既に上限到達→0',
+  },
+  {
+    caseId: 'FY01',
+    bonusPaidOn: '2026-03-31',
+    bonusGrossThisPayment: 300000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 5500000,
+    expectedKenpoStdBonusThisPayment: 230000,
+    expectedKouseiStdBonusThisPayment: 300000,
+    expectedKenpoFiscalYTD_After: 5730000,
+    expectedKouseiMonthTotal_After: 300000,
+    note: '年度末に上限到達：残り230,000',
+  },
+  {
+    caseId: 'FY02',
+    bonusPaidOn: '2026-04-01',
+    bonusGrossThisPayment: 300000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 300000,
+    expectedKouseiStdBonusThisPayment: 300000,
+    expectedKenpoFiscalYTD_After: 300000,
+    expectedKouseiMonthTotal_After: 300000,
+    note: '年度切替（4/1）で年度累計リセット想定',
+  },
+  {
+    caseId: 'MAX',
+    bonusPaidOn: '2025-06-10',
+    bonusGrossThisPayment: 10000000,
+    priorBonusGrossSameMonth: 0,
+    priorKenpoStdBonusFiscalYTD: 0,
+    expectedKenpoStdBonusThisPayment: 5730000,
+    expectedKouseiStdBonusThisPayment: 1500000,
+    expectedKenpoFiscalYTD_After: 5730000,
+    expectedKouseiMonthTotal_After: 1500000,
+    note: '極端に大きい賞与',
+  },
+];
+
 describe('CalculationDataService bonus caps', () => {
   let service: CalculationDataService;
   let employeesStub: EmployeesStub;
@@ -222,6 +525,113 @@ describe('CalculationDataService bonus caps', () => {
 
     expect(row.standardHealthBonus).toBe(600000);
     expect(row.standardWelfareBonus).toBe(400000);
+  });
+});
+
+describe('CalculationDataService standard bonus fixtures', () => {
+  let service: CalculationDataService;
+  let employeesStub: EmployeesStub;
+  let ratesStub: RatesStub;
+
+  beforeEach(() => {
+    employeesStub = new EmployeesStub();
+    ratesStub = new RatesStub();
+
+    TestBed.configureTestingModule({
+      providers: [
+        CalculationDataService,
+        { provide: ShahoEmployeesService, useValue: employeesStub },
+        { provide: InsuranceRatesService, useValue: ratesStub },
+        { provide: CorporateInfoService, useClass: CorporateInfoStub },
+        provideFirebaseApp(() => initializeApp(firebaseConfig)),
+        provideAuth(() => getAuth(getApp())),
+        provideFirestore(() => initializeFirestore(getApp(), {})),
+      ],
+    });
+
+    service = TestBed.inject(CalculationDataService);
+    ratesStub.rateHistory = [
+      createRateRecord({ healthYearlyCap: 5730000, welfareMonthlyCap: 1500000 }),
+    ];
+  });
+
+  standardBonusCases.forEach((testCase) => {
+    it(`${testCase.caseId}: ${testCase.note}`, async () => {
+      const targetMonth = testCase.bonusPaidOn.slice(0, 7);
+      const priorBonuses = [];
+
+      if (testCase.priorKenpoStdBonusFiscalYTD > 0) {
+        priorBonuses.push({
+          yearMonth: '2025-04',
+          bonusPaidOn: '2025-04-01',
+          bonusTotal: testCase.priorKenpoStdBonusFiscalYTD,
+          standardHealthBonus: testCase.priorKenpoStdBonusFiscalYTD,
+          standardWelfareBonus: calculateStandardBonus(
+            testCase.priorKenpoStdBonusFiscalYTD,
+            1500000,
+          ),
+        });
+      }
+
+      if (testCase.priorBonusGrossSameMonth > 0) {
+        const priorMonth = `${targetMonth}-01`;
+        priorBonuses.push({
+          yearMonth: targetMonth,
+          bonusPaidOn: priorMonth,
+          bonusTotal: testCase.priorBonusGrossSameMonth,
+        });
+      }
+
+      const payrolls = [
+        ...priorBonuses,
+        {
+          yearMonth: targetMonth,
+          bonusPaidOn: testCase.bonusPaidOn,
+          bonusTotal: testCase.bonusGrossThisPayment,
+        },
+      ];
+
+      employeesStub.employees = [
+        {
+          employeeNo: `TC-${testCase.caseId}`,
+          name: testCase.note,
+          department: '計算',
+          workPrefecture: '東京',
+          payrolls,
+        } as unknown as ShahoEmployee,
+      ];
+
+      const params: CalculationQueryParams = {
+        type: 'bonus',
+        targetMonth,
+        method: 'none',
+        standardMethod: '定時決定',
+        insurances: ['健康保険', '厚生年金'],
+        employeeNo: `TC-${testCase.caseId}`,
+        bonusPaidOn: testCase.bonusPaidOn,
+      };
+
+      const [row] = await firstValueFrom(service.getCalculationRows(params));
+
+      expect(row.standardHealthBonus).toBe(
+        testCase.expectedKenpoStdBonusThisPayment,
+      );
+      expect(row.standardWelfareBonus).toBe(
+        testCase.expectedKouseiStdBonusThisPayment,
+      );
+
+      const healthAfter =
+        testCase.priorKenpoStdBonusFiscalYTD + row.standardHealthBonus;
+      expect(healthAfter).toBe(testCase.expectedKenpoFiscalYTD_After);
+
+      const priorWelfareStandard = calculateStandardBonus(
+        testCase.priorBonusGrossSameMonth,
+        1500000,
+      );
+      expect(priorWelfareStandard + row.standardWelfareBonus).toBe(
+        testCase.expectedKouseiMonthTotal_After,
+      );
+    });
   });
 });
 

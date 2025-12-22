@@ -452,15 +452,39 @@ export class CalculationDataService {
       bonusRecord,
       rateRecord,
     );
-    const standardHealthBonus = this.calculateStandardBonusWithCumulative(
-      bonusRecord?.bonusTotal ?? 0,
-      healthBonusCap,
-      healthBonusCumulative,
+    // 同月内の過去の賞与総支給額を合算
+    const monthlyBonusTotal = this.getMonthlyBonusTotal(
+      payrolls,
+      bonusDate,
+      bonusRecord,
     );
-    const standardWelfareBonus = this.calculateStandardBonusWithCumulative(
+    // 健康保険の場合、同月内の過去の賞与の標準賞与額を計算して、累計から除外する必要がある
+    const monthlyHealthBonusStandard = monthlyBonusTotal > 0
+      ? calculateStandardBonus(monthlyBonusTotal, healthBonusCap)
+      : 0;
+    const adjustedHealthBonusCumulative = Math.max(
+      healthBonusCumulative - monthlyHealthBonusStandard,
+      0,
+    );
+    // 厚生年金の場合、同月内の過去の賞与の標準賞与額を計算して、累計から除外する必要がある
+    const monthlyWelfareBonusStandard = monthlyBonusTotal > 0
+      ? calculateStandardBonus(monthlyBonusTotal, welfareBonusCap)
+      : 0;
+    const adjustedWelfareBonusCumulative = Math.max(
+      welfareBonusCumulative - monthlyWelfareBonusStandard,
+      0,
+    );
+    const standardHealthBonus = this.calculateStandardBonusWithMonthlyTotal(
       bonusRecord?.bonusTotal ?? 0,
+      monthlyBonusTotal,
+      healthBonusCap,
+      adjustedHealthBonusCumulative,
+    );
+    const standardWelfareBonus = this.calculateStandardBonusWithMonthlyTotal(
+      bonusRecord?.bonusTotal ?? 0,
+      monthlyBonusTotal,
       welfareBonusCap,
-      welfareBonusCumulative,
+      adjustedWelfareBonusCumulative,
     );
 
     // 一時免除フラグがONの場合は、すべての保険料を0にする
@@ -820,6 +844,33 @@ export class CalculationDataService {
     });
   }
 
+  /**
+   * 同月内の過去の賞与総支給額を合算する
+   */
+  private getMonthlyBonusTotal(
+    payrolls: PayrollData[],
+    bonusDate: Date | undefined,
+    currentBonus?: PayrollData,
+  ): number {
+    if (!bonusDate) return 0;
+    const currentBonusPaidOn = currentBonus?.bonusPaidOn
+      ? currentBonus.bonusPaidOn.replace(/\//g, '-')
+      : undefined;
+    return this.getMonthlyBonuses(payrolls, bonusDate)
+      .filter((record) => {
+        // currentBonusが未設定の場合はすべて含める
+        if (!currentBonusPaidOn) return true;
+        // bonusPaidOnで比較（参照比較ではなく日付で比較）
+        const recordBonusPaidOn = record.bonusPaidOn
+          ? record.bonusPaidOn.replace(/\//g, '-')
+          : undefined;
+        return recordBonusPaidOn !== currentBonusPaidOn;
+      })
+      .reduce((sum, record) => {
+        return sum + (record.bonusTotal ?? 0);
+      }, 0);
+  }
+
   private calculateHealthBonusCumulative(
     payrolls: PayrollData[],
     bonusDate: Date | undefined,
@@ -919,6 +970,51 @@ export class CalculationDataService {
     const remaining = Math.max(cap - cumulative, 0);
     if (remaining <= 0) return 0;
     return calculateStandardBonus(Math.min(currentBonusTotal, remaining));
+  }
+
+  /**
+   * 同月内の賞与総支給額を合算してから標準賞与額を計算する
+   * @param currentBonusTotal 現在の賞与総支給額
+   * @param monthlyBonusTotal 同月内の過去の賞与総支給額の合計
+   * @param cap 上限（月次上限または年度上限）
+   * @param cumulative 過去の標準賞与額累計（年度累計または月次累計、同月内の過去の賞与は除外済み）
+   */
+  private calculateStandardBonusWithMonthlyTotal(
+    currentBonusTotal: number,
+    monthlyBonusTotal: number,
+    cap: number | undefined,
+    cumulative: number,
+  ): number {
+    // 同月内の賞与総支給額を合算
+    const totalMonthlyBonus = monthlyBonusTotal + currentBonusTotal;
+    
+    // 同月内の過去の賞与の標準賞与額を計算
+    const priorMonthlyStandardBonus = monthlyBonusTotal > 0
+      ? calculateStandardBonus(monthlyBonusTotal, cap)
+      : 0;
+    
+    if (!cap) {
+      // 上限がない場合は、合算した金額から標準賞与額を計算
+      const totalStandardBonus = calculateStandardBonus(totalMonthlyBonus);
+      // 同月内の過去の賞与の標準賞与額を引いて、今回分を返す
+      return Math.max(totalStandardBonus - priorMonthlyStandardBonus, 0);
+    }
+    
+    // 上限がある場合
+    // 上限から年度内の過去の標準賞与額累計を引いた残りを計算
+    const remainingCap = Math.max(cap - cumulative, 0);
+    
+    if (remainingCap <= 0) {
+      // 残りの上限が0以下の場合は、今回分は0
+      return 0;
+    }
+    
+    // 同月内の賞与総支給額を合算した金額と、残りの上限の小さい方から標準賞与額を計算
+    const totalStandardBonus = calculateStandardBonus(
+      Math.min(totalMonthlyBonus, remainingCap),
+    );
+    // 同月内の過去の賞与の標準賞与額を引いて、今回分を返す
+    return Math.max(totalStandardBonus - priorMonthlyStandardBonus, 0);
   }
 
   private getUserDisplayName(): string {
