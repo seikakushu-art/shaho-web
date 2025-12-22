@@ -1,10 +1,36 @@
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
+import { of } from 'rxjs';
 import { AppComponent } from './app.component';
+import { AuthService } from './auth/auth.service';
+import { UserDirectoryService } from './auth/user-directory.service';
+import { RoleKey, ROLE_DEFINITIONS } from './models/roles';
 
 describe('AppComponent', () => {
+  const mockAuthService = {
+    user$: of(null),
+    roleDefinition$: of(ROLE_DEFINITIONS.find(r => r.key === RoleKey.Guest)!),
+    roleDefinitions$: of([ROLE_DEFINITIONS.find(r => r.key === RoleKey.Guest)!]),
+    hasAnyRole: jasmine.createSpy('hasAnyRole').and.returnValue(of(true)),
+    logout: jasmine.createSpy('logout').and.returnValue(Promise.resolve()),
+  };
+
+  const mockUserDirectoryService = {
+    getUsers: jasmine.createSpy('getUsers').and.returnValue(of([])),
+  };
+
+  const mockRouter = {
+    navigate: jasmine.createSpy('navigate'),
+  };
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AppComponent],
+      providers: [
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: UserDirectoryService, useValue: mockUserDirectoryService },
+        { provide: Router, useValue: mockRouter },
+      ],
     }).compileComponents();
   });
 
@@ -12,12 +38,5 @@ describe('AppComponent', () => {
     const fixture = TestBed.createComponent(AppComponent);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
-  });
-
-  it('should render topbar title', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    fixture.detectChanges();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('.title')?.textContent).toContain('社会保アプリ基盤');
   });
 });

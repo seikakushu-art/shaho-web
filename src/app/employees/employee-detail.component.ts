@@ -645,8 +645,12 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           const monthlyData: SocialInsuranceHistoryData = {
             monthlySalary: payroll.amount,
             workedDays: payroll.workedDays,
-            healthStandardMonthly: payroll.healthStandardMonthly ?? undefined,
-            welfareStandardMonthly: payroll.welfareStandardMonthly ?? undefined,
+            ...(payroll.healthStandardMonthly !== undefined && payroll.healthStandardMonthly !== null
+              ? { healthStandardMonthly: payroll.healthStandardMonthly }
+              : {}),
+            ...(payroll.welfareStandardMonthly !== undefined && payroll.welfareStandardMonthly !== null
+              ? { welfareStandardMonthly: payroll.welfareStandardMonthly }
+              : {}),
             healthInsuranceMonthly: payroll.healthInsuranceMonthly,
             careInsuranceMonthly: payroll.careInsuranceMonthly,
             pensionMonthly: payroll.pensionMonthly,
@@ -668,13 +672,20 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
               const bonusMonth = String(bonusMonthNum).padStart(2, '0');
               const bonusMonthKey = `${bonusYear}-${bonusMonth}`;
 
+              const standardBonusValue = payroll.standardHealthBonus || payroll.standardWelfareBonus || payroll.standardBonus;
               const bonusData: SocialInsuranceHistoryData = {
                 bonusPaidOn: this.formatDateForInput(payroll.bonusPaidOn),
                 bonusTotal: payroll.bonusTotal,
-                standardHealthBonus: payroll.standardHealthBonus,
-                standardWelfareBonus: payroll.standardWelfareBonus,
+                ...(payroll.standardHealthBonus !== undefined && payroll.standardHealthBonus !== null
+                  ? { standardHealthBonus: payroll.standardHealthBonus }
+                  : {}),
+                ...(payroll.standardWelfareBonus !== undefined && payroll.standardWelfareBonus !== null
+                  ? { standardWelfareBonus: payroll.standardWelfareBonus }
+                  : {}),
                 // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
-                standardBonus: payroll.standardHealthBonus || payroll.standardWelfareBonus || payroll.standardBonus,
+                ...(standardBonusValue !== undefined && standardBonusValue !== null
+                  ? { standardBonus: standardBonusValue }
+                  : {}),
                 healthInsuranceBonus: payroll.healthInsuranceBonus,
                 careInsuranceBonus: payroll.careInsuranceBonus,
                 pensionBonus: payroll.pensionBonus,

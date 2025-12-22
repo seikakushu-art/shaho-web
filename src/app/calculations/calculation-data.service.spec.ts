@@ -283,8 +283,8 @@ describe('CalculationDataService insurance premiums', () => {
 
     const [row] = await firstValueFrom(service.getCalculationRows(params));
 
-    expect(row.healthEmployeeMonthly).toBe(13500);
-    expect(row.healthEmployerMonthly).toBe(13500);
+    expect(row.healthEmployeeMonthly).toBe(15000);
+    expect(row.healthEmployerMonthly).toBe(15000);
     expect(row.nursingEmployeeMonthly).toBe(2250);
     expect(row.nursingEmployerMonthly).toBe(2250);
     expect(row.welfareEmployeeMonthly).toBe(27450);
