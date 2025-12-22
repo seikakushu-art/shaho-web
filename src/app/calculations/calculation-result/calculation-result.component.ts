@@ -802,10 +802,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     if (column.key === 'month' && this.calculationType === 'bonus') {
       return false;
     }
-    // 社会保険料計算では賞与支給日を表示しない
-    if (column.key === 'bonusPaymentDate' && this.calculationType === 'insurance') {
-      return false;
-    }
     if (column.category === 'monthly' && this.calculationType === 'bonus') {
       return false;
     }

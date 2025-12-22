@@ -122,6 +122,48 @@ export class ApprovalWorkflowService {
     return this.requests$.pipe(map((requests) => requests.find((item) => item.id === id)));
   }
 
+  /**
+   * 特定の社員に対する承認待ちリクエストが存在するかチェック
+   * @param employeeId 社員ID（編集モードの場合）
+   * @param employeeNo 社員番号
+   * @returns 承認待ちリクエストが存在する場合、そのリクエストを返す。存在しない場合はundefined
+   */
+  getPendingRequestForEmployee(employeeId: string | null, employeeNo: string | null): ApprovalRequest | undefined {
+    if (!employeeId && !employeeNo) {
+      return undefined;
+    }
+
+    const requests = this.requestsSubject.value;
+    return requests.find((request) => {
+      // 承認待ち状態でない場合はスキップ
+      if (request.status !== 'pending') {
+        return false;
+      }
+
+      // 社員情報更新、新規社員登録、社員情報一括更新のカテゴリのみチェック
+      if (
+        request.category !== '社員情報更新' &&
+        request.category !== '新規社員登録' &&
+        request.category !== '社員情報一括更新'
+      ) {
+        return false;
+      }
+
+      const diffs = request.employeeDiffs || [];
+      return diffs.some((diff) => {
+        // 社員IDでマッチ
+        if (employeeId && diff.existingEmployeeId === employeeId) {
+          return true;
+        }
+        // 社員番号でマッチ
+        if (employeeNo && diff.employeeNo && diff.employeeNo === employeeNo) {
+          return true;
+        }
+        return false;
+      });
+    });
+  }
+
   getNotificationsFor(recipientId: string): Observable<ApprovalNotification[]> {
     return of([]);
   }

@@ -713,7 +713,10 @@ export class ShahoEmployeesService {
     }
   }
 
-  async addEmployee(data: ShahoEmployee) {
+  async addEmployee(
+    data: ShahoEmployee,
+    options?: { createdBy?: string; approvedBy?: string },
+  ) {
     const now = new Date().toISOString();
     // app_usersのdisplayNameを取得
     const userDisplayName = await this.getUserDisplayName();
@@ -722,8 +725,9 @@ export class ShahoEmployeesService {
       ...data,
       createdAt: now,
       updatedAt: now,
-      createdBy: userDisplayName,
+      createdBy: options?.createdBy || userDisplayName,
       updatedBy: userDisplayName,
+      approvedBy: options?.approvedBy,
     };
 
     return addDoc(this.colRef, employeeData);

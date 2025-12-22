@@ -420,7 +420,7 @@ export class CalculationDataService {
         nursingEmployerMonthly: 0,
         welfareEmployeeMonthly: 0,
         welfareEmployerMonthly: 0,
-        bonusPaymentDate: '',
+        bonusPaymentDate: bonusRecord?.bonusPaidOn ?? '',
         bonusTotalPay: 0,
         standardHealthBonus: 0,
         standardWelfareBonus: 0,
@@ -515,10 +515,7 @@ export class CalculationDataService {
       nursingEmployerMonthly: nursingMonthly.employer,
       welfareEmployeeMonthly: welfareMonthly.employee,
       welfareEmployerMonthly: welfareMonthly.employer,
-      bonusPaymentDate:
-        context.calculationType === 'insurance'
-          ? ''
-          : (bonusRecord?.bonusPaidOn ?? ''),
+      bonusPaymentDate: bonusRecord?.bonusPaidOn ?? '',
       bonusTotalPay: bonusRecord?.bonusTotal ?? 0,
       standardHealthBonus,
       standardWelfareBonus,

@@ -377,8 +377,38 @@ export class ApprovalDetailComponent implements OnDestroy {
     const cleanedEmployee = this.removeUndefinedFields(
       employeePayload,
     ) as ShahoEmployee;
-    const employeeRef =
-      await this.employeesService.addEmployee(cleanedEmployee);
+
+    // 申請者情報をcreatedByとして設定
+    const createdBy = request.applicantName || request.applicantId || undefined;
+
+    // 承認履歴から最新の承認者を取得
+    let approvedBy: string | undefined;
+    const approvalHistories = (request.histories || []).filter(
+      (h) => h.action === 'approve',
+    );
+    if (approvalHistories.length > 0) {
+      // 最新の承認履歴を取得（作成日時でソート）
+      const latestApprovalHistory = approvalHistories.sort((a, b) => {
+        const aTime =
+          typeof a.createdAt?.toDate === 'function'
+            ? a.createdAt.toDate().getTime()
+            : new Date(a.createdAt as unknown as string).getTime();
+        const bTime =
+          typeof b.createdAt?.toDate === 'function'
+            ? b.createdAt.toDate().getTime()
+            : new Date(b.createdAt as unknown as string).getTime();
+        return bTime - aTime;
+      })[0];
+      approvedBy = latestApprovalHistory.actorName || latestApprovalHistory.actorId || undefined;
+    }
+
+    const employeeRef = await this.employeesService.addEmployee(
+      cleanedEmployee,
+      {
+        createdBy,
+        approvedBy,
+      },
+    );
     const employeeId = employeeRef.id;
 
     // 扶養情報（複数件対応。従来の単一形式もフォールバック）

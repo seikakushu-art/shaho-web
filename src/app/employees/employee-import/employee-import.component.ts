@@ -508,6 +508,40 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // 選択された社員のうち、承認待ちリクエストが既に存在する社員をチェック
+    const employeesWithPendingRequests: Array<{ employeeNo: string; name: string; requestTitle: string }> = [];
+    for (const row of selectedRows) {
+      // 新規登録の場合はスキップ（既存の承認待ちリクエストは存在しない）
+      if (row.isNew) {
+        continue;
+      }
+
+      const employeeId = row.existingEmployeeId || null;
+      const employeeNo = row.employeeNo || null;
+      const existingPendingRequest = this.workflowService.getPendingRequestForEmployee(
+        employeeId,
+        employeeNo,
+      );
+
+      if (existingPendingRequest) {
+        employeesWithPendingRequests.push({
+          employeeNo: row.employeeNo,
+          name: row.name,
+          requestTitle: existingPendingRequest.title || '承認待ちの申請',
+        });
+      }
+    }
+
+    if (employeesWithPendingRequests.length > 0) {
+      const employeeList = employeesWithPendingRequests
+        .map((e) => `${e.name}（${e.employeeNo}）`)
+        .join('、');
+      alert(
+        `以下の社員には既に承認待ちの申請が存在します。既存の申請が承認または差し戻しされるまで、新しい申請を作成できません。\n\n${employeeList}`,
+      );
+      return;
+    }
+
     const validation = this.attachmentService.validateFiles(this.selectedFiles);
     this.validationErrors = validation.errors;
 

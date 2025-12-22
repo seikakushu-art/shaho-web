@@ -614,6 +614,22 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // 編集モードの場合、同じ社員に対する承認待ちリクエストが既に存在するかチェック
+    const isEdit = this.isEditMode && this.originalEmployee && this.employeeId;
+    if (isEdit) {
+      const employeeNo = this.basicInfo.employeeNo || null;
+      const existingPendingRequest = this.approvalWorkflowService.getPendingRequestForEmployee(
+        this.employeeId,
+        employeeNo,
+      );
+
+      if (existingPendingRequest) {
+        const requestTitle = existingPendingRequest.title || '承認待ちの申請';
+        this.approvalMessage = `この社員には既に承認待ちの申請が存在します（${requestTitle}）。既存の申請が承認または差し戻しされるまで、新しい申請を作成できません。`;
+        return;
+      }
+    }
+
     const validation = this.attachmentService.validateFiles(this.selectedFiles);
     this.validationErrors = validation.errors;
     this.dependentValidationError = null;
