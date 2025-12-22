@@ -344,6 +344,11 @@ export class ApprovalDetailComponent implements OnDestroy {
     const healthStandardMonthly = socialInsurance?.healthStandardMonthly ?? 0;
     const welfareStandardMonthly = socialInsurance?.welfareStandardMonthly ?? 0;
 
+    // 現住所の処理：isCurrentAddressSameAsResidentがtrueの場合はundefined、falseの場合はcurrentAddressを設定
+    const currentAddress = basicInfo.isCurrentAddressSameAsResident
+      ? undefined
+      : basicInfo.currentAddress || undefined;
+
     const employeePayload: ShahoEmployee = {
       employeeNo: basicInfo.employeeNo,
       name: basicInfo.name,
@@ -352,6 +357,7 @@ export class ApprovalDetailComponent implements OnDestroy {
       birthDate: basicInfo.birthDate || undefined,
       postalCode: basicInfo.postalCode || undefined,
       address: basicInfo.address || undefined,
+      currentAddress: currentAddress,
       department: basicInfo.department || undefined,
       workPrefecture: basicInfo.workPrefecture || undefined,
       personalNumber: basicInfo.myNumber || undefined,

@@ -231,6 +231,28 @@ type SocialInsuranceMonthlyCase = {
   note: string;
 };
 
+type SocialInsuranceComprehensiveCase = {
+  caseId: string;
+  prefecture: string;
+  careApplicable: boolean;
+  healthStandardMonthly: number;
+  pensionStandardMonthly: number;
+  standardBonusHealth: number;
+  standardBonusPension: number;
+  expectedHealthEmployeeMonthly: number;
+  expectedHealthTotalMonthly: number;
+  expectedCareEmployeeMonthly: number;
+  expectedCareTotalMonthly: number;
+  expectedPensionEmployeeMonthly: number;
+  expectedPensionTotalMonthly: number;
+  expectedHealthEmployeeBonus: number;
+  expectedHealthTotalBonus: number;
+  expectedCareEmployeeBonus: number;
+  expectedCareTotalBonus: number;
+  expectedPensionEmployeeBonus: number;
+  expectedPensionTotalBonus: number;
+};
+
 function parseCsvWithTrailingNote(csv: string) {
   const lines = csv
     .trim()
@@ -254,6 +276,25 @@ function parseCsvWithTrailingNote(csv: string) {
     return record;
   });
 }
+
+function parseSimpleCsv(csv: string) {
+  const lines = csv
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const headers = lines[0].split(',');
+
+  return lines.slice(1).map((line) => {
+    const values = line.split(',');
+    const record: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      record[header] = values[index] ?? '';
+    });
+    return record;
+  });
+}
+
 
 const standardBonusCsv = `caseId,bonusPaidOn,bonusGrossThisPayment,priorBonusGrossSameMonth,priorKenpoStdBonusFiscalYTD,expectedKenpoStdBonusThisPayment,expectedKouseiStdBonusThisPayment,expectedKenpoFiscalYTD_After,expectedKouseiMonthTotal_After,note
 M02a,2025-07-10,999,0,0,0,0,0,0,同月複数：999→まだ0
@@ -362,6 +403,58 @@ M027,大阪府,0,127000,180000,6502,13004,0,0,16470,32940,健保と厚年が異�
 M028,東京都,1,999000,999000,49500,99000,7942,15884,91408,182817,高額レンジ
 M029,大阪府,1,999000,650000,51149,102297,7942,15884,59475,118950,健保高額/厚年上限
 M030,東京都,1,1000000,500000,49550,99100,7950,15900,45750,91500,健保高額/厚年中間`;
+
+const socialInsuranceComprehensiveCsv = `caseId,勤務地都道府県,介護該当(40-64),健保等級,健保標準報酬月額,厚年等級,厚年標準報酬月額,標準賞与額(健保・介護),標準賞与額(厚年),健康保険(個人・月例),健康保険(合計・月例),介護保険(個人・月例),介護保険(合計・月例),厚生年金(個人・月例),厚生年金(合計・月例),健康保険(個人・賞与),健康保険(合計・賞与),介護保険(個人・賞与),介護保険(合計・賞与),厚生年金(個人・賞与),厚生年金(合計・賞与)
+R7-M01,北海道,0,1,58000,1,88000,0,0,2990,5979,0,0,8052,16104,0,0,0,0,0,0
+R7-M02,青森県,1,2,68000,2,98000,1000,1000,3349,6698,541,1081,8967,17934,49,98,8,15,91,183
+R7-M03,岩手県,0,3,78000,3,104000,10000,10000,3752,7503,0,0,9516,19032,481,962,0,0,915,1830
+R7-M04,宮城県,1,4,88000,4,110000,999000,999000,4448,8896,700,1399,10065,20130,50499,100998,7942,15884,91408,182817
+R7-M05,秋田県,0,5,98000,5,118000,1499000,1499000,4905,9809,0,0,10797,21594,75025,150049,0,0,137158,274317
+R7-M06,山形県,1,6,104000,6,126000,1500000,1500000,5070,10140,827,1653,11529,23058,73125,146250,11925,23850,137250,274500
+R7-M07,福島県,0,7,110000,7,134000,5730000,1500000,5291,10582,0,0,12261,24522,275613,551226,0,0,137250,274500
+R7-M08,茨城県,1,8,118000,8,142000,5729000,1499000,5705,11410,938,1876,12993,25986,276997,553994,45546,91091,137158,274317
+R7-M09,栃木県,0,9,126000,9,150000,284000,284000,6187,12373,0,0,13725,27450,13944,27888,0,0,25986,51972
+R7-M10,群馬県,1,10,134000,10,160000,457000,457000,6546,13091,1065,2130,14640,29280,22324,44648,3633,7266,41815,83631
+R7-M11,埼玉県,0,11,142000,11,170000,630000,630000,6930,13859,0,0,15555,31110,30744,61488,0,0,57645,115290
+R7-M12,千葉県,1,12,150000,12,180000,803000,803000,7342,14685,1192,2385,16470,32940,39307,78613,6384,12767,73474,146949
+R7-M13,東京都,0,13,160000,13,190000,976000,976000,7928,15856,0,0,17385,34770,48361,96721,0,0,89304,178608
+R7-M14,神奈川県,1,14,170000,14,200000,1149000,1149000,8432,16864,1351,2703,18300,36600,56990,113980,9135,18269,105133,210267
+R7-M15,新潟県,0,15,180000,15,220000,172000,172000,8595,17190,0,0,20130,40260,8213,16426,0,0,15738,31476
+R7-M16,富山県,1,16,190000,16,240000,345000,345000,9167,18335,1510,3021,21960,43920,16646,33292,2743,5485,31567,63135
+R7-M17,石川県,0,17,200000,17,260000,518000,518000,9880,19760,0,0,23790,47580,25589,51178,0,0,47397,94794
+R7-M18,福井県,1,18,220000,18,280000,691000,691000,10934,21868,1749,3498,25620,51240,34343,68685,5493,10986,63226,126453
+R7-M19,山梨県,0,19,240000,19,300000,864000,864000,11868,23736,0,0,27450,54900,42725,85449,0,0,79056,158112
+R7-M20,長野県,1,20,260000,20,320000,1037000,1037000,12597,25194,2067,4134,29280,58560,50243,100485,8244,16488,94885,189771
+R7-M21,岐阜県,0,21,280000,21,340000,60000,60000,13902,27804,0,0,31110,62220,2979,5958,0,0,5490,10980
+R7-M22,静岡県,1,22,300000,22,360000,233000,233000,14700,29400,2385,4770,32940,65880,11417,22834,1852,3704,21319,42639
+R7-M23,愛知県,0,23,320000,23,380000,406000,406000,16048,32096,0,0,34770,69540,20361,40721,0,0,37149,74298
+R7-M24,三重県,1,24,340000,24,410000,579000,579000,16983,33966,2703,5406,37515,75030,28921,57842,4603,9206,52978,105957
+R7-M25,滋賀県,0,25,360000,25,440000,752000,752000,17946,35892,0,0,40260,80520,37487,74974,0,0,68808,137616
+R7-M26,京都府,1,26,380000,26,470000,925000,925000,19057,38114,3021,6042,43005,86010,46389,92777,7354,14707,84637,169275
+R7-M27,大阪府,0,27,410000,27,500000,1098000,1098000,20992,41984,0,0,45750,91500,56218,112435,0,0,100467,200934
+R7-M28,兵庫県,1,28,440000,28,530000,121000,121000,22352,44704,3498,6996,48495,96990,6147,12293,962,1923,11071,22143
+R7-M29,奈良県,0,29,470000,29,560000,294000,294000,23547,47094,0,0,51240,102480,14729,29458,0,0,26901,53802
+R7-M30,和歌山県,1,30,500000,30,590000,467000,467000,25475,50950,3975,7950,53985,107970,23794,47587,3713,7425,42730,85461
+R7-M31,鳥取県,0,31,530000,31,620000,640000,640000,26314,52629,0,0,56730,113460,31776,63552,0,0,58560,117120
+R7-M32,島根県,1,32,560000,32,650000,813000,813000,27832,55664,4452,8904,59475,118950,40406,80812,6463,12926,74389,148779
+R7-M33,岡山県,0,33,590000,1,88000,986000,986000,30001,60003,0,0,8052,16104,50138,100276,0,0,90219,180438
+R7-M34,広島県,1,34,620000,2,98000,1159000,1159000,30907,61814,4929,9858,8967,17934,57776,115552,9214,18428,106048,212097
+R7-M35,山口県,0,35,650000,3,104000,182000,182000,33670,67340,0,0,9516,19032,9428,18855,0,0,16653,33306
+R7-M36,徳島県,1,36,680000,4,110000,355000,355000,35598,71196,5406,10812,10065,20130,18584,37168,2822,5644,32482,64965
+R7-M37,香川県,0,37,710000,5,118000,528000,528000,36245,72491,0,0,10797,21594,26954,53908,0,0,48312,96624
+R7-M38,愛媛県,1,38,750000,6,126000,701000,701000,38175,76350,5962,11925,11529,23058,35681,71361,5573,11145,64141,128283
+R7-M39,高知県,0,39,790000,7,134000,874000,874000,40013,80027,0,0,12261,24522,44268,88536,0,0,79971,159942
+R7-M40,福岡県,1,40,830000,8,142000,1047000,1047000,42786,85573,6598,13197,12993,25986,53973,107945,8324,16647,95800,191601
+R7-M41,佐賀県,0,41,880000,9,150000,70000,70000,47432,94864,0,0,13725,27450,3773,7546,0,0,6405,12810
+R7-M42,長崎県,1,42,930000,10,160000,243000,243000,48406,96813,7393,14787,14640,29280,12648,25296,1932,3863,22234,44469
+R7-M43,熊本県,0,43,980000,11,170000,416000,416000,49588,99176,0,0,15555,31110,21050,42099,0,0,38064,76128
+R7-M44,大分県,1,44,1030000,12,180000,589000,589000,52787,105575,8188,16377,16470,32940,30186,60372,4683,9365,53893,107787
+R7-M45,宮崎県,0,45,1090000,13,190000,762000,762000,54990,109981,0,0,17385,34770,38443,76885,0,0,69723,139446
+R7-M46,鹿児島県,1,46,1150000,14,200000,935000,935000,59282,118565,9142,18285,18300,36600,48199,96398,7433,14866,85552,171105
+R7-M47,沖縄県,0,47,1210000,15,220000,1108000,1108000,57112,114224,0,0,20130,40260,52298,104595,0,0,101382,202764
+R7-M48,北海道,1,48,1270000,16,240000,131000,131000,65468,130937,10096,20193,21960,43920,6753,13506,1041,2082,11986,23973
+R7-M49,青森県,0,49,1330000,17,260000,304000,304000,65502,131005,0,0,23790,47580,14972,29944,0,0,27816,55632
+R7-M50,岩手県,1,50,1390000,18,280000,477000,477000,66859,133718,11050,22101,25620,51240,22944,45887,3792,7584,43645,87291`;
 
 const legacyStandardBonusCases: BonusCase[] = [
   {
@@ -697,6 +790,178 @@ const socialInsuranceMonthlyCases: SocialInsuranceMonthlyCase[] = parseCsvWithTr
   expectedPensionTotalMonthly: Number(row['expected_pension_total_monthly']),
   note: row['note'],
 }));
+
+function deriveRoundedRate(
+  baseAmounts: Array<{ base: number; expected: number }>,
+): number {
+  const intervals = baseAmounts
+    .filter(({ base }) => base > 0)
+    .map(({ base, expected }) => {
+      const lower = (expected - 0.5) / base;
+      const upper = (expected + 0.5) / base;
+      return [Math.max(lower, 0), Math.max(upper, 0)];
+    });
+
+  if (intervals.length === 0) return 0;
+  const lowerBound = Math.max(...intervals.map(([lower]) => lower));
+  const upperBound = Math.min(...intervals.map(([, upper]) => upper));
+  const candidate = (lowerBound + upperBound) / 2;
+  return Math.max(candidate, 0);
+}
+
+function deriveFlooredRate(
+  baseAmounts: Array<{ base: number; expected: number }>,
+): number {
+  const intervals = baseAmounts
+    .filter(({ base }) => base > 0)
+    .map(({ base, expected }) => {
+      const lower = expected / base;
+      const upper = (expected + 0.9999) / base;
+      return [Math.max(lower, 0), Math.max(upper, 0)];
+    });
+
+  if (intervals.length === 0) return 0;
+  const lowerBound = Math.max(...intervals.map(([lower]) => lower));
+  const upperBound = Math.min(...intervals.map(([, upper]) => upper));
+  const candidate = (lowerBound + upperBound) / 2;
+  return Math.max(candidate, 0);
+}
+
+function buildPrefectureRate(
+  monthly: { base: number; expectedEmployee: number; expectedTotal: number },
+  bonus: { base: number; expectedEmployee: number; expectedTotal: number },
+  prefecture: string,
+): PrefectureRate {
+  const employeeRate = deriveRoundedRate([
+    { base: monthly.base, expected: monthly.expectedEmployee },
+    { base: bonus.base, expected: bonus.expectedEmployee },
+  ]);
+  const totalRate = deriveFlooredRate([
+    { base: monthly.base, expected: monthly.expectedTotal },
+    { base: bonus.base, expected: bonus.expectedTotal },
+  ]);
+
+  return {
+    prefecture,
+    employeeRate: (employeeRate * 100).toFixed(6),
+    totalRate: (totalRate * 100).toFixed(6),
+    effectiveFrom: '2024-04-01',
+  };
+}
+
+function buildPensionRate(
+  monthly: { base: number; expectedEmployee: number; expectedTotal: number },
+  bonus: { base: number; expectedEmployee: number; expectedTotal: number },
+): InsuranceRateRecord['pensionRate'] {
+  const employeeRate = deriveRoundedRate([
+    { base: monthly.base, expected: monthly.expectedEmployee },
+    { base: bonus.base, expected: bonus.expectedEmployee },
+  ]);
+  const totalRate = deriveFlooredRate([
+    { base: monthly.base, expected: monthly.expectedTotal },
+    { base: bonus.base, expected: bonus.expectedTotal },
+  ]);
+
+  return {
+    employeeRate: (employeeRate * 100).toFixed(6),
+    totalRate: (totalRate * 100).toFixed(6),
+    effectiveFrom: '2024-04-01',
+  };
+}
+
+const socialInsuranceComprehensiveCases: SocialInsuranceComprehensiveCase[] = parseSimpleCsv(
+  socialInsuranceComprehensiveCsv,
+).map((row) => ({
+  caseId: row['caseId'],
+  prefecture: row['勤務地都道府県'],
+  careApplicable: row['介護該当(40-64)'] === '1',
+  healthStandardMonthly: Number(row['健保標準報酬月額']),
+  pensionStandardMonthly: Number(row['厚年標準報酬月額']),
+  standardBonusHealth: Number(row['標準賞与額(健保・介護)']),
+  standardBonusPension: Number(row['標準賞与額(厚年)']),
+  expectedHealthEmployeeMonthly: Number(row['健康保険(個人・月例)']),
+  expectedHealthTotalMonthly: Number(row['健康保険(合計・月例)']),
+  expectedCareEmployeeMonthly: Number(row['介護保険(個人・月例)']),
+  expectedCareTotalMonthly: Number(row['介護保険(合計・月例)']),
+  expectedPensionEmployeeMonthly: Number(row['厚生年金(個人・月例)']),
+  expectedPensionTotalMonthly: Number(row['厚生年金(合計・月例)']),
+  expectedHealthEmployeeBonus: Number(row['健康保険(個人・賞与)']),
+  expectedHealthTotalBonus: Number(row['健康保険(合計・賞与)']),
+  expectedCareEmployeeBonus: Number(row['介護保険(個人・賞与)']),
+  expectedCareTotalBonus: Number(row['介護保険(合計・賞与)']),
+  expectedPensionEmployeeBonus: Number(row['厚生年金(個人・賞与)']),
+  expectedPensionTotalBonus: Number(row['厚生年金(合計・賞与)']),
+}));
+
+function buildRateRecordFromComprehensiveCase(
+  testCase: SocialInsuranceComprehensiveCase,
+): InsuranceRateRecord {
+  const healthRate = buildPrefectureRate(
+    {
+      base: testCase.healthStandardMonthly,
+      expectedEmployee: testCase.expectedHealthEmployeeMonthly,
+      expectedTotal: testCase.expectedHealthTotalMonthly,
+    },
+    {
+      base: testCase.standardBonusHealth,
+      expectedEmployee: testCase.expectedHealthEmployeeBonus,
+      expectedTotal: testCase.expectedHealthTotalBonus,
+    },
+    testCase.prefecture,
+  );
+
+  const nursingRate = buildPrefectureRate(
+    {
+      base: testCase.healthStandardMonthly,
+      expectedEmployee: testCase.expectedCareEmployeeMonthly,
+      expectedTotal: testCase.expectedCareTotalMonthly,
+    },
+    {
+      base: testCase.standardBonusHealth,
+      expectedEmployee: testCase.expectedCareEmployeeBonus,
+      expectedTotal: testCase.expectedCareTotalBonus,
+    },
+    testCase.prefecture,
+  );
+
+  const pensionRate = buildPensionRate(
+    {
+      base: testCase.pensionStandardMonthly,
+      expectedEmployee: testCase.expectedPensionEmployeeMonthly,
+      expectedTotal: testCase.expectedPensionTotalMonthly,
+    },
+    {
+      base: testCase.standardBonusPension,
+      expectedEmployee: testCase.expectedPensionEmployeeBonus,
+      expectedTotal: testCase.expectedPensionTotalBonus,
+    },
+  );
+
+  return {
+    healthInsuranceRates: [healthRate],
+    nursingCareRates: [nursingRate],
+    pensionRate,
+    bonusCaps: [
+      {
+        insuranceType: '健康保険',
+        monthlyCap: '5730000',
+        yearlyCap: '5730000',
+        yearlyCapEffectiveFrom: '2024-04-01',
+      },
+      {
+        insuranceType: '厚生年金',
+        monthlyCap: '1500000',
+        yearlyCap: '1500000',
+        yearlyCapEffectiveFrom: '2024-04-01',
+      },
+    ],
+    standardCompensations,
+    createdAt: '2024-04-01',
+    updatedAt: '2024-04-01',
+    healthType: '協会けんぽ',
+    insurerName: 'テスト自動算出レート',
+  } as InsuranceRateRecord;
+}
 
 function buildBonusPayrolls(
   testCase: SocialInsuranceBonusCase,
@@ -1084,6 +1349,119 @@ describe('CalculationDataService social insurance monthly fixtures', () => {
       expect(row.healthEmployeeBonus).toBe(0);
       expect(row.nursingEmployeeBonus).toBe(0);
       expect(row.welfareEmployeeBonus).toBe(0);
+    });
+  });
+});
+
+describe('CalculationDataService social insurance comprehensive fixtures (R7)', () => {
+  let service: CalculationDataService;
+  let employeesStub: EmployeesStub;
+  let ratesStub: RatesStub;
+
+  beforeEach(() => {
+    employeesStub = new EmployeesStub();
+    ratesStub = new RatesStub();
+
+    TestBed.configureTestingModule({
+      providers: [
+        CalculationDataService,
+        { provide: ShahoEmployeesService, useValue: employeesStub },
+        { provide: InsuranceRatesService, useValue: ratesStub },
+        { provide: CorporateInfoService, useClass: CorporateInfoStub },
+        provideFirebaseApp(() => initializeApp(firebaseConfig)),
+        provideAuth(() => getAuth(getApp())),
+        provideFirestore(() => initializeFirestore(getApp(), {})),
+      ],
+    });
+
+    service = TestBed.inject(CalculationDataService);
+  });
+
+  socialInsuranceComprehensiveCases.forEach((testCase) => {
+    it(`${testCase.caseId}: ${testCase.prefecture}`, async () => {
+      const rateRecord = buildRateRecordFromComprehensiveCase(testCase);
+      ratesStub.rateHistory = [rateRecord];
+
+      const payrolls: PayrollData[] = [
+        {
+          yearMonth: '2024-07',
+          amount: testCase.healthStandardMonthly,
+          workedDays: 20,
+          bonusPaidOn: '2024-07-15',
+          bonusTotal: testCase.standardBonusHealth,
+          standardHealthBonus: testCase.standardBonusHealth,
+          standardWelfareBonus: testCase.standardBonusPension,
+        } as unknown as PayrollData,
+      ];
+
+      employeesStub.employees = [
+        {
+          employeeNo: `R7-${testCase.caseId}`,
+          name: `R7-${testCase.prefecture}`,
+          department: '計算',
+          workPrefecture: testCase.prefecture,
+          careSecondInsured: testCase.careApplicable,
+          healthStandardMonthly: testCase.healthStandardMonthly,
+          welfareStandardMonthly: testCase.pensionStandardMonthly,
+          payrolls,
+        } as unknown as ShahoEmployee,
+      ];
+
+      const params: CalculationQueryParams = {
+        type: 'insurance',
+        targetMonth: '2024-07',
+        method: 'none',
+        standardMethod: '定時決定',
+        insurances: ['健康保険', '介護保険', '厚生年金'],
+        includeBonusInMonth: true,
+        employeeNo: `R7-${testCase.caseId}`,
+        bonusPaidOn: '2024-07-15',
+      };
+
+      const [row] = await firstValueFrom(service.getCalculationRows(params));
+
+      expect(row.healthStandardMonthly).toBe(testCase.healthStandardMonthly);
+      expect(row.welfareStandardMonthly).toBe(testCase.pensionStandardMonthly);
+      expect(row.standardHealthBonus).toBe(testCase.standardBonusHealth);
+      expect(row.standardWelfareBonus).toBe(testCase.standardBonusPension);
+
+      expect(row.healthEmployeeMonthly).toBe(
+        testCase.expectedHealthEmployeeMonthly,
+      );
+      expect(row.healthEmployerMonthly + row.healthEmployeeMonthly).toBe(
+        testCase.expectedHealthTotalMonthly,
+      );
+      expect(row.nursingEmployeeMonthly).toBe(
+        testCase.expectedCareEmployeeMonthly,
+      );
+      expect(row.nursingEmployerMonthly + row.nursingEmployeeMonthly).toBe(
+        testCase.expectedCareTotalMonthly,
+      );
+      expect(row.welfareEmployeeMonthly).toBe(
+        testCase.expectedPensionEmployeeMonthly,
+      );
+      expect(row.welfareEmployerMonthly + row.welfareEmployeeMonthly).toBe(
+        testCase.expectedPensionTotalMonthly,
+      );
+
+      expect(row.healthEmployeeBonus).toBe(
+        testCase.expectedHealthEmployeeBonus,
+      );
+      expect(row.healthEmployerBonus + row.healthEmployeeBonus).toBe(
+        testCase.expectedHealthTotalBonus,
+      );
+      expect(row.nursingEmployeeBonus).toBe(
+        testCase.expectedCareEmployeeBonus,
+      );
+      expect(row.nursingEmployerBonus + row.nursingEmployeeBonus).toBe(
+        testCase.expectedCareTotalBonus,
+      );
+      expect(row.welfareEmployeeBonus).toBe(
+        testCase.expectedPensionEmployeeBonus,
+      );
+      expect(row.welfareEmployerBonus + row.welfareEmployeeBonus).toBe(
+        testCase.expectedPensionTotalBonus,
+      );
     });
   });
 });

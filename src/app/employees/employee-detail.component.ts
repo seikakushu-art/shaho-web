@@ -3,8 +3,8 @@ import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { Timestamp } from '@angular/fire/firestore';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subject, of, switchMap, takeUntil, firstValueFrom, combineLatest } from 'rxjs';
-import { ShahoEmployee, ShahoEmployeesService, PayrollData, DependentData } from '../app/services/shaho-employees.service';
+import { Subject, of, switchMap, takeUntil, firstValueFrom, combineLatest, map } from 'rxjs';
+import { ShahoEmployee, ShahoEmployeesService, PayrollData, DependentData, BonusPayment } from '../app/services/shaho-employees.service';
 import { AuthService } from '../auth/auth.service';
 import { RoleKey } from '../models/roles';
 import { ApprovalWorkflowService } from '../approvals/approval-workflow.service';
@@ -92,6 +92,14 @@ interface SocialInsuranceHistoryData {
   healthInsuranceBonus?: number;
   careInsuranceBonus?: number;
   pensionBonus?: number;
+  // 2つ目の賞与フィールド（同じ月に複数の賞与がある場合）
+  bonusPaidOn2?: string;
+  bonusTotal2?: number;
+  standardHealthBonus2?: number; // 標準賞与額（健・介）2
+  standardWelfareBonus2?: number; // 標準賞与額（厚生年金）2
+  healthInsuranceBonus2?: number;
+  careInsuranceBonus2?: number;
+  pensionBonus2?: number;
 }
 
 @Component({
@@ -206,6 +214,13 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     { key: 'healthInsuranceBonus', label: '健康保険（賞与）', category: 'bonus' },
     { key: 'careInsuranceBonus', label: '介護保険（賞与）', category: 'bonus' },
     { key: 'pensionBonus', label: '厚生年金（賞与）', category: 'bonus' },
+    { key: 'bonusPaidOn2', label: '賞与支給日2', category: 'bonus' },
+    { key: 'bonusTotal2', label: '賞与総支給額2', category: 'bonus' },
+    { key: 'standardHealthBonus2', label: '標準賞与額（健・介）2', category: 'bonus' },
+    { key: 'standardWelfareBonus2', label: '標準賞与額（厚生年金）2', category: 'bonus' },
+    { key: 'healthInsuranceBonus2', label: '健康保険（賞与）2', category: 'bonus' },
+    { key: 'careInsuranceBonus2', label: '介護保険（賞与）2', category: 'bonus' },
+    { key: 'pensionBonus2', label: '厚生年金（賞与）2', category: 'bonus' },
   ];
 
 
@@ -353,7 +368,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       return value.toLocaleString();
     }
     // 賞与支給日の場合は YYYY/MM/DD 形式にフォーマット
-    if (key === 'bonusPaidOn' && typeof value === 'string') {
+    if ((key === 'bonusPaidOn' || key === 'bonusPaidOn2') && typeof value === 'string') {
       return this.formatDateForDisplay(value);
     }
     return value;
@@ -630,12 +645,56 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   private loadPayrollHistory(employeeId: string) {
     this.employeesService
       .getPayrolls(employeeId)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((payrolls) => {
-        // 給与データを保存（年度累計計算用）
-        this.allPayrolls = payrolls;
-        
+      .pipe(
+        switchMap((payrolls) => {
+          // 給与データを保存（年度累計計算用）
+          this.allPayrolls = payrolls;
+          
+          // 各月の賞与明細を取得するためのObservableを作成
+          const monthKeys = new Set<string>();
+          payrolls.forEach((payroll) => {
+            const monthKey = this.formatYearMonthKey(payroll.yearMonth);
+            if (monthKey) {
+              monthKeys.add(monthKey);
+            }
+            // 賞与支給日の月も追加
+            if (payroll.bonusPaidOn) {
+              const bonusDate = new Date(payroll.bonusPaidOn.replace(/\//g, '-'));
+              if (!isNaN(bonusDate.getTime())) {
+                const bonusYear = bonusDate.getFullYear();
+                const bonusMonthNum = bonusDate.getMonth() + 1;
+                const bonusMonth = String(bonusMonthNum).padStart(2, '0');
+                const bonusMonthKey = `${bonusYear}-${bonusMonth}`;
+                monthKeys.add(bonusMonthKey);
+              }
+            }
+          });
+
+          // 各月の賞与明細を取得
+          const bonusPaymentObservables = Array.from(monthKeys).map((monthKey) =>
+            this.employeesService.getBonusPayments(employeeId, monthKey).pipe(
+              map((bonusPayments) => ({ monthKey, bonusPayments })),
+            ),
+          );
+
+          if (bonusPaymentObservables.length === 0) {
+            return of({ payrolls, bonusPaymentsByMonth: [] });
+          }
+
+          return combineLatest(bonusPaymentObservables).pipe(
+            map((bonusPaymentsByMonth) => ({ payrolls, bonusPaymentsByMonth })),
+          );
+        }),
+        takeUntil(this.destroy$),
+      )
+      .subscribe(({ payrolls, bonusPaymentsByMonth }) => {
         const history: Record<string, SocialInsuranceHistoryData> = {};
+        const bonusPaymentsMap = new Map<string, BonusPayment[]>();
+        
+        // 賞与明細をマップに格納
+        bonusPaymentsByMonth.forEach(({ monthKey, bonusPayments }) => {
+          bonusPaymentsMap.set(monthKey, bonusPayments);
+        });
 
         payrolls.forEach((payroll) => {
           const monthKey = this.formatYearMonthKey(payroll.yearMonth);
@@ -672,24 +731,51 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
               const bonusMonth = String(bonusMonthNum).padStart(2, '0');
               const bonusMonthKey = `${bonusYear}-${bonusMonth}`;
 
+              // その月の賞与明細を取得
+              const bonusPayments = bonusPaymentsMap.get(bonusMonthKey) || [];
+              
+              // 最初の賞与
+              const firstBonus = bonusPayments.length > 0 ? bonusPayments[0] : undefined;
+              // 2つ目の賞与
+              const secondBonus = bonusPayments.length > 1 ? bonusPayments[1] : undefined;
+
               const standardBonusValue = payroll.standardHealthBonus || payroll.standardWelfareBonus || payroll.standardBonus;
               const bonusData: SocialInsuranceHistoryData = {
-                bonusPaidOn: this.formatDateForInput(payroll.bonusPaidOn),
-                bonusTotal: payroll.bonusTotal,
-                ...(payroll.standardHealthBonus !== undefined && payroll.standardHealthBonus !== null
+                bonusPaidOn: firstBonus ? this.formatDateForInput(firstBonus.bonusPaidOn) : this.formatDateForInput(payroll.bonusPaidOn),
+                bonusTotal: firstBonus ? firstBonus.bonusTotal : payroll.bonusTotal,
+                ...(firstBonus?.standardHealthBonus !== undefined && firstBonus.standardHealthBonus !== null
+                  ? { standardHealthBonus: firstBonus.standardHealthBonus }
+                  : payroll.standardHealthBonus !== undefined && payroll.standardHealthBonus !== null
                   ? { standardHealthBonus: payroll.standardHealthBonus }
                   : {}),
-                ...(payroll.standardWelfareBonus !== undefined && payroll.standardWelfareBonus !== null
+                ...(firstBonus?.standardWelfareBonus !== undefined && firstBonus.standardWelfareBonus !== null
+                  ? { standardWelfareBonus: firstBonus.standardWelfareBonus }
+                  : payroll.standardWelfareBonus !== undefined && payroll.standardWelfareBonus !== null
                   ? { standardWelfareBonus: payroll.standardWelfareBonus }
                   : {}),
                 // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
                 ...(standardBonusValue !== undefined && standardBonusValue !== null
                   ? { standardBonus: standardBonusValue }
                   : {}),
-                healthInsuranceBonus: payroll.healthInsuranceBonus,
-                careInsuranceBonus: payroll.careInsuranceBonus,
-                pensionBonus: payroll.pensionBonus,
+                healthInsuranceBonus: firstBonus ? firstBonus.healthInsuranceBonus : payroll.healthInsuranceBonus,
+                careInsuranceBonus: firstBonus ? firstBonus.careInsuranceBonus : payroll.careInsuranceBonus,
+                pensionBonus: firstBonus ? firstBonus.pensionBonus : payroll.pensionBonus,
               };
+
+              // 2つ目の賞与がある場合
+              if (secondBonus) {
+                bonusData.bonusPaidOn2 = this.formatDateForInput(secondBonus.bonusPaidOn);
+                bonusData.bonusTotal2 = secondBonus.bonusTotal;
+                if (secondBonus.standardHealthBonus !== undefined && secondBonus.standardHealthBonus !== null) {
+                  bonusData.standardHealthBonus2 = secondBonus.standardHealthBonus;
+                }
+                if (secondBonus.standardWelfareBonus !== undefined && secondBonus.standardWelfareBonus !== null) {
+                  bonusData.standardWelfareBonus2 = secondBonus.standardWelfareBonus;
+                }
+                bonusData.healthInsuranceBonus2 = secondBonus.healthInsuranceBonus;
+                bonusData.careInsuranceBonus2 = secondBonus.careInsuranceBonus;
+                bonusData.pensionBonus2 = secondBonus.pensionBonus;
+              }
 
               // 既存のデータとマージ
               if (history[bonusMonthKey]) {

@@ -18,6 +18,7 @@ import {
 import { RoleKey } from '../../models/roles';
 import {
   PayrollData,
+  BonusPayment,
   ShahoEmployee,
   ShahoEmployeesService,
   DependentData,
@@ -1755,6 +1756,29 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         // データが存在しない場合はundefinedのまま
       }
 
+      let existingBonusPayments: BonusPayment[] = [];
+      try {
+        existingBonusPayments = await firstValueFrom(
+          this.employeesService
+            .getBonusPayments(employeeId, normalizedYearMonth)
+            .pipe(take(1)),
+        );
+      } catch {
+        existingBonusPayments = [];
+      }
+      const findExistingBonusByDate = (
+        paidOn: string | undefined,
+      ): BonusPayment | undefined => {
+        if (!paidOn) return undefined;
+        const normalizedTarget = paidOn.replace(/\//g, '-').split('T')[0];
+        return existingBonusPayments.find((bonus) => {
+          const normalizedExisting = (bonus.bonusPaidOn ?? '')
+            .replace(/\//g, '-')
+            .split('T')[0];
+          return normalizedExisting === normalizedTarget;
+        });
+      };
+
       // 月給支払月の差分
       const existingYearMonth = existingPayroll?.yearMonth;
       const csvYearMonthDisplay = monthlyPayMonth; // YYYY/MM形式のまま表示
@@ -1799,7 +1823,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       // 賞与総支給額の差分（月の情報を含める）
       if (bonusTotal) {
         const csvBonus = Number(bonusTotal.replace(/,/g, ''));
-        const existingBonus = existingPayroll?.bonusTotal;
+        // 支給日一致のBonusPaymentのみを参照（existingPayrollのフォールバックは使用しない）
+        const existingBonus = findExistingBonusByDate(bonusPaidOn)?.bonusTotal;
         if (existingBonus === undefined || existingBonus !== csvBonus) {
           changes.push({
             fieldName: `賞与総支給額（${csvYearMonthDisplay}）`,
@@ -1813,7 +1838,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       // 賞与支給日の差分（月の情報を含める）
       if (bonusPaidOn) {
         const normalizedBonusDate = bonusPaidOn.replace(/\//g, '-');
-        const existingBonusDate = existingPayroll?.bonusPaidOn;
+        // 支給日一致のBonusPaymentのみを参照（existingPayrollのフォールバックは使用しない）
+        const existingBonusDate = findExistingBonusByDate(bonusPaidOn)?.bonusPaidOn;
         if (existingBonusDate !== normalizedBonusDate) {
           changes.push({
             fieldName: `賞与支給日（${csvYearMonthDisplay}）`,
@@ -1840,11 +1866,34 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         } catch {
           // データが存在しない場合はundefinedのまま
         }
+        let existingBonusPayments: BonusPayment[] = [];
+        try {
+          existingBonusPayments = await firstValueFrom(
+            this.employeesService
+              .getBonusPayments(employeeId, normalizedYearMonth)
+              .pipe(take(1)),
+          );
+        } catch {
+          existingBonusPayments = [];
+        }
+        const findExistingBonusByDate = (
+          paidOn: string | undefined,
+        ): BonusPayment | undefined => {
+          if (!paidOn) return undefined;
+          const normalizedTarget = paidOn.replace(/\//g, '-').split('T')[0];
+          return existingBonusPayments.find((bonus) => {
+            const normalizedExisting = (bonus.bonusPaidOn ?? '')
+              .replace(/\//g, '-')
+              .split('T')[0];
+            return normalizedExisting === normalizedTarget;
+          });
+        };
 
         // 賞与総支給額の差分（月の情報を含める）
         if (bonusTotal) {
           const csvBonus = Number(bonusTotal.replace(/,/g, ''));
-          const existingBonus = existingPayroll?.bonusTotal;
+          // 支給日一致のBonusPaymentのみを参照（existingPayrollのフォールバックは使用しない）
+          const existingBonus = findExistingBonusByDate(bonusPaidOn)?.bonusTotal;
           if (existingBonus === undefined || existingBonus !== csvBonus) {
             changes.push({
               fieldName: `賞与総支給額（${bonusYearMonthDisplay}）`,
@@ -1857,7 +1906,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
         // 賞与支給日の差分（月の情報を含める）
         const normalizedBonusDate = bonusPaidOn.replace(/\//g, '-');
-        const existingBonusDate = existingPayroll?.bonusPaidOn;
+        // 支給日一致のBonusPaymentのみを参照（existingPayrollのフォールバックは使用しない）
+        const existingBonusDate = findExistingBonusByDate(bonusPaidOn)?.bonusPaidOn;
         if (existingBonusDate !== normalizedBonusDate) {
           changes.push({
             fieldName: `賞与支給日（${bonusYearMonthDisplay}）`,

@@ -911,15 +911,31 @@ export class ShahoEmployeesService {
           'bonusPayments',
         );
         const bonusPaymentsSnap = await getDocs(bonusPaymentsRef);
-        const existingBonusIds = bonusPaymentsSnap.docs.map((d) => d.id);
+        const existingBonusPayments = bonusPaymentsSnap.docs.map((d) => ({
+          ...(d.data() as BonusPayment),
+          id: d.id,
+        }));
+        const existingBonusIds = existingBonusPayments.map((d) => d.id);
+
+        const normalizedTargetBonusPaidOn = bonusPaymentData.bonusPaidOn
+          .replace(/\//g, '-')
+          .split('T')[0];
+        const matchedBonusPayment = existingBonusPayments.find((bonus) => {
+          const normalizedExisting = (bonus.bonusPaidOn ?? '')
+            .replace(/\//g, '-')
+            .split('T')[0];
+          return normalizedExisting === normalizedTargetBonusPaidOn;
+        });
 
         // bonusPaymentIdを生成
-        const bonusPaymentId = this.generateBonusPaymentId(
-          bonusPaymentData.sourcePaymentId,
-          bonusPaymentData.bonusPaidOn,
-          bonusPaymentData.bonusTotal,
-          existingBonusIds,
-        );
+        const bonusPaymentId =
+          matchedBonusPayment?.id ||
+          this.generateBonusPaymentId(
+            bonusPaymentData.sourcePaymentId,
+            bonusPaymentData.bonusPaidOn,
+            bonusPaymentData.bonusTotal,
+            existingBonusIds,
+          );
 
         // 賞与明細ドキュメントの参照
         const bonusPaymentRef = doc(
@@ -1244,39 +1260,62 @@ export class ShahoEmployeesService {
           const payrollDataPromises = payrollMonths.map((payrollMonth) =>
             this.getBonusPayments(employeeId, payrollMonth.yearMonth).pipe(
               map((bonusPayments) => {
-                // 最初の賞与明細を取得（後方互換性のため）
-                const firstBonus = bonusPayments.length > 0 ? bonusPayments[0] : undefined;
-                
-                // PayrollData形式に変換
-                const payrollData: PayrollData = {
-                  id: payrollMonth.id,
-                  yearMonth: payrollMonth.yearMonth,
-                  workedDays: payrollMonth.workedDays,
-                  amount: payrollMonth.amount,
-                  healthStandardMonthly: payrollMonth.healthStandardMonthly,
-                  welfareStandardMonthly: payrollMonth.welfareStandardMonthly,
-                  healthInsuranceMonthly: payrollMonth.healthInsuranceMonthly,
-                  careInsuranceMonthly: payrollMonth.careInsuranceMonthly,
-                  pensionMonthly: payrollMonth.pensionMonthly,
-                  bonusPaidOn: firstBonus?.bonusPaidOn,
-                  bonusTotal: firstBonus?.bonusTotal,
-                  standardHealthBonus: firstBonus?.standardHealthBonus,
-                  standardWelfareBonus: firstBonus?.standardWelfareBonus,
-                  standardBonus: firstBonus?.standardBonus,
-                  healthInsuranceBonus: firstBonus?.healthInsuranceBonus,
-                  careInsuranceBonus: firstBonus?.careInsuranceBonus,
-                  pensionBonus: firstBonus?.pensionBonus,
-                  createdAt: payrollMonth.createdAt,
-                  updatedAt: payrollMonth.updatedAt,
-                  createdBy: payrollMonth.createdBy,
-                  updatedBy: payrollMonth.updatedBy,
-                  approvedBy: payrollMonth.approvedBy,
-                };
-                return payrollData;
+                // 同じ月に複数の賞与がある場合、各賞与に対して1つのPayrollDataを生成
+                if (bonusPayments.length > 0) {
+                  return bonusPayments.map((bonus, index) => {
+                    // 最初のPayrollDataには月給データを含める
+                    // 2つ目以降のPayrollDataにも月給データを含める（計算時に必要）
+                    const payrollData: PayrollData = {
+                      id: payrollMonth.id,
+                      yearMonth: payrollMonth.yearMonth,
+                      workedDays: payrollMonth.workedDays,
+                      amount: payrollMonth.amount,
+                      healthStandardMonthly: payrollMonth.healthStandardMonthly,
+                      welfareStandardMonthly: payrollMonth.welfareStandardMonthly,
+                      healthInsuranceMonthly: payrollMonth.healthInsuranceMonthly,
+                      careInsuranceMonthly: payrollMonth.careInsuranceMonthly,
+                      pensionMonthly: payrollMonth.pensionMonthly,
+                      bonusPaidOn: bonus.bonusPaidOn,
+                      bonusTotal: bonus.bonusTotal,
+                      standardHealthBonus: bonus.standardHealthBonus,
+                      standardWelfareBonus: bonus.standardWelfareBonus,
+                      standardBonus: bonus.standardBonus,
+                      healthInsuranceBonus: bonus.healthInsuranceBonus,
+                      careInsuranceBonus: bonus.careInsuranceBonus,
+                      pensionBonus: bonus.pensionBonus,
+                      createdAt: payrollMonth.createdAt,
+                      updatedAt: payrollMonth.updatedAt,
+                      createdBy: payrollMonth.createdBy,
+                      updatedBy: payrollMonth.updatedBy,
+                      approvedBy: payrollMonth.approvedBy,
+                    };
+                    return payrollData;
+                  });
+                } else {
+                  // 賞与がない場合は月給データのみのPayrollDataを1つ返す
+                  return [{
+                    id: payrollMonth.id,
+                    yearMonth: payrollMonth.yearMonth,
+                    workedDays: payrollMonth.workedDays,
+                    amount: payrollMonth.amount,
+                    healthStandardMonthly: payrollMonth.healthStandardMonthly,
+                    welfareStandardMonthly: payrollMonth.welfareStandardMonthly,
+                    healthInsuranceMonthly: payrollMonth.healthInsuranceMonthly,
+                    careInsuranceMonthly: payrollMonth.careInsuranceMonthly,
+                    pensionMonthly: payrollMonth.pensionMonthly,
+                    createdAt: payrollMonth.createdAt,
+                    updatedAt: payrollMonth.updatedAt,
+                    createdBy: payrollMonth.createdBy,
+                    updatedBy: payrollMonth.updatedBy,
+                    approvedBy: payrollMonth.approvedBy,
+                  }];
+                }
               }),
             ),
           );
-          return combineLatest(payrollDataPromises);
+          return combineLatest(payrollDataPromises).pipe(
+            map((payrollDataArrays) => payrollDataArrays.flat()),
+          );
         }
         
         // 新しい構造にない場合は古い構造から取得
