@@ -34,6 +34,12 @@ export type CalculationResultField =
   | 'nursingEmployerBonus'
   | 'welfareEmployeeBonus'
   | 'welfareEmployerBonus'
+  | 'healthTotalMonthly'
+  | 'nursingTotalMonthly'
+  | 'welfareTotalMonthly'
+  | 'healthTotalBonus'
+  | 'nursingTotalBonus'
+  | 'welfareTotalBonus'
   | 'totalPremium';
 export const EXPORT_ALL = '__ALL__';
 
@@ -61,6 +67,12 @@ export const CALCULATION_RESULT_FIELD_DEFS: ReadonlyArray<{
   { key: 'nursingEmployerBonus', header: '介護保険（賞与 会社）' },
   { key: 'welfareEmployeeBonus', header: '厚生年金（賞与 個人）' },
   { key: 'welfareEmployerBonus', header: '厚生年金（賞与 会社）' },
+  { key: 'healthTotalMonthly', header: '健康保険（合計・月例）' },
+  { key: 'nursingTotalMonthly', header: '介護保険（合計・月例）' },
+  { key: 'welfareTotalMonthly', header: '厚生年金（合計・月例）' },
+  { key: 'healthTotalBonus', header: '健康保険（合計・賞与）' },
+  { key: 'nursingTotalBonus', header: '介護保険（合計・賞与）' },
+  { key: 'welfareTotalBonus', header: '厚生年金（合計・賞与）' },
   { key: 'totalPremium', header: '個人＋会社 保険料合計' },
 ];
 
@@ -489,6 +501,54 @@ export class CsvExportService {
         header: '厚生年金（賞与 会社）',
         value: (employee) =>
           rowMap.get(employee.employeeNo)?.welfareEmployerBonus,
+      },
+      healthTotalMonthly: {
+        header: '健康保険（合計・月例）',
+        value: (employee) => {
+          const row = rowMap.get(employee.employeeNo);
+          if (!row) return '';
+          return (row.healthEmployeeMonthly ?? 0) + (row.healthEmployerMonthly ?? 0);
+        },
+      },
+      nursingTotalMonthly: {
+        header: '介護保険（合計・月例）',
+        value: (employee) => {
+          const row = rowMap.get(employee.employeeNo);
+          if (!row) return '';
+          return (row.nursingEmployeeMonthly ?? 0) + (row.nursingEmployerMonthly ?? 0);
+        },
+      },
+      welfareTotalMonthly: {
+        header: '厚生年金（合計・月例）',
+        value: (employee) => {
+          const row = rowMap.get(employee.employeeNo);
+          if (!row) return '';
+          return (row.welfareEmployeeMonthly ?? 0) + (row.welfareEmployerMonthly ?? 0);
+        },
+      },
+      healthTotalBonus: {
+        header: '健康保険（合計・賞与）',
+        value: (employee) => {
+          const row = rowMap.get(employee.employeeNo);
+          if (!row) return '';
+          return (row.healthEmployeeBonus ?? 0) + (row.healthEmployerBonus ?? 0);
+        },
+      },
+      nursingTotalBonus: {
+        header: '介護保険（合計・賞与）',
+        value: (employee) => {
+          const row = rowMap.get(employee.employeeNo);
+          if (!row) return '';
+          return (row.nursingEmployeeBonus ?? 0) + (row.nursingEmployerBonus ?? 0);
+        },
+      },
+      welfareTotalBonus: {
+        header: '厚生年金（合計・賞与）',
+        value: (employee) => {
+          const row = rowMap.get(employee.employeeNo);
+          if (!row) return '';
+          return (row.welfareEmployeeBonus ?? 0) + (row.welfareEmployerBonus ?? 0);
+        },
       },
       totalPremium: {
         header: '個人＋会社 保険料合計',

@@ -967,25 +967,59 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     let rawNursingTotal = 0;
     let rawWelfareTotal = 0;
 
+    // 同じ社員の同じ月のデータを1回だけカウントするためのセット
+    const processedMonthlyKeys = new Set<string>();
+    const processedBonusKeys = new Set<string>();
+
     this.rows.forEach((row) => {
       if (row.error) return; // エラーがある行は集計から除外
+      
+      // 同じ社員の同じ月のデータを1回だけカウントするためのキー
+      const monthlyKey = `${row.employeeNo}-${row.month}`;
+      const isDuplicateMonthly = processedMonthlyKeys.has(monthlyKey);
+      
+      // 賞与分の保険料がある場合、同じ社員の同じ月の賞与を1回だけカウントする
+      const hasBonus = row.healthEmployeeBonus > 0 || row.healthEmployerBonus > 0 ||
+                       row.nursingEmployeeBonus > 0 || row.nursingEmployerBonus > 0 ||
+                       row.welfareEmployeeBonus > 0 || row.welfareEmployerBonus > 0;
+      const bonusKey = hasBonus ? monthlyKey : null;
+      const isDuplicateBonus = bonusKey !== null && processedBonusKeys.has(bonusKey);
+      
       if (summaryRefs.health) {
-        summaryRefs.health.employee +=
-          row.healthEmployeeMonthly + row.healthEmployeeBonus;
-        summaryRefs.health.employer +=
-          row.healthEmployerMonthly + row.healthEmployerBonus;
+        // 月例分は重複を避ける
+        if (!isDuplicateMonthly) {
+          summaryRefs.health.employee += row.healthEmployeeMonthly;
+          summaryRefs.health.employer += row.healthEmployerMonthly;
+        }
+        // 賞与分は重複を避ける
+        if (!isDuplicateBonus) {
+          summaryRefs.health.employee += row.healthEmployeeBonus;
+          summaryRefs.health.employer += row.healthEmployerBonus;
+        }
       }
       if (summaryRefs.nursing) {
-        summaryRefs.nursing.employee +=
-          row.nursingEmployeeMonthly + row.nursingEmployeeBonus;
-        summaryRefs.nursing.employer +=
-          row.nursingEmployerMonthly + row.nursingEmployerBonus;
+        // 月例分は重複を避ける
+        if (!isDuplicateMonthly) {
+          summaryRefs.nursing.employee += row.nursingEmployeeMonthly;
+          summaryRefs.nursing.employer += row.nursingEmployerMonthly;
+        }
+        // 賞与分は重複を避ける
+        if (!isDuplicateBonus) {
+          summaryRefs.nursing.employee += row.nursingEmployeeBonus;
+          summaryRefs.nursing.employer += row.nursingEmployerBonus;
+        }
       }
       if (summaryRefs.welfare) {
-        summaryRefs.welfare.employee +=
-          row.welfareEmployeeMonthly + row.welfareEmployeeBonus;
-        summaryRefs.welfare.employer +=
-          row.welfareEmployerMonthly + row.welfareEmployerBonus;
+        // 月例分は重複を避ける
+        if (!isDuplicateMonthly) {
+          summaryRefs.welfare.employee += row.welfareEmployeeMonthly;
+          summaryRefs.welfare.employer += row.welfareEmployerMonthly;
+        }
+        // 賞与分は重複を避ける
+        if (!isDuplicateBonus) {
+          summaryRefs.welfare.employee += row.welfareEmployeeBonus;
+          summaryRefs.welfare.employer += row.welfareEmployerBonus;
+        }
       }
 
       // 合計欄の計算：各社員の標準報酬月額 × 保険料率（端数処理しない）
@@ -1004,14 +1038,14 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         // 健康保険の合計raw値
         if (summaryRefs.health && healthRate) {
           const totalRate = parseRate(healthRate.totalRate);
-          // 月例分：実際に月例分の保険料が計算されている場合のみ
-          if (row.healthEmployeeMonthly > 0 || row.healthEmployerMonthly > 0) {
+          // 月例分：実際に月例分の保険料が計算されている場合のみ（重複を避ける）
+          if (!isDuplicateMonthly && (row.healthEmployeeMonthly > 0 || row.healthEmployerMonthly > 0)) {
             if (row.healthStandardMonthly) {
               rawHealthTotal += row.healthStandardMonthly * totalRate;
             }
           }
-          // 賞与分：実際に賞与分の保険料が計算されている場合のみ
-          if (row.healthEmployeeBonus > 0 || row.healthEmployerBonus > 0) {
+          // 賞与分：実際に賞与分の保険料が計算されている場合のみ（重複を避ける）
+          if (!isDuplicateBonus && (row.healthEmployeeBonus > 0 || row.healthEmployerBonus > 0)) {
             if (row.standardHealthBonus > 0) {
               rawHealthTotal += row.standardHealthBonus * totalRate;
             }
@@ -1023,14 +1057,14 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         // 実際に介護保険料が計算されている場合のみ合計に含める
         if (summaryRefs.nursing && nursingRate) {
           const totalRate = parseRate(nursingRate.totalRate);
-          // 月例分：介護保険料が実際に計算されている場合のみ
-          if (row.nursingEmployeeMonthly > 0 || row.nursingEmployerMonthly > 0) {
+          // 月例分：介護保険料が実際に計算されている場合のみ（重複を避ける）
+          if (!isDuplicateMonthly && (row.nursingEmployeeMonthly > 0 || row.nursingEmployerMonthly > 0)) {
             if (row.healthStandardMonthly) {
               rawNursingTotal += row.healthStandardMonthly * totalRate;
             }
           }
-          // 賞与分：介護保険料が実際に計算されている場合のみ
-          if (row.nursingEmployeeBonus > 0 || row.nursingEmployerBonus > 0) {
+          // 賞与分：介護保険料が実際に計算されている場合のみ（重複を避ける）
+          if (!isDuplicateBonus && (row.nursingEmployeeBonus > 0 || row.nursingEmployerBonus > 0)) {
             if (row.standardHealthBonus > 0) {
               rawNursingTotal += row.standardHealthBonus * totalRate;
             }
@@ -1040,19 +1074,28 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         // 厚生年金の合計raw値
         if (summaryRefs.welfare && rateRecord.pensionRate) {
           const totalRate = parseRate(rateRecord.pensionRate.totalRate);
-          // 月例分：実際に月例分の保険料が計算されている場合のみ
-          if (row.welfareEmployeeMonthly > 0 || row.welfareEmployerMonthly > 0) {
+          // 月例分：実際に月例分の保険料が計算されている場合のみ（重複を避ける）
+          if (!isDuplicateMonthly && (row.welfareEmployeeMonthly > 0 || row.welfareEmployerMonthly > 0)) {
             if (row.welfareStandardMonthly) {
               rawWelfareTotal += row.welfareStandardMonthly * totalRate;
             }
           }
-          // 賞与分：実際に賞与分の保険料が計算されている場合のみ
-          if (row.welfareEmployeeBonus > 0 || row.welfareEmployerBonus > 0) {
+          // 賞与分：実際に賞与分の保険料が計算されている場合のみ（重複を避ける）
+          if (!isDuplicateBonus && (row.welfareEmployeeBonus > 0 || row.welfareEmployerBonus > 0)) {
             if (row.standardWelfareBonus > 0) {
               rawWelfareTotal += row.standardWelfareBonus * totalRate;
             }
           }
         }
+      }
+      
+      // 月例分を処理した場合はセットに追加
+      if (!isDuplicateMonthly) {
+        processedMonthlyKeys.add(monthlyKey);
+      }
+      // 賞与分を処理した場合はセットに追加
+      if (bonusKey !== null && !isDuplicateBonus) {
+        processedBonusKeys.add(bonusKey);
       }
     });
 

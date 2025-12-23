@@ -21,7 +21,13 @@ import {
   CalculationDataService,
   CalculationQueryParams,
 } from './calculation-data.service';
-import { calculateStandardBonus } from './calculation-utils';
+import {
+  calculateInsurancePremium,
+  calculatePensionPremium,
+  calculateStandardBonus,
+  findPrefectureRate,
+  parseRate,
+} from './calculation-utils';
 
 class EmployeesStub {
   employees: ShahoEmployee[] = [];
@@ -253,6 +259,39 @@ type SocialInsuranceComprehensiveCase = {
   expectedPensionTotalBonus: number;
 };
 
+type SocialInsuranceSumEmployeeCase = {
+  recordType: 'EMP';
+  caseId: string;
+  employeeNo: string;
+  prefecture: string;
+  careApplicable: boolean;
+  healthStdMonthlyYen: number;
+  pensionStdMonthlyYen: number;
+  healthRateTotalPct: number;
+  careRateTotalPct: number;
+  pensionRateTotalPct: number;
+  expHealthEmployeeRawYen: number;
+  expHealthEmployeeYen: number;
+  expHealthTotalRawYen: number;
+  expCareEmployeeRawYen: number;
+  expCareEmployeeYen: number;
+  expCareTotalRawYen: number;
+  expPensionEmployeeRawYen: number;
+  expPensionEmployeeYen: number;
+  expPensionTotalRawYen: number;
+};
+
+type SocialInsuranceSumTotals = {
+  recordType: 'TOTAL';
+  caseId: string;
+  healthEmployeeSumYen: number;
+  healthTotalFloorYen: number;
+  careEmployeeSumYen: number;
+  careTotalFloorYen: number;
+  pensionEmployeeSumYen: number;
+  pensionTotalFloorYen: number;
+};
+
 function parseCsvWithTrailingNote(csv: string) {
   const lines = csv
     .trim()
@@ -293,6 +332,137 @@ function parseSimpleCsv(csv: string) {
     });
     return record;
   });
+}
+
+function parseSocialInsuranceSumCsv(csv: string) {
+  const lines = csv
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const headers = lines[0].split(',');
+
+  const employees: SocialInsuranceSumEmployeeCase[] = [];
+  let totals: SocialInsuranceSumTotals | undefined;
+
+  lines.slice(1).forEach((line) => {
+    const values = line.split(',');
+    const record: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      record[header] = values[index] ?? '';
+    });
+
+    if (record['recordType'] === 'EMP') {
+      employees.push({
+        recordType: 'EMP',
+        caseId: record['caseId'],
+        employeeNo: record['employeeNo'],
+        prefecture: record['prefecture'],
+        careApplicable: record['careApplicable'] === '1',
+        healthStdMonthlyYen: Number(record['healthStdMonthlyYen']),
+        pensionStdMonthlyYen: Number(record['pensionStdMonthlyYen']),
+        healthRateTotalPct: Number(record['healthRateTotalPct']),
+        careRateTotalPct: Number(record['careRateTotalPct']),
+        pensionRateTotalPct: Number(record['pensionRateTotalPct']),
+        expHealthEmployeeRawYen: Number(record['exp_health_employeeRawYen']),
+        expHealthEmployeeYen: Number(record['exp_health_employeeYen']),
+        expHealthTotalRawYen: Number(record['exp_health_totalRawYen']),
+        expCareEmployeeRawYen: Number(record['exp_care_employeeRawYen']),
+        expCareEmployeeYen: Number(record['exp_care_employeeYen']),
+        expCareTotalRawYen: Number(record['exp_care_totalRawYen']),
+        expPensionEmployeeRawYen: Number(record['exp_pension_employeeRawYen']),
+        expPensionEmployeeYen: Number(record['exp_pension_employeeYen']),
+        expPensionTotalRawYen: Number(record['exp_pension_totalRawYen']),
+      });
+    } else if (record['recordType'] === 'TOTAL') {
+      totals = {
+        recordType: 'TOTAL',
+        caseId: record['caseId'],
+        healthEmployeeSumYen: Number(record['exp_health_employeeSumYen']),
+        healthTotalFloorYen: Number(record['exp_health_totalFloorYen']),
+        careEmployeeSumYen: Number(record['exp_care_employeeSumYen']),
+        careTotalFloorYen: Number(record['exp_care_totalFloorYen']),
+        pensionEmployeeSumYen: Number(record['exp_pension_employeeSumYen']),
+        pensionTotalFloorYen: Number(record['exp_pension_totalFloorYen']),
+      };
+    }
+  });
+
+  if (!totals) {
+    throw new Error('TOTAL 行が見つかりません');
+  }
+
+  return { employees, totals };
+}
+
+function deriveEmployeeRate(raw: number, base: number, totalPct: number) {
+  if (base === 0) return '0';
+  if (raw > 0) {
+    return ((raw / base) * 100).toFixed(6);
+  }
+  return (totalPct / 2).toFixed(6);
+}
+
+function buildRateRecordFromSumCases(
+  cases: SocialInsuranceSumEmployeeCase[],
+): InsuranceRateRecord {
+  const healthRates: PrefectureRate[] = [];
+  const nursingRates: PrefectureRate[] = [];
+
+  cases.forEach((c) => {
+    const healthEmployeeRate = deriveEmployeeRate(
+      c.expHealthEmployeeRawYen,
+      c.healthStdMonthlyYen,
+      c.healthRateTotalPct,
+    );
+    const healthTotalRate = ((c.expHealthTotalRawYen / c.healthStdMonthlyYen) * 100).toFixed(6);
+    const careTotalRate = ((c.expCareTotalRawYen / c.healthStdMonthlyYen) * 100).toFixed(6);
+    const pensionTotalRate = (
+      (c.expPensionTotalRawYen / c.pensionStdMonthlyYen) *
+      100
+    ).toFixed(6);
+    const careEmployeeRate = deriveEmployeeRate(
+      c.expCareEmployeeRawYen,
+      c.healthStdMonthlyYen,
+      Number(careTotalRate),
+    );
+
+    healthRates.push({
+      prefecture: c.prefecture,
+      totalRate: healthTotalRate,
+      employeeRate: healthEmployeeRate,
+      effectiveFrom: '2024-04-01',
+    });
+    nursingRates.push({
+      prefecture: c.prefecture,
+      totalRate: careTotalRate,
+      employeeRate: careEmployeeRate,
+      effectiveFrom: '2024-04-01',
+    });
+  });
+
+  const first = cases[0];
+  const pensionEmployeeRate = deriveEmployeeRate(
+    first.expPensionEmployeeRawYen,
+    first.pensionStdMonthlyYen,
+    first.pensionRateTotalPct,
+  );
+
+  return {
+    healthInsuranceRates: healthRates,
+    nursingCareRates: nursingRates,
+    pensionRate: {
+      totalRate: ((first.expPensionTotalRawYen / first.pensionStdMonthlyYen) * 100).toFixed(6),
+      employeeRate: pensionEmployeeRate,
+      effectiveFrom: '2024-04-01',
+    },
+    bonusCaps: [],
+    standardCompensations,
+    createdAt: '2024-04-01',
+    updatedAt: '2024-04-01',
+    healthType: '協会けんぽ',
+    insurerName: '合計テスト用',
+  } as InsuranceRateRecord;
 }
 
 
@@ -339,6 +509,63 @@ K07b,2026-01-25,500,500000,5730000,0,0,5730000,500000,健保：増分0のまま�
 
 K08a,2026-02-10,1499999,0,5720000,10000,1499000,5730000,1499000,健保：残り10,000で即上限到達（厚年は149.9万）
 K08b,2026-02-25,10000,1499999,5730000,0,1000,5730000,1500000,健保：上限到達後は0／厚年：月150万上限で増分1,000`;
+
+const socialInsuranceSumCsv = `recordType,caseId,employeeNo,prefecture,careApplicable,healthStdMonthlyYen,pensionStdMonthlyYen,healthRateTotalPct,careRateTotalPct,pensionRateTotalPct,exp_health_employeeRawYen,exp_health_employeeYen,exp_health_totalRawYen,exp_care_employeeRawYen,exp_care_employeeYen,exp_care_totalRawYen,exp_pension_employeeRawYen,exp_pension_employeeYen,exp_pension_totalRawYen,exp_health_employeeSumYen,exp_health_totalFloorYen,exp_care_employeeSumYen,exp_care_totalFloorYen,exp_pension_employeeSumYen,exp_pension_totalFloorYen
+EMP,M-SUM-001,E001,北海道,1,58000,88000,10.31,1.59,18.30,2990.90,2991,5979.80,461.10,461,922.20,8052.00,8052,16104.00,,,,,,
+EMP,M-SUM-001,E002,青森県,0,68000,98000,9.85,1.59,18.30,3349.00,3349,6698.00,0.00,0,0.00,8967.00,8967,17934.00,,,,,,
+EMP,M-SUM-001,E003,岩手県,1,78000,104000,9.62,1.59,18.30,3751.80,3752,7503.60,620.10,620,1240.20,9516.00,9516,19032.00,,,,,,
+EMP,M-SUM-001,E004,宮城県,0,88000,110000,10.11,1.59,18.30,4448.40,4448,8896.80,0.00,0,0.00,10065.00,10065,20130.00,,,,,,
+EMP,M-SUM-001,E005,秋田県,1,98000,118000,10.01,1.59,18.30,4904.90,4905,9809.80,779.10,779,1558.20,10797.00,10797,21594.00,,,,,,
+EMP,M-SUM-001,E006,山形県,0,104000,126000,9.75,1.59,18.30,5070.00,5070,10140.00,0.00,0,0.00,11529.00,11529,23058.00,,,,,,
+EMP,M-SUM-001,E007,福島県,1,110000,134000,9.62,1.59,18.30,5291.00,5291,10582.00,874.50,874,1749.00,12261.00,12261,24522.00,,,,,,
+EMP,M-SUM-001,E008,茨城県,0,118000,142000,9.67,1.59,18.30,5705.30,5705,11410.60,0.00,0,0.00,12993.00,12993,25986.00,,,,,,
+EMP,M-SUM-001,E009,栃木県,1,126000,150000,9.82,1.59,18.30,6186.60,6187,12373.20,1001.70,1002,2003.40,13725.00,13725,27450.00,,,,,,
+EMP,M-SUM-001,E010,群馬県,0,134000,160000,9.77,1.59,18.30,6545.90,6546,13091.80,0.00,0,0.00,14640.00,14640,29280.00,,,,,,
+EMP,M-SUM-001,E011,埼玉県,1,142000,170000,9.76,1.59,18.30,6929.60,6930,13859.20,1128.90,1129,2257.80,15555.00,15555,31110.00,,,,,,
+EMP,M-SUM-001,E012,千葉県,0,150000,180000,9.79,1.59,18.30,7342.50,7342,14685.00,0.00,0,0.00,16470.00,16470,32940.00,,,,,,
+EMP,M-SUM-001,E013,東京都,1,160000,190000,9.91,1.59,18.30,7928.00,7928,15856.00,1272.00,1272,2544.00,17385.00,17385,34770.00,,,,,,
+EMP,M-SUM-001,E014,神奈川県,0,170000,200000,9.92,1.59,18.30,8432.00,8432,16864.00,0.00,0,0.00,18300.00,18300,36600.00,,,,,,
+EMP,M-SUM-001,E015,新潟県,1,180000,220000,9.55,1.59,18.30,8595.00,8595,17190.00,1431.00,1431,2862.00,20130.00,20130,40260.00,,,,,,
+EMP,M-SUM-001,E016,富山県,0,190000,240000,9.65,1.59,18.30,9167.50,9167,18335.00,0.00,0,0.00,21960.00,21960,43920.00,,,,,,
+EMP,M-SUM-001,E017,石川県,1,200000,260000,9.88,1.59,18.30,9880.00,9880,19760.00,1590.00,1590,3180.00,23790.00,23790,47580.00,,,,,,
+EMP,M-SUM-001,E018,福井県,0,220000,280000,9.94,1.59,18.30,10934.00,10934,21868.00,0.00,0,0.00,25620.00,25620,51240.00,,,,,,
+EMP,M-SUM-001,E019,山梨県,1,240000,300000,9.89,1.59,18.30,11868.00,11868,23736.00,1908.00,1908,3816.00,27450.00,27450,54900.00,,,,,,
+EMP,M-SUM-001,E020,長野県,0,260000,320000,9.69,1.59,18.30,12597.00,12597,25194.00,0.00,0,0.00,29280.00,29280,58560.00,,,,,,
+EMP,M-SUM-001,E021,岐阜県,1,280000,340000,9.93,1.59,18.30,13902.00,13902,27804.00,2226.00,2226,4452.00,31110.00,31110,62220.00,,,,,,
+EMP,M-SUM-001,E022,静岡県,0,300000,360000,9.80,1.59,18.30,14700.00,14700,29400.00,0.00,0,0.00,32940.00,32940,65880.00,,,,,,
+EMP,M-SUM-001,E023,鳥取県,1,320000,380000,9.93,1.59,18.30,15888.00,15888,31776.00,2544.00,2544,5088.00,34770.00,34770,69540.00,,,,,,
+EMP,M-SUM-001,E024,三重県,0,340000,410000,9.99,1.59,18.30,16983.00,16983,33966.00,0.00,0,0.00,37515.00,37515,75030.00,,,,,,
+EMP,M-SUM-001,E025,滋賀県,1,360000,440000,9.97,1.59,18.30,17946.00,17946,35892.00,2862.00,2862,5724.00,40260.00,40260,80520.00,,,,,,
+EMP,M-SUM-001,E026,京都府,0,380000,470000,10.03,1.59,18.30,19057.00,19057,38114.00,0.00,0,0.00,43005.00,43005,86010.00,,,,,,
+EMP,M-SUM-001,E027,大阪府,1,410000,500000,10.24,1.59,18.30,20992.00,20992,41984.00,3259.50,3259,6519.00,45750.00,45750,91500.00,,,,,,
+EMP,M-SUM-001,E028,兵庫県,0,440000,530000,10.16,1.59,18.30,22352.00,22352,44704.00,0.00,0,0.00,48495.00,48495,96990.00,,,,,,
+EMP,M-SUM-001,E029,奈良県,1,470000,560000,10.02,1.59,18.30,23547.00,23547,47094.00,3736.50,3736,7473.00,51240.00,51240,102480.00,,,,,,
+EMP,M-SUM-001,E030,和歌山県,0,500000,590000,10.19,1.59,18.30,25475.00,25475,50950.00,0.00,0,0.00,53985.00,53985,107970.00,,,,,,
+EMP,M-SUM-001,E031,愛知県,1,530000,620000,10.03,1.59,18.30,26579.50,26579,53159.00,4213.50,4213,8427.00,56730.00,56730,113460.00,,,,,,
+EMP,M-SUM-001,E032,島根県,0,560000,650000,9.94,1.59,18.30,27832.00,27832,55664.00,0.00,0,0.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E033,岡山県,1,590000,650000,10.17,1.59,18.30,30001.50,30001,60003.00,4690.50,4690,9381.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E034,広島県,0,620000,650000,9.97,1.59,18.30,30907.00,30907,61814.00,0.00,0,0.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E035,山口県,1,650000,650000,10.36,1.59,18.30,33670.00,33670,67340.00,5167.50,5167,10335.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E036,徳島県,0,680000,650000,10.47,1.59,18.30,35598.00,35598,71196.00,0.00,0,0.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E037,香川県,1,710000,650000,10.21,1.59,18.30,36245.50,36245,72491.00,5644.50,5644,11289.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E038,愛媛県,0,750000,650000,10.18,1.59,18.30,38175.00,38175,76350.00,0.00,0,0.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E039,高知県,1,790000,650000,10.13,1.59,18.30,40013.50,40013,80027.00,6280.50,6280,12561.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E040,福岡県,0,830000,650000,10.31,1.59,18.30,42786.50,42786,85573.00,0.00,0,0.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E041,佐賀県,1,880000,650000,10.78,1.59,18.30,47432.00,47432,94864.00,6996.00,6996,13992.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E042,長崎県,0,930000,650000,10.41,1.59,18.30,48406.50,48406,96813.00,0.00,0,0.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E043,熊本県,1,980000,650000,10.12,1.59,18.30,49588.00,49588,99176.00,7791.00,7791,15582.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E044,大分県,0,1030000,650000,10.25,1.59,18.30,52787.50,52787,105575.00,0.00,0,0.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E045,宮崎県,1,1090000,650000,10.09,1.59,18.30,54990.50,54990,109981.00,8665.50,8665,17331.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E046,鹿児島県,0,1150000,650000,10.31,1.59,18.30,59282.50,59282,118565.00,0.00,0,0.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E047,沖縄県,1,1210000,650000,9.44,1.59,18.30,57112.00,57112,114224.00,9619.50,9619,19239.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E048,東京都,0,1270000,650000,9.91,1.59,18.30,62953.50,62953,125907.00,0.00,0,0.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E049,大阪府,1,1330000,650000,10.24,1.59,18.30,68096.00,68096,136192.00,10573.50,10573,21147.00,59475.00,59475,118950.00,,,,,,
+EMP,M-SUM-001,E050,沖縄県,1,1390000,650000,9.44,1.59,18.30,65608.00,65608,131216.00,11050.50,11050,22101.00,59475.00,59475,118950.00,,,,,,
+TOTAL,M-SUM-001,ALL,,,,,,,,,,,,,,,,,1240793,2481596,106381,212773,1934310,3868620`;
+const {
+  employees: socialInsuranceSumEmployeeCases,
+  totals: socialInsuranceSumTotals,
+} = parseSocialInsuranceSumCsv(socialInsuranceSumCsv);
 
 const socialInsuranceBonusCsv = `case_id,prefecture,care_applicable,bonus_gross,health_ytd_standard_bonus_before,expected_standard_bonus_health,expected_standard_bonus_pension,expected_health_employee_bonus,expected_health_total_bonus,expected_care_employee_bonus,expected_care_total_bonus,expected_pension_employee_bonus,expected_pension_total_bonus,note
 B001,東京都,0,999,0,0,0,0,0,0,0,0,0,総支給999→標準0
@@ -1267,6 +1494,119 @@ describe('CalculationDataService social insurance bonus fixtures', () => {
         testCase.expectedPensionTotalBonus,
       );
     });
+  });
+});
+
+describe('social insurance aggregate fixtures (個人/合計)', () => {
+  const rateRecord = buildRateRecordFromSumCases(socialInsuranceSumEmployeeCases);
+
+  it('calculates each employee premium row as expected', () => {
+    socialInsuranceSumEmployeeCases.forEach((testCase) => {
+      const healthRate = findPrefectureRate(
+        rateRecord.healthInsuranceRates,
+        testCase.prefecture,
+      );
+      const nursingRate = findPrefectureRate(
+        rateRecord.nursingCareRates,
+        testCase.prefecture,
+      );
+
+      const healthPremium = calculateInsurancePremium(
+        testCase.healthStdMonthlyYen,
+        healthRate,
+      );
+      const expectedHealthTotal = Math.floor(testCase.expHealthTotalRawYen + 1e-6);
+
+      expect(healthPremium.employee).toBe(testCase.expHealthEmployeeYen);
+      expect(healthPremium.total).toBe(expectedHealthTotal);
+
+      const nursingPremium = testCase.careApplicable
+        ? calculateInsurancePremium(testCase.healthStdMonthlyYen, nursingRate)
+        : { employee: 0, employer: 0, total: 0 };
+      const expectedCareTotal = Math.floor(testCase.expCareTotalRawYen + 1e-6);
+
+      expect(nursingPremium.employee).toBe(testCase.expCareEmployeeYen);
+      expect(nursingPremium.total).toBe(expectedCareTotal);
+
+      const pensionPremium = calculatePensionPremium(
+        testCase.pensionStdMonthlyYen,
+        rateRecord.pensionRate,
+      );
+      const expectedPensionTotal = Math.floor(testCase.expPensionTotalRawYen + 1e-6);
+
+      expect(pensionPremium.employee).toBe(testCase.expPensionEmployeeYen);
+      expect(pensionPremium.total).toBe(expectedPensionTotal);
+    });
+  });
+
+  it('aggregates employee and total premiums correctly', () => {
+    // 個人負担は個別に端数処理してから合計
+    let healthEmployeeSum = 0;
+    let careEmployeeSum = 0;
+    let pensionEmployeeSum = 0;
+
+    // 合計欄はRaw値を合計してから端数処理（実際のコードと同じロジック）
+    let rawHealthTotal = 0;
+    let rawCareTotal = 0;
+    let rawPensionTotal = 0;
+
+    socialInsuranceSumEmployeeCases.forEach((testCase) => {
+      const healthRate = findPrefectureRate(
+        rateRecord.healthInsuranceRates,
+        testCase.prefecture,
+      );
+      const nursingRate = findPrefectureRate(
+        rateRecord.nursingCareRates,
+        testCase.prefecture,
+      );
+
+      const healthPremium = calculateInsurancePremium(
+        testCase.healthStdMonthlyYen,
+        healthRate,
+      );
+      healthEmployeeSum += healthPremium.employee;
+      // Raw値を合計（端数処理しない）
+      if (healthRate) {
+        const totalRate = parseRate(healthRate.totalRate);
+        rawHealthTotal += testCase.healthStdMonthlyYen * totalRate;
+      }
+
+      if (testCase.careApplicable) {
+        const nursingPremium = calculateInsurancePremium(
+          testCase.healthStdMonthlyYen,
+          nursingRate,
+        );
+        careEmployeeSum += nursingPremium.employee;
+        // Raw値を合計（端数処理しない）
+        if (nursingRate) {
+          const totalRate = parseRate(nursingRate.totalRate);
+          rawCareTotal += testCase.healthStdMonthlyYen * totalRate;
+        }
+      }
+
+      const pensionPremium = calculatePensionPremium(
+        testCase.pensionStdMonthlyYen,
+        rateRecord.pensionRate,
+      );
+      pensionEmployeeSum += pensionPremium.employee;
+      // Raw値を合計（端数処理しない）
+      if (rateRecord.pensionRate) {
+        const totalRate = parseRate(rateRecord.pensionRate.totalRate);
+        rawPensionTotal += testCase.pensionStdMonthlyYen * totalRate;
+      }
+    });
+
+    // 合計欄はRaw値を合計してから端数処理
+    const healthTotal = Math.floor(rawHealthTotal + 1e-6);
+    const careTotal = Math.floor(rawCareTotal + 1e-6);
+    const pensionTotal = Math.floor(rawPensionTotal + 1e-6);
+
+    expect(healthEmployeeSum).toBe(socialInsuranceSumTotals.healthEmployeeSumYen);
+    expect(healthTotal).toBe(socialInsuranceSumTotals.healthTotalFloorYen);
+    expect(careEmployeeSum).toBe(socialInsuranceSumTotals.careEmployeeSumYen);
+    expect(careTotal).toBe(socialInsuranceSumTotals.careTotalFloorYen);
+    expect(pensionEmployeeSum).toBe(socialInsuranceSumTotals.pensionEmployeeSumYen);
+    expect(pensionTotal).toBe(socialInsuranceSumTotals.pensionTotalFloorYen);
   });
 });
 
