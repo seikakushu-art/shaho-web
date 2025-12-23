@@ -383,8 +383,7 @@ export class CalculationDataService {
         ? employee.department === params.department
         : true;
       const matchesLocation = params.location
-        ? employee.workPrefecture === params.location ||
-          employee.department === params.location
+        ? employee.workPrefecture === params.location
         : true;
       const matchesEmployeeNo = params.employeeNo
         ? params.employeeNo

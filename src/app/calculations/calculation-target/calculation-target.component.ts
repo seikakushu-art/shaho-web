@@ -32,16 +32,16 @@ export class CalculationTargetComponent implements OnInit {
   calculationType: CalculationType = 'standard';
   targetMonth = '';
   bonusPaymentDate = '';
-  includeBonusInMonth = true;
+  includeBonusInMonth = false;
   bonusOnly = false;
   standardCalculationMethod: StandardCalculationMethod = '定時決定';
   department = '';
   location = '';
   employeeNo = '';
   insuranceSelections: Record<InsuranceKey, boolean> = {
-    health: false,
-    welfare: false,
-    nursing: false,
+    health: true,
+    welfare: true,
+    nursing: true,
   };
 
   departments: string[] = [];
@@ -87,7 +87,7 @@ export class CalculationTargetComponent implements OnInit {
     this.department = params.get('department') ?? this.department;
     this.location = params.get('location') ?? this.location;
     this.employeeNo = params.get('employeeNo') ?? this.employeeNo;
-    this.includeBonusInMonth = params.get('includeBonusInMonth') === 'false' ? false : this.includeBonusInMonth;
+    this.includeBonusInMonth = params.get('includeBonusInMonth') === 'true' ? true : (params.get('includeBonusInMonth') === 'false' ? false : this.includeBonusInMonth);
     this.bonusOnly = params.get('bonusOnly') === 'true' ? true : false;
     // 相互排他チェック: 両方がtrueの場合はincludeBonusInMonthを優先
     if (this.bonusOnly && this.includeBonusInMonth) {

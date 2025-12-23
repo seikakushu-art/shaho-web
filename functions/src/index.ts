@@ -1020,7 +1020,7 @@ async function fetchDependents(
     .collection("shaho_employees")
     .doc(employeeId)
     .collection("dependents")
-    .orderBy("createdAt", "desc");
+    .orderBy("createdAt", "asc");
 
   const snapshot = await dependentsRef.get();
   return snapshot.docs.map(

@@ -1415,7 +1415,7 @@ export class ShahoEmployeesService {
       employeeId,
       'dependents',
     );
-    const q = query(dependentsRef, orderBy('createdAt', 'desc'));
+    const q = query(dependentsRef, orderBy('createdAt', 'asc'));
     return collectionData(q, { idField: 'id' }) as Observable<
       DependentData[]
     >;
