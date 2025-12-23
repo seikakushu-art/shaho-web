@@ -164,6 +164,40 @@ export class ApprovalWorkflowService {
     });
   }
 
+  /**
+   * 法人情報更新に対する承認待ちリクエストが存在するかチェック
+   * @returns 承認待ちリクエストが存在する場合、そのリクエストを返す。存在しない場合はundefined
+   */
+  getPendingRequestForCorporateInfo(): ApprovalRequest | undefined {
+    const requests = this.requestsSubject.value;
+    return requests.find((request) => {
+      // 承認待ち状態でない場合はスキップ
+      if (request.status !== 'pending') {
+        return false;
+      }
+
+      // 法人情報更新のカテゴリのみチェック
+      return request.category === '法人情報更新';
+    });
+  }
+
+  /**
+   * 保険料率更新に対する承認待ちリクエストが存在するかチェック
+   * @returns 承認待ちリクエストが存在する場合、そのリクエストを返す。存在しない場合はundefined
+   */
+  getPendingRequestForInsuranceRates(): ApprovalRequest | undefined {
+    const requests = this.requestsSubject.value;
+    return requests.find((request) => {
+      // 承認待ち状態でない場合はスキップ
+      if (request.status !== 'pending') {
+        return false;
+      }
+
+      // 保険料率更新のカテゴリのみチェック
+      return request.category === '保険料率更新';
+    });
+  }
+
   getNotificationsFor(recipientId: string): Observable<ApprovalNotification[]> {
     return of([]);
   }

@@ -248,6 +248,14 @@ export class CorporateInfoComponent implements OnInit, OnDestroy  {
       return;
     }
 
+    // 既存の承認待ちリクエストをチェック
+    const existingPendingRequest = this.approvalWorkflowService.getPendingRequestForCorporateInfo();
+    if (existingPendingRequest) {
+      const requestTitle = existingPendingRequest.title || '承認待ちの申請';
+      this.message = `法人情報には既に承認待ちの申請が存在します（${requestTitle}）。既存の申請が承認または差し戻しされるまで、新しい申請を作成できません。`;
+      return;
+    }
+
     const validation = this.attachmentService.validateFiles(this.selectedFiles);
     this.validationErrors = validation.errors;
 

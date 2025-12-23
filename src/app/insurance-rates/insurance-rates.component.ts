@@ -644,6 +644,15 @@ export class InsuranceRatesComponent implements OnInit, OnDestroy {
       this.message = '承認結果待ちのため新しい承認依頼を送信できません。';
       return;
     }
+
+    // 既存の承認待ちリクエストをチェック
+    const existingPendingRequest = this.approvalWorkflowService.getPendingRequestForInsuranceRates();
+    if (existingPendingRequest) {
+      const requestTitle = existingPendingRequest.title || '承認待ちの申請';
+      this.message = `保険料率には既に承認待ちの申請が存在します（${requestTitle}）。既存の申請が承認または差し戻しされるまで、新しい申請を作成できません。`;
+      return;
+    }
+
     // 都道府県が入力されている行のみを有効な行として扱う
     const healthInsuranceRatesValue = this.form.get('healthInsuranceRates')?.value || [];
     const validHealthInsuranceRates = healthInsuranceRatesValue.filter((r: any) => r.prefecture && r.prefecture.trim() !== '');

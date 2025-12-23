@@ -8,7 +8,7 @@
       </div>
     </header>
   
-    <p class="message" *ngIf="message">{{ message }}</p>
+    <p class="message" *ngIf="message && !editMode">{{ message }}</p>
   
     <form class="cards" [formGroup]="form" (ngSubmit)="save()">
       <article class="card">
@@ -208,6 +208,7 @@
           {{ isSaving ? '保存中...' : '承認依頼を送信' }}
         </button>
       </div>
+      <p class="message" *ngIf="message && editMode">{{ message }}</p>
     </div>
   </section>
   
