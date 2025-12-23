@@ -183,97 +183,114 @@ export class CalculationDataService {
                       );
                     }
                   } else {
-                    // 同じ月の複数の賞与を合算して標準賞与額を計算
-                    // まず、すべての賞与を合算した仮想的な賞与レコードを作成
+                    // 同じ月の複数の賞与を合算してから標準賞与額を計算し、当月の保険料を決める
+                    // まず、すべての賞与を合算
                     const totalBonusTotal = sortedBonuses.reduce((sum, bonus) => sum + (bonus.bonusTotal ?? 0), 0);
                     const firstBonus = sortedBonuses[0];
-                    const combinedBonus: PayrollData = {
-                      ...firstBonus,
-                      bonusTotal: totalBonusTotal,
-                      // 最初の賞与の日付を使用（表示用）
-                      bonusPaidOn: firstBonus.bonusPaidOn,
-                    };
+                    const bonusDate = this.resolveBonusDate(firstBonus, params.bonusPaidOn);
                     
-                    // 合算した賞与で標準賞与額を計算（同月内の過去の賞与は考慮しない）
-                    const bonusDate = this.resolveBonusDate(combinedBonus, params.bonusPaidOn);
+                    // 年度累計を計算（同月内の賞与は含まれている）
                     const healthBonusCap = extractBonusCap(rateRecord, '健康保険', 'yearly');
                     const welfareBonusCap = extractBonusCap(rateRecord, '厚生年金');
                     const healthBonusCumulative = this.calculateHealthBonusCumulative(
                       payrolls,
                       bonusDate,
-                      combinedBonus,
+                      firstBonus,
                       rateRecord,
                     );
                     const welfareBonusCumulative = this.calculateWelfareBonusCumulative(
                       payrolls,
                       bonusDate,
-                      combinedBonus,
+                      firstBonus,
                       rateRecord,
                     );
                     
-                    // 同月内の過去の賞与は考慮しない（すべて合算するため）
-                    const standardHealthBonus = this.calculateStandardBonusWithCumulative(
-                      totalBonusTotal,
-                      healthBonusCap,
-                      healthBonusCumulative,
-                    );
-                    const standardWelfareBonus = this.calculateStandardBonusWithCumulative(
-                      totalBonusTotal,
-                      welfareBonusCap,
-                      welfareBonusCumulative,
+                    // 同月内の過去の賞与総支給額を合算（firstBonus以外の同月の賞与）
+                    const monthlyBonusTotal = sortedBonuses
+                      .slice(1)
+                      .reduce((sum, bonus) => sum + (bonus.bonusTotal ?? 0), 0);
+                    
+                    // 健康保険の場合、同月内の過去の賞与の標準賞与額を計算して、累計から除外する必要がある
+                    const monthlyHealthBonusStandard = monthlyBonusTotal > 0
+                      ? calculateStandardBonus(monthlyBonusTotal, healthBonusCap)
+                      : 0;
+                    const adjustedHealthBonusCumulative = Math.max(
+                      healthBonusCumulative - monthlyHealthBonusStandard,
+                      0,
                     );
                     
-                    // 各賞与に対して行を生成（標準賞与額は合算した値を使用）
+                    // 厚生年金の場合、同月内の過去の賞与の標準賞与額を計算して、累計から除外する必要がある
+                    const monthlyWelfareBonusStandard = monthlyBonusTotal > 0
+                      ? calculateStandardBonus(monthlyBonusTotal, welfareBonusCap)
+                      : 0;
+                    const adjustedWelfareBonusCumulative = Math.max(
+                      welfareBonusCumulative - monthlyWelfareBonusStandard,
+                      0,
+                    );
+                    
+                    // 合算した金額から標準賞与額を計算（同月内の過去の賞与は考慮しない）
+                    const totalStandardHealthBonus = this.calculateStandardBonusWithCumulative(
+                      totalBonusTotal,
+                      healthBonusCap,
+                      adjustedHealthBonusCumulative,
+                    );
+                    const totalStandardWelfareBonus = this.calculateStandardBonusWithCumulative(
+                      totalBonusTotal,
+                      welfareBonusCap,
+                      adjustedWelfareBonusCumulative,
+                    );
+                    
+                    // 合算した標準賞与額から当月の保険料を計算
+                    const location = employee.workPrefecture || employee.department || '未設定';
+                    const healthRate = findPrefectureRate(
+                      rateRecord.healthInsuranceRates,
+                      location,
+                    );
+                    const nursingRate = findPrefectureRate(
+                      rateRecord.nursingCareRates,
+                      location,
+                    );
+                    const careSecondInsured = employee.careSecondInsured !== undefined && employee.careSecondInsured !== null
+                      ? employee.careSecondInsured
+                      : (employee.birthDate
+                          ? isCareSecondInsured(employee.birthDate, context.targetMonth)
+                          : false);
+                    const isExempted = employee.exemption === true;
+                    const shouldCalculateBonus = (context.bonusOnly ?? false) || (context.includeBonusInMonth ?? true);
+                    
+                    const totalHealthBonus =
+                      isExempted ||
+                      !context.activeInsurances.includes('health') ||
+                      !shouldCalculateBonus
+                        ? { employee: 0, employer: 0, total: 0 }
+                        : calculateInsurancePremium(totalStandardHealthBonus, healthRate);
+                    const totalNursingBonus =
+                      isExempted ||
+                      !context.activeInsurances.includes('nursing') ||
+                      !careSecondInsured ||
+                      !shouldCalculateBonus
+                        ? { employee: 0, employer: 0, total: 0 }
+                        : calculateInsurancePremium(totalStandardHealthBonus, nursingRate);
+                    const totalWelfareBonus =
+                      isExempted ||
+                      !context.activeInsurances.includes('welfare') ||
+                      !shouldCalculateBonus
+                        ? { employee: 0, employer: 0, total: 0 }
+                        : calculatePensionPremium(totalStandardWelfareBonus, rateRecord.pensionRate);
+                    
+                    // 各賞与に対して行を生成（標準賞与額と保険料は合算した値を使用）
                     sortedBonuses.forEach((bonus) => {
-                      // 合算した標準賞与額を使用するため、buildRowを呼び出す前に標準賞与額を設定
                       const row = this.buildRow(employee, rateRecord, context, params.bonusPaidOn, bonus);
                       // 標準賞与額を合算した値で上書き
-                      row.standardHealthBonus = standardHealthBonus;
-                      row.standardWelfareBonus = standardWelfareBonus;
-                      // 標準賞与額が変更されたので、保険料を再計算
-                      const location = employee.workPrefecture || employee.department || '未設定';
-                      const healthRate = findPrefectureRate(
-                        rateRecord.healthInsuranceRates,
-                        location,
-                      );
-                      const nursingRate = findPrefectureRate(
-                        rateRecord.nursingCareRates,
-                        location,
-                      );
-                      const careSecondInsured = employee.careSecondInsured !== undefined && employee.careSecondInsured !== null
-                        ? employee.careSecondInsured
-                        : (employee.birthDate
-                            ? isCareSecondInsured(employee.birthDate, context.targetMonth)
-                            : false);
-                      const isExempted = employee.exemption === true;
-                      const shouldCalculateBonus = (context.bonusOnly ?? false) || (context.includeBonusInMonth ?? true);
-                      
-                      const healthBonus =
-                        isExempted ||
-                        !context.activeInsurances.includes('health') ||
-                        !shouldCalculateBonus
-                          ? { employee: 0, employer: 0, total: 0 }
-                          : calculateInsurancePremium(standardHealthBonus, healthRate);
-                      const nursingBonus =
-                        isExempted ||
-                        !context.activeInsurances.includes('nursing') ||
-                        !careSecondInsured ||
-                        !shouldCalculateBonus
-                          ? { employee: 0, employer: 0, total: 0 }
-                          : calculateInsurancePremium(standardHealthBonus, nursingRate);
-                      const welfareBonus =
-                        isExempted ||
-                        !context.activeInsurances.includes('welfare') ||
-                        !shouldCalculateBonus
-                          ? { employee: 0, employer: 0, total: 0 }
-                          : calculatePensionPremium(standardWelfareBonus, rateRecord.pensionRate);
-                      
-                      row.healthEmployeeBonus = healthBonus.employee;
-                      row.healthEmployerBonus = healthBonus.employer;
-                      row.nursingEmployeeBonus = nursingBonus.employee;
-                      row.nursingEmployerBonus = nursingBonus.employer;
-                      row.welfareEmployeeBonus = welfareBonus.employee;
-                      row.welfareEmployerBonus = welfareBonus.employer;
+                      row.standardHealthBonus = totalStandardHealthBonus;
+                      row.standardWelfareBonus = totalStandardWelfareBonus;
+                      // 保険料も合算した値を使用（各賞与行に同じ値を設定）
+                      row.healthEmployeeBonus = totalHealthBonus.employee;
+                      row.healthEmployerBonus = totalHealthBonus.employer;
+                      row.nursingEmployeeBonus = totalNursingBonus.employee;
+                      row.nursingEmployerBonus = totalNursingBonus.employer;
+                      row.welfareEmployeeBonus = totalWelfareBonus.employee;
+                      row.welfareEmployerBonus = totalWelfareBonus.employer;
                       
                       rows.push(row);
                     });

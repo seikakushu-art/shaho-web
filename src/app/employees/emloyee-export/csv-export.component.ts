@@ -90,6 +90,48 @@ export class CsvExportComponent implements OnInit {
     'welfareEmployerBonus',
     'totalPremium',
   ];
+  private readonly totalFields: CalculationResultField[] = [
+    'healthTotalMonthly',
+    'nursingTotalMonthly',
+    'welfareTotalMonthly',
+    'healthTotalBonus',
+    'nursingTotalBonus',
+    'welfareTotalBonus',
+  ];
+  private readonly bonusFields: CalculationResultField[] = [
+    'standardHealthBonus',
+    'standardWelfareBonus',
+  ];
+  private readonly healthInsuranceFields: CalculationResultField[] = [
+    'healthStandardMonthly',
+    'standardHealthBonus',
+    'healthEmployeeMonthly',
+    'healthEmployerMonthly',
+    'healthEmployeeBonus',
+    'healthEmployerBonus',
+    'healthTotalMonthly',
+    'healthTotalBonus',
+  ];
+  private readonly welfareInsuranceFields: CalculationResultField[] = [
+    'welfareStandardMonthly',
+    'standardWelfareBonus',
+    'welfareEmployeeMonthly',
+    'welfareEmployerMonthly',
+    'welfareEmployeeBonus',
+    'welfareEmployerBonus',
+    'welfareTotalMonthly',
+    'welfareTotalBonus',
+  ];
+  private readonly nursingInsuranceFields: CalculationResultField[] = [
+    'healthStandardMonthly',
+    'standardHealthBonus',
+    'nursingEmployeeMonthly',
+    'nursingEmployerMonthly',
+    'nursingEmployeeBonus',
+    'nursingEmployerBonus',
+    'nursingTotalMonthly',
+    'nursingTotalBonus',
+  ];
 
   ngOnInit(): void {
     const queryContext = this.route.snapshot.queryParamMap.get('context');
@@ -330,9 +372,38 @@ export class CsvExportComponent implements OnInit {
   }
 
   private buildDefaultCalculationFieldKeys(): CalculationResultField[] {
-    const excluded = new Set(this.insurancePremiumFields);
-    return this.calculationFieldOptions
+    // 計算IDと計算種別は常に含める
+    const alwaysIncluded: CalculationResultField[] = ['calculationId', 'calculationType'];
+    
+    // 標準賞与額計算の場合は計算ID、計算種別、対象年/年月、標準賞与額(健・介)、標準賞与額(厚生年金)のみ
+    if (this.calculationContext?.meta?.calculationType === 'bonus') {
+      return [...alwaysIncluded, 'targetMonth', ...this.bonusFields];
+    }
+    
+    // 社会保険料計算で保険種別が1つのみ選択されている場合
+    if (
+      this.calculationContext?.meta?.calculationType === 'insurance' &&
+      this.calculationContext?.meta?.activeInsurances?.length === 1
+    ) {
+      const activeInsurance = this.calculationContext.meta.activeInsurances[0];
+      
+      if (activeInsurance === '健康保険') {
+        return [...alwaysIncluded, 'targetMonth', 'activeInsurances', ...this.healthInsuranceFields];
+      }
+      
+      if (activeInsurance === '厚生年金') {
+        return [...alwaysIncluded, 'targetMonth', 'activeInsurances', ...this.welfareInsuranceFields];
+      }
+      
+      if (activeInsurance === '介護保険') {
+        return [...alwaysIncluded, 'targetMonth', 'activeInsurances', ...this.nursingInsuranceFields];
+      }
+    }
+    
+    // それ以外の場合はすべての項目（計算IDと計算種別を除く）
+    const otherFields = this.calculationFieldOptions
       .map((option) => option.key)
-      .filter((key) => !excluded.has(key));
+      .filter((key) => !alwaysIncluded.includes(key));
+    return [...alwaysIncluded, ...otherFields];
   }
 }

@@ -70,7 +70,7 @@
     </div>
     <div class="field" *ngIf="isBonusCalculation">
       <label for="bonusPaymentDate">賞与支給日</label>
-      <div class="hint" style="font-size: 0.85em; color: #666;">標準賞与額は社会保険料計算時にも自動計算されます。</div>
+      <div class="hint" style="font-size: 0.85em; color: #666;">ここは標準賞与額の試算欄です。実計算は社会保険料計算で行われます。</div>
       <input id="bonusPaymentDate" type="date" [(ngModel)]="bonusPaymentDate" />
     </div>
     <div class="field" *ngIf="calculationType === 'insurance'">

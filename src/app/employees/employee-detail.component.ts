@@ -349,13 +349,37 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   }
 
   get visibleHistoryRows() {
+    let rows = this.historyRowDefinitions;
+    
+    // 表示モードによるフィルタリング
     if (this.insuranceHistoryFilter.mode === 'bonus-only') {
-      return this.historyRowDefinitions.filter((row) => row.category === 'bonus');
+      rows = rows.filter((row) => row.category === 'bonus');
+    } else if (this.insuranceHistoryFilter.mode === 'without-bonus') {
+      rows = rows.filter((row) => row.category === 'monthly');
     }
-    if (this.insuranceHistoryFilter.mode === 'without-bonus') {
-      return this.historyRowDefinitions.filter((row) => row.category === 'monthly');
+    
+    // 「2」シリーズのフィールドは、表示されている月のうち、少なくとも1つの月に異なる賞与支給日が存在する場合のみ表示
+    const hasMultipleBonusDatesInAnyMonth = this.displayedMonths.some((month) => {
+      const monthKey = this.getMonthKey(month);
+      const record = this.socialInsuranceHistory[monthKey];
+      return record?.bonusPaidOn && record?.bonusPaidOn2;
+    });
+    
+    if (!hasMultipleBonusDatesInAnyMonth) {
+      // 「2」シリーズのフィールドを除外
+      const bonus2Keys: Array<keyof SocialInsuranceHistoryData> = [
+        'bonusPaidOn2',
+        'bonusTotal2',
+        'standardHealthBonus2',
+        'standardWelfareBonus2',
+        'healthInsuranceBonus2',
+        'careInsuranceBonus2',
+        'pensionBonus2',
+      ];
+      rows = rows.filter((row) => !bonus2Keys.includes(row.key));
     }
-    return this.historyRowDefinitions;
+    
+    return rows;
   }
 
   getHistoryValue(month: Date, key: keyof SocialInsuranceHistoryData) {

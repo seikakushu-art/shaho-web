@@ -311,6 +311,51 @@ export class ApprovalWorkflowService {
       throw new Error('差し戻しされた申請のみ再申請できます');
     }
 
+    // 同じ社員情報に対する承認待ち中の依頼が存在するかチェック
+    // employeeDiffsがある場合（社員情報更新、社員情報一括更新）
+    if (request.employeeDiffs && request.employeeDiffs.length > 0) {
+      for (const diff of request.employeeDiffs) {
+        const pendingRequest = this.getPendingRequestForEmployee(
+          diff.existingEmployeeId || null,
+          diff.employeeNo || null,
+        );
+        // 現在のリクエスト以外で、承認待ち中の依頼が存在する場合
+        if (pendingRequest && pendingRequest.id !== id) {
+          throw new Error(
+            `社員番号 ${diff.employeeNo}（${diff.name}）に対する承認待ち中の依頼が既に存在します。先にその依頼の処理を完了してください。`,
+          );
+        }
+      }
+    }
+    // employeeDataがある場合（新規社員登録など）
+    if (request.employeeData?.basicInfo?.employeeNo) {
+      const employeeNo = request.employeeData.basicInfo.employeeNo;
+      const employeeName = request.employeeData.basicInfo.name;
+      const pendingRequest = this.getPendingRequestForEmployee(null, employeeNo);
+      // 現在のリクエスト以外で、承認待ち中の依頼が存在する場合
+      if (pendingRequest && pendingRequest.id !== id) {
+        throw new Error(
+          `社員番号 ${employeeNo}（${employeeName}）に対する承認待ち中の依頼が既に存在します。先にその依頼の処理を完了してください。`,
+        );
+      }
+    }
+    // importEmployeeDataがある場合（CSVインポート）
+    if (request.importEmployeeData && request.importEmployeeData.length > 0) {
+      for (const importData of request.importEmployeeData) {
+        const employeeNo = importData.employeeNo;
+        const pendingRequest = this.getPendingRequestForEmployee(
+          importData.existingEmployeeId || null,
+          employeeNo || null,
+        );
+        // 現在のリクエスト以外で、承認待ち中の依頼が存在する場合
+        if (pendingRequest && pendingRequest.id !== id) {
+          throw new Error(
+            `社員番号 ${employeeNo} に対する承認待ち中の依頼が既に存在します。先にその依頼の処理を完了してください。`,
+          );
+        }
+      }
+    }
+
     // 最初のステップを取得
     const firstStep = request.flowSnapshot.steps[0];
     if (!firstStep) {

@@ -471,12 +471,16 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
             if (approval.calculationQueryParams) {
               const calcParams = approval.calculationQueryParams;
               this.calculationType = (calcParams.type as CalculationType) ?? 'standard';
-              this.targetMonth = calcParams.targetMonth ?? '2025-02';
-              this.method = calcParams.method ?? '自動算出';
               this.standardMethod = (calcParams.standardMethod as StandardCalculationMethod) ?? '定時決定';
+              this.targetMonth = calcParams.targetMonth ?? this.getCurrentTargetMonth(this.calculationType, this.standardMethod);
+              this.method = calcParams.method ?? '自動算出';
               this.activeInsurances = calcParams.insurances ?? [];
               this.includeBonusInMonth = calcParams.includeBonusInMonth ?? true;
               this.bonusOnly = calcParams.bonusOnly ?? false;
+              // 相互排他チェック: 両方がtrueの場合はincludeBonusInMonthを優先
+              if (this.bonusOnly && this.includeBonusInMonth) {
+                this.bonusOnly = false;
+              }
               this.departmentFilter = calcParams.department ?? '';
               this.locationFilter = calcParams.location ?? '';
               this.employeeNoFilter = calcParams.employeeNo ?? '';
@@ -508,12 +512,16 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           if (approval.calculationQueryParams) {
             const calcParams = approval.calculationQueryParams;
             this.calculationType = (calcParams.type as CalculationType) ?? 'standard';
-            this.targetMonth = calcParams.targetMonth ?? '2025-02';
-            this.method = calcParams.method ?? '自動算出';
             this.standardMethod = (calcParams.standardMethod as StandardCalculationMethod) ?? '定時決定';
+            this.targetMonth = calcParams.targetMonth ?? this.getCurrentTargetMonth(this.calculationType, this.standardMethod);
+            this.method = calcParams.method ?? '自動算出';
             this.activeInsurances = calcParams.insurances ?? [];
             this.includeBonusInMonth = calcParams.includeBonusInMonth ?? true;
             this.bonusOnly = calcParams.bonusOnly ?? false;
+            // 相互排他チェック: 両方がtrueの場合はincludeBonusInMonthを優先
+            if (this.bonusOnly && this.includeBonusInMonth) {
+              this.bonusOnly = false;
+            }
             this.departmentFilter = calcParams.department ?? '';
             this.locationFilter = calcParams.location ?? '';
             this.employeeNoFilter = calcParams.employeeNo ?? '';
@@ -531,21 +539,35 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     }
   }
 
+  private getCurrentTargetMonth(calculationType?: CalculationType, standardMethod?: StandardCalculationMethod): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    // 標準報酬月額計算で定時決定の場合は年のみ（YYYY-01形式）
+    if (calculationType === 'standard' && standardMethod === '定時決定') {
+      return `${year}-01`;
+    }
+    return `${year}-${month}`;
+  }
+
   private loadParamsFromQuery(): void {
     const params = this.route.snapshot.queryParamMap;
     const type = params.get('type') as CalculationType | null;
     this.calculationType = type ?? 'standard';
-    this.targetMonth = params.get('targetMonth') ?? '2025-02';
+    const standardMethodParam = (params.get('standardMethod') as StandardCalculationMethod | null) ?? '定時決定';
+    this.standardMethod = standardMethodParam;
+    this.targetMonth = params.get('targetMonth') ?? this.getCurrentTargetMonth(this.calculationType, this.standardMethod);
     this.method = params.get('method') ?? '自動算出';
-    this.standardMethod =
-      (params.get('standardMethod') as StandardCalculationMethod | null) ??
-      '定時決定';
     this.activeInsurances = (params.get('insurances') ?? '')
       .split(',')
       .filter(Boolean);
     this.includeBonusInMonth =
       params.get('includeBonusInMonth') === 'false' ? false : true;
     this.bonusOnly = params.get('bonusOnly') === 'true' ? true : false;
+    // 相互排他チェック: 両方がtrueの場合はincludeBonusInMonthを優先
+    if (this.bonusOnly && this.includeBonusInMonth) {
+      this.bonusOnly = false;
+    }
     this.departmentFilter = params.get('department') ?? '';
     this.locationFilter = params.get('location') ?? '';
     this.employeeNoFilter = params.get('employeeNo') ?? '';
@@ -1332,6 +1354,10 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     this.activeInsurances = query.insurances;
     this.includeBonusInMonth = query.includeBonusInMonth ?? true;
     this.bonusOnly = query.bonusOnly ?? false;
+    // 相互排他チェック: 両方がtrueの場合はincludeBonusInMonthを優先
+    if (this.bonusOnly && this.includeBonusInMonth) {
+      this.bonusOnly = false;
+    }
     this.departmentFilter = query.department ?? '';
     this.locationFilter = query.location ?? '';
     this.employeeNoFilter = query.employeeNo ?? '';

@@ -218,20 +218,4 @@ export class DashboardComponent {
     return notification.id;
   }
 
-  async deleteAllNotifications() {
-    const recipientId = await firstValueFrom(this.recipientId$);
-    if (!recipientId) return;
-    
-    if (!confirm('すべての通知を削除しますか？この操作は取り消せません。')) {
-      return;
-    }
-    
-    try {
-      await this.notificationService.deleteAllForRecipient(recipientId);
-    } catch (error) {
-      console.error('Failed to delete all notifications', error);
-      alert('通知の削除に失敗しました。もう一度お試しください。');
-    }
-  }
-
 }
