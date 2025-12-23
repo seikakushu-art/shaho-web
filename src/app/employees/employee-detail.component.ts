@@ -13,6 +13,9 @@ import { UserDirectoryService, AppUser } from '../auth/user-directory.service';
 import { ApprovalAttachmentService } from '../approvals/approval-attachment.service';
 import { ApprovalNotificationService } from '../approvals/approval-notification.service';
 import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.component';
+import { InsuranceRatesService, InsuranceRateRecord } from '../app/services/insurance-rates.service';
+import { CorporateInfoService } from '../app/services/corporate-info.service';
+import { calculateStandardBonus, extractBonusCap } from '../calculations/calculation-utils';
 
 interface AuditInfo {
   registeredAt: string;
@@ -118,6 +121,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     private userDirectory = inject(UserDirectoryService);
     readonly attachmentService = inject(ApprovalAttachmentService);
     private notificationService = inject(ApprovalNotificationService);
+    private insuranceRatesService = inject(InsuranceRatesService);
+    private corporateInfoService = inject(CorporateInfoService);
     private destroy$ = new Subject<void>();
   deleteSubscription: any;
   tabs = [
@@ -197,6 +202,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   displayedMonths: Date[] = [];
   socialInsuranceHistory: Record<string, SocialInsuranceHistoryData> = {};
   allPayrolls: PayrollData[] = [];
+  cachedRateRecord: InsuranceRateRecord | null = null;
   historyRowDefinitions: {
     key: keyof SocialInsuranceHistoryData;
     label: string;
@@ -763,7 +769,6 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
               // 2つ目の賞与
               const secondBonus = bonusPayments.length > 1 ? bonusPayments[1] : undefined;
 
-              const standardBonusValue = payroll.standardHealthBonus || payroll.standardWelfareBonus || payroll.standardBonus;
               const bonusData: SocialInsuranceHistoryData = {
                 bonusPaidOn: firstBonus ? this.formatDateForInput(firstBonus.bonusPaidOn) : this.formatDateForInput(payroll.bonusPaidOn),
                 bonusTotal: firstBonus ? firstBonus.bonusTotal : payroll.bonusTotal,
@@ -776,10 +781,6 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
                   ? { standardWelfareBonus: firstBonus.standardWelfareBonus }
                   : payroll.standardWelfareBonus !== undefined && payroll.standardWelfareBonus !== null
                   ? { standardWelfareBonus: payroll.standardWelfareBonus }
-                  : {}),
-                // 後方互換性のため、standardBonusも設定（standardHealthBonusまたはstandardWelfareBonusのいずれか）
-                ...(standardBonusValue !== undefined && standardBonusValue !== null
-                  ? { standardBonus: standardBonusValue }
                   : {}),
                 healthInsuranceBonus: firstBonus ? firstBonus.healthInsuranceBonus : payroll.healthInsuranceBonus,
                 careInsuranceBonus: firstBonus ? firstBonus.careInsuranceBonus : payroll.careInsuranceBonus,
@@ -812,6 +813,18 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
         });
 
         this.socialInsuranceHistory = history;
+        
+        // 保険料率レコードを取得してキャッシュ（標準賞与額年度累計計算用）
+        this.corporateInfoService.getCorporateInfo().pipe(
+          switchMap((info) =>
+            this.insuranceRatesService.getRateHistory(
+              info?.healthInsuranceType ?? '協会けんぽ',
+            ),
+          ),
+          takeUntil(this.destroy$),
+        ).subscribe((rateHistory) => {
+          this.cachedRateRecord = rateHistory?.[0] ?? null;
+        });
       });
   }
 
@@ -948,42 +961,113 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   /**
    * 標準賞与額年度累計を計算
    * 各賞与の支給日（bonusPaidOn）を基準に年度を計算して集計する
+   * 既存のstandardHealthBonusを参照せず、各賞与のbonusTotalから標準賞与額を計算する
    */
   private calculateStandardBonusAnnualTotal(): number {
     if (!this.allPayrolls || this.allPayrolls.length === 0) {
       return 0;
     }
 
-    // 各賞与の支給日を基準に年度を計算して合計
-    return this.allPayrolls
-      .filter((payroll) => {
-        if (!payroll.bonusPaidOn || payroll.standardBonus === undefined) {
-          return false;
+    // 健康保険の年度上限を取得
+    const healthBonusCap = this.cachedRateRecord
+      ? extractBonusCap(this.cachedRateRecord, '健康保険', 'yearly')
+      : undefined;
+
+    // 賞与があるpayrollをフィルタリング
+    const bonuses = this.allPayrolls.filter((payroll) => {
+      if (!payroll.bonusPaidOn || !payroll.bonusTotal || payroll.bonusTotal <= 0) {
+        return false;
+      }
+      const paidOn = this.toBonusDate(payroll.bonusPaidOn);
+      return paidOn !== undefined;
+    });
+
+    if (bonuses.length === 0) {
+      return 0;
+    }
+
+    // 年度ごとにグループ化
+    const bonusesByFiscalYear = new Map<string, PayrollData[]>();
+    
+    bonuses.forEach((payroll) => {
+      const paidOn = this.toBonusDate(payroll.bonusPaidOn!);
+      if (!paidOn) return;
+      
+      const fiscalYear = this.getFiscalYearForDate(paidOn);
+      const fiscalYearKey = `${fiscalYear.start.getFullYear()}-${fiscalYear.end.getFullYear()}`;
+      
+      if (!bonusesByFiscalYear.has(fiscalYearKey)) {
+        bonusesByFiscalYear.set(fiscalYearKey, []);
+      }
+      bonusesByFiscalYear.get(fiscalYearKey)!.push(payroll);
+    });
+
+    // 各年度の標準賞与額を計算
+    let total = 0;
+    
+    bonusesByFiscalYear.forEach((yearBonuses, fiscalYearKey) => {
+      // 年度内の賞与を月ごとにグループ化
+      const bonusesByMonth = new Map<string, PayrollData[]>();
+      
+      yearBonuses.forEach((payroll) => {
+        const paidOn = this.toBonusDate(payroll.bonusPaidOn!);
+        if (!paidOn) return;
+        
+        const monthKey = `${paidOn.getFullYear()}-${String(paidOn.getMonth() + 1).padStart(2, '0')}`;
+        
+        if (!bonusesByMonth.has(monthKey)) {
+          bonusesByMonth.set(monthKey, []);
         }
+        bonusesByMonth.get(monthKey)!.push(payroll);
+      });
 
-        const paidOn = this.toBonusDate(payroll.bonusPaidOn);
-        if (!paidOn) return false;
-
-        return true;
-      })
-      .reduce((sum, record) => {
-        const paidOn = this.toBonusDate(record.bonusPaidOn!);
-        if (!paidOn) return sum;
-
-        // 各賞与の支給日（bonusPaidOn）を基準に年度を計算
-        const fiscalYear = this.getFiscalYearForDate(paidOn);
-        const startDate = new Date(fiscalYear.start.getFullYear(), fiscalYear.start.getMonth(), fiscalYear.start.getDate());
-        const endDate = new Date(fiscalYear.end.getFullYear(), fiscalYear.end.getMonth(), fiscalYear.end.getDate());
+      // 各月の標準賞与額を計算して累計
+      let fiscalYearCumulative = 0;
+      
+      // 月ごとに日付順にソート
+      const sortedMonths = Array.from(bonusesByMonth.keys()).sort();
+      
+      sortedMonths.forEach((monthKey) => {
+        const monthBonuses = bonusesByMonth.get(monthKey)!;
         
-        // 支給日がその年度の範囲内かチェック
-        const paidOnDate = new Date(paidOn.getFullYear(), paidOn.getMonth(), paidOn.getDate());
+        // 同月内の賞与を日付順にソート
+        const sortedMonthBonuses = monthBonuses.sort((a, b) => {
+          const dateA = this.toBonusDate(a.bonusPaidOn);
+          const dateB = this.toBonusDate(b.bonusPaidOn);
+          if (!dateA) return 1;
+          if (!dateB) return -1;
+          return dateA.getTime() - dateB.getTime();
+        });
+
+        // 同月内の賞与総支給額を合算
+        const monthlyBonusTotal = sortedMonthBonuses.reduce((sum, bonus) => sum + (bonus.bonusTotal ?? 0), 0);
         
-        if (paidOnDate >= startDate && paidOnDate <= endDate) {
-          return sum + (record.standardBonus ?? 0);
+        if (monthlyBonusTotal > 0) {
+          // 年度上限を考慮して標準賞与額を計算
+          // 残りの上限を計算
+          const remainingCap = healthBonusCap
+            ? Math.max(healthBonusCap - fiscalYearCumulative, 0)
+            : undefined;
+          
+          if (remainingCap !== undefined && remainingCap <= 0) {
+            // 残りの上限が0以下の場合は、今回分は0
+            return;
+          }
+          
+          // 同月内の賞与総支給額と残りの上限の小さい方から標準賞与額を計算
+          const cappedBonus = remainingCap !== undefined
+            ? Math.min(monthlyBonusTotal, remainingCap)
+            : monthlyBonusTotal;
+          
+          const monthlyStandardBonus = calculateStandardBonus(cappedBonus);
+          fiscalYearCumulative += monthlyStandardBonus;
         }
-        
-        return sum;
-      }, 0);
+      });
+      
+      total += fiscalYearCumulative;
+    });
+
+    return total;
   }
 
   /**

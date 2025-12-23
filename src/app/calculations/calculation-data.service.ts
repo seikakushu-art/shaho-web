@@ -1087,10 +1087,6 @@ export class CalculationDataService {
         ) {
           return sum + record.standardHealthBonus;
         }
-        // 後方互換性: standardBonusが設定されている場合はそれを使用
-        if (record.standardBonus !== undefined && record.standardBonus > 0) {
-          return sum + record.standardBonus;
-        }
         // 標準賞与額が未設定の場合は、賞与総支給額から標準賞与額を計算
         if (record.bonusTotal !== undefined && record.bonusTotal > 0) {
           return (
@@ -1131,10 +1127,6 @@ export class CalculationDataService {
           record.standardWelfareBonus > 0
         ) {
           return sum + record.standardWelfareBonus;
-        }
-        // 後方互換性: standardBonusが設定されている場合はそれを使用
-        if (record.standardBonus !== undefined && record.standardBonus > 0) {
-          return sum + record.standardBonus;
         }
         // 標準賞与額が未設定の場合は、賞与総支給額から標準賞与額を計算
         if (record.bonusTotal !== undefined && record.bonusTotal > 0) {

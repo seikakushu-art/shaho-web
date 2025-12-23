@@ -1605,10 +1605,6 @@ export class ApprovalDetailComponent implements OnDestroy {
                   row.standardWelfareBonus > 0
                     ? row.standardWelfareBonus
                     : undefined,
-                standardBonus:
-                  row.standardHealthBonus ||
-                  row.standardWelfareBonus ||
-                  undefined,
                 // 健康保険料、介護保険料、厚生年金保険料（賞与）を従業員負担分のみで保存
                 healthInsuranceBonus:
                   (row.healthEmployeeBonus || 0) > 0

@@ -501,8 +501,8 @@ export const receiveEmployees = functions.https.onRequest(
               // 月給データがあるかどうか（amountまたはworkedDaysが存在する）
               const hasMonthlyData = payrollRecord.amount !== undefined || payrollRecord.workedDays !== undefined;
               
-              // 賞与データがあるかどうか（bonusPaidOn、bonusTotal、standardBonusのいずれかが存在する）
-              const hasBonusData = !!(payrollRecord.bonusPaidOn || payrollRecord.bonusTotal || payrollRecord.standardBonus);
+              // 賞与データがあるかどうか（bonusPaidOn、bonusTotalのいずれかが存在する）
+              const hasBonusData = !!(payrollRecord.bonusPaidOn || payrollRecord.bonusTotal);
               
               // 月給データの年月を取得
               let monthlyYearMonth: string | undefined = payrollRecord.yearMonth;
@@ -570,7 +570,6 @@ export const receiveEmployees = functions.https.onRequest(
                     bonusTotal: payrollRecord.bonusTotal,
                     standardHealthBonus: payrollRecord.standardHealthBonus,
                     standardWelfareBonus: payrollRecord.standardWelfareBonus,
-                    standardBonus: payrollRecord.standardBonus, // 後方互換性のため
                     // 月給データは含めない
                   },
                 });
@@ -599,8 +598,8 @@ export const receiveEmployees = functions.https.onRequest(
               // 月給データがあるかどうか（amountまたはworkedDaysが存在する）
               const hasMonthlyData = payrollRecord.amount !== undefined || payrollRecord.workedDays !== undefined;
               
-              // 賞与データがあるかどうか（bonusPaidOn、bonusTotal、standardBonusのいずれかが存在する）
-              const hasBonusData = !!(payrollRecord.bonusPaidOn || payrollRecord.bonusTotal || payrollRecord.standardBonus);
+              // 賞与データがあるかどうか（bonusPaidOn、bonusTotalのいずれかが存在する）
+              const hasBonusData = !!(payrollRecord.bonusPaidOn || payrollRecord.bonusTotal);
               
               // 月給データの年月を取得
               let monthlyYearMonth: string | undefined = payrollRecord.yearMonth;
@@ -668,7 +667,6 @@ export const receiveEmployees = functions.https.onRequest(
                     bonusTotal: payrollRecord.bonusTotal,
                     standardHealthBonus: payrollRecord.standardHealthBonus,
                     standardWelfareBonus: payrollRecord.standardWelfareBonus,
-                    standardBonus: payrollRecord.standardBonus, // 後方互換性のため
                     // 月給データは含めない
                   },
                 });
@@ -772,7 +770,6 @@ export const receiveEmployees = functions.https.onRequest(
                   bonusTotal: payrollRecord.bonusTotal,
                   standardHealthBonus: payrollRecord.standardHealthBonus,
                   standardWelfareBonus: payrollRecord.standardWelfareBonus,
-                  standardBonus: payrollRecord.standardBonus,
                   updatedAt: now,
                   updatedBy: userId,
                   createdAt: existingBonusPayment?.createdAt || now,
@@ -964,7 +961,6 @@ async function fetchPayrolls(
         bonusTotal: firstBonus?.bonusTotal,
         standardHealthBonus: firstBonus?.standardHealthBonus,
         standardWelfareBonus: firstBonus?.standardWelfareBonus,
-        standardBonus: firstBonus?.standardBonus,
         healthInsuranceBonus: firstBonus?.healthInsuranceBonus,
         careInsuranceBonus: firstBonus?.careInsuranceBonus,
         pensionBonus: firstBonus?.pensionBonus,

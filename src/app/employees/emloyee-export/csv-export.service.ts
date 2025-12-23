@@ -347,7 +347,7 @@ export class CsvExportService {
             value: (employee) =>
               (employee.payrolls ?? []).find(
                 (payroll) => payroll.yearMonth === month,
-              )?.standardBonus ?? '',
+              )?.standardHealthBonus ?? '',
           },
           {
             header: `健康保険（賞与）(${month})`,
