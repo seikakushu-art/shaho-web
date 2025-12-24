@@ -1002,72 +1002,79 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       bonusesByFiscalYear.get(fiscalYearKey)!.push(payroll);
     });
 
-    // 各年度の標準賞与額を計算
-    let total = 0;
+    // 最新年度を特定（年度キーをソートして最新のものを取得）
+    const sortedFiscalYearKeys = Array.from(bonusesByFiscalYear.keys()).sort();
+    if (sortedFiscalYearKeys.length === 0) {
+      return 0;
+    }
     
-    bonusesByFiscalYear.forEach((yearBonuses, fiscalYearKey) => {
-      // 年度内の賞与を月ごとにグループ化
-      const bonusesByMonth = new Map<string, PayrollData[]>();
+    // 最新年度のキーを取得
+    const latestFiscalYearKey = sortedFiscalYearKeys[sortedFiscalYearKeys.length - 1];
+    const yearBonuses = bonusesByFiscalYear.get(latestFiscalYearKey);
+    
+    if (!yearBonuses || yearBonuses.length === 0) {
+      return 0;
+    }
+    
+    // 最新年度内の賞与を月ごとにグループ化
+    const bonusesByMonth = new Map<string, PayrollData[]>();
+    
+    yearBonuses.forEach((payroll) => {
+      const paidOn = this.toBonusDate(payroll.bonusPaidOn!);
+      if (!paidOn) return;
       
-      yearBonuses.forEach((payroll) => {
-        const paidOn = this.toBonusDate(payroll.bonusPaidOn!);
-        if (!paidOn) return;
-        
-        const monthKey = `${paidOn.getFullYear()}-${String(paidOn.getMonth() + 1).padStart(2, '0')}`;
-        
-        if (!bonusesByMonth.has(monthKey)) {
-          bonusesByMonth.set(monthKey, []);
-        }
-        bonusesByMonth.get(monthKey)!.push(payroll);
-      });
-
-      // 各月の標準賞与額を計算して累計
-      let fiscalYearCumulative = 0;
+      const monthKey = `${paidOn.getFullYear()}-${String(paidOn.getMonth() + 1).padStart(2, '0')}`;
       
-      // 月ごとに日付順にソート
-      const sortedMonths = Array.from(bonusesByMonth.keys()).sort();
-      
-      sortedMonths.forEach((monthKey) => {
-        const monthBonuses = bonusesByMonth.get(monthKey)!;
-        
-        // 同月内の賞与を日付順にソート
-        const sortedMonthBonuses = monthBonuses.sort((a, b) => {
-          const dateA = this.toBonusDate(a.bonusPaidOn);
-          const dateB = this.toBonusDate(b.bonusPaidOn);
-          if (!dateA) return 1;
-          if (!dateB) return -1;
-          return dateA.getTime() - dateB.getTime();
-        });
-
-        // 同月内の賞与総支給額を合算
-        const monthlyBonusTotal = sortedMonthBonuses.reduce((sum, bonus) => sum + (bonus.bonusTotal ?? 0), 0);
-        
-        if (monthlyBonusTotal > 0) {
-          // 年度上限を考慮して標準賞与額を計算
-          // 残りの上限を計算
-          const remainingCap = healthBonusCap
-            ? Math.max(healthBonusCap - fiscalYearCumulative, 0)
-            : undefined;
-          
-          if (remainingCap !== undefined && remainingCap <= 0) {
-            // 残りの上限が0以下の場合は、今回分は0
-            return;
-          }
-          
-          // 同月内の賞与総支給額と残りの上限の小さい方から標準賞与額を計算
-          const cappedBonus = remainingCap !== undefined
-            ? Math.min(monthlyBonusTotal, remainingCap)
-            : monthlyBonusTotal;
-          
-          const monthlyStandardBonus = calculateStandardBonus(cappedBonus);
-          fiscalYearCumulative += monthlyStandardBonus;
-        }
-      });
-      
-      total += fiscalYearCumulative;
+      if (!bonusesByMonth.has(monthKey)) {
+        bonusesByMonth.set(monthKey, []);
+      }
+      bonusesByMonth.get(monthKey)!.push(payroll);
     });
 
-    return total;
+    // 各月の標準賞与額を計算して累計
+    let fiscalYearCumulative = 0;
+    
+    // 月ごとに日付順にソート
+    const sortedMonths = Array.from(bonusesByMonth.keys()).sort();
+    
+    sortedMonths.forEach((monthKey) => {
+      const monthBonuses = bonusesByMonth.get(monthKey)!;
+      
+      // 同月内の賞与を日付順にソート
+      const sortedMonthBonuses = monthBonuses.sort((a, b) => {
+        const dateA = this.toBonusDate(a.bonusPaidOn);
+        const dateB = this.toBonusDate(b.bonusPaidOn);
+        if (!dateA) return 1;
+        if (!dateB) return -1;
+        return dateA.getTime() - dateB.getTime();
+      });
+
+      // 同月内の賞与総支給額を合算
+      const monthlyBonusTotal = sortedMonthBonuses.reduce((sum, bonus) => sum + (bonus.bonusTotal ?? 0), 0);
+      
+      if (monthlyBonusTotal > 0) {
+        // 年度上限を考慮して標準賞与額を計算
+        // 残りの上限を計算
+        const remainingCap = healthBonusCap
+          ? Math.max(healthBonusCap - fiscalYearCumulative, 0)
+          : undefined;
+        
+        if (remainingCap !== undefined && remainingCap <= 0) {
+          // 残りの上限が0以下の場合は、今回分は0
+          return;
+        }
+        
+        // 同月内の賞与総支給額と残りの上限の小さい方から標準賞与額を計算
+        const cappedBonus = remainingCap !== undefined
+          ? Math.min(monthlyBonusTotal, remainingCap)
+          : monthlyBonusTotal;
+        
+        const monthlyStandardBonus = calculateStandardBonus(cappedBonus);
+        fiscalYearCumulative += monthlyStandardBonus;
+      }
+    });
+    
+    return fiscalYearCumulative;
   }
 
   /**

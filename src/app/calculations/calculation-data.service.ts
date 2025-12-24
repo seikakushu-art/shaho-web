@@ -425,9 +425,10 @@ export class CalculationDataService {
     const bonusMonth = normalizeToYearMonth(normalizedTarget);
     if (!bonusMonth) return false;
 
-    return payrolls.some((p) =>
-      (p.bonusPaidOn ?? '').replace(/\//g, '-').startsWith(bonusMonth),
-    );
+    return payrolls.some((p) => {
+      const normalizedPaidOn = normalizeToYearMonth(p.bonusPaidOn ?? '');
+      return normalizedPaidOn === bonusMonth;
+    });
   }
 
   private buildRow(
@@ -1068,15 +1069,23 @@ export class CalculationDataService {
     const currentBonusPaidOn = currentBonus?.bonusPaidOn
       ? currentBonus.bonusPaidOn.replace(/\//g, '-')
       : undefined;
+      const resolvedBonusTime = bonusDate?.getTime();
     return this.getFiscalYearBonuses(payrolls, bonusDate)
       .filter((record) => {
+        // 計算対象日より後の賞与は累計に含めない
+        if (resolvedBonusTime) {
+          const paidOn = this.toBonusDate(record.bonusPaidOn);
+          if (!paidOn || paidOn.getTime() > resolvedBonusTime) return false;
+        }
         // currentBonusが未設定の場合はすべて含める
         if (!currentBonusPaidOn) return true;
         // bonusPaidOnで比較（参照比較ではなく日付で比較）
         const recordBonusPaidOn = record.bonusPaidOn
           ? record.bonusPaidOn.replace(/\//g, '-')
           : undefined;
-        return recordBonusPaidOn !== currentBonusPaidOn;
+          if (recordBonusPaidOn === currentBonusPaidOn) return false;
+
+          return true;
       })
       .reduce((sum, record) => {
         // 過去の標準賞与額（健・介）が設定されている場合はそれを使用

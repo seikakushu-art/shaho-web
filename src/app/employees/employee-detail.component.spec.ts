@@ -8,6 +8,8 @@ import { ApprovalWorkflowService } from '../approvals/approval-workflow.service'
 import { UserDirectoryService } from '../auth/user-directory.service';
 import { ApprovalAttachmentService } from '../approvals/approval-attachment.service';
 import { ApprovalNotificationService } from '../approvals/approval-notification.service';
+import { InsuranceRatesService } from '../app/services/insurance-rates.service';
+import { CorporateInfoService } from '../app/services/corporate-info.service';
 
 describe('EmployeeDetailComponent', () => {
   let fixture: ComponentFixture<EmployeeDetailComponent>;
@@ -86,6 +88,14 @@ describe('EmployeeDetailComponent', () => {
     pushBatch: jasmine.createSpy('pushBatch'),
   };
 
+  const mockInsuranceRatesService = {
+    getRateHistory: jasmine.createSpy('getRateHistory').and.returnValue(of([])),
+  };
+
+  const mockCorporateInfoService = {
+    getCorporateInfo: jasmine.createSpy('getCorporateInfo').and.returnValue(of({ healthInsuranceType: '協会けんぽ' })),
+  };
+
   const mockRouter = {
     navigate: jasmine.createSpy('navigate'),
   };
@@ -100,6 +110,8 @@ describe('EmployeeDetailComponent', () => {
         { provide: UserDirectoryService, useValue: mockUserDirectoryService },
         { provide: ApprovalAttachmentService, useValue: mockAttachmentService },
         { provide: ApprovalNotificationService, useValue: mockNotificationService },
+        { provide: InsuranceRatesService, useValue: mockInsuranceRatesService },
+        { provide: CorporateInfoService, useValue: mockCorporateInfoService },
         { provide: Router, useValue: mockRouter },
         {
           provide: ActivatedRoute,
@@ -128,7 +140,6 @@ describe('EmployeeDetailComponent', () => {
       bonusTotal: 50000,
       standardHealthBonus: 48000,
       standardWelfareBonus: 48000,
-      standardBonus: 48000,
       healthInsuranceBonus: 1200,
       careInsuranceBonus: 300,
       pensionBonus: 1600,
