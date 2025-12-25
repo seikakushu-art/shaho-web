@@ -189,7 +189,8 @@ export class CalculationDataService {
                     const firstBonus = sortedBonuses[0];
                     const bonusDate = this.resolveBonusDate(firstBonus, params.bonusPaidOn);
                     
-                    // 年度累計を計算（同月内の賞与は含まれている）
+                    // 年度累計を計算（同月内の賞与は含まれていない）
+                    // 月内合算の場合は、同月のすべての賞与を合算するため、累計から同月の賞与を除外する必要はない
                     const healthBonusCap = extractBonusCap(rateRecord, '健康保険', 'yearly');
                     const welfareBonusCap = extractBonusCap(rateRecord, '厚生年金');
                     const healthBonusCumulative = this.calculateHealthBonusCumulative(
@@ -205,30 +206,13 @@ export class CalculationDataService {
                       rateRecord,
                     );
                     
-                    // 同月内の過去の賞与総支給額を合算（firstBonus以外の同月の賞与）
-                    const monthlyBonusTotal = sortedBonuses
-                      .slice(1)
-                      .reduce((sum, bonus) => sum + (bonus.bonusTotal ?? 0), 0);
+                    // 月内合算の場合は、同月のすべての賞与を合算するため、
+                    // 累計から同月の過去の賞与を差し引く補正は不要
+                    // （calculateHealthBonusCumulative は firstBonus より前の賞与のみを含めるため）
+                    const adjustedHealthBonusCumulative = healthBonusCumulative;
+                    const adjustedWelfareBonusCumulative = welfareBonusCumulative;
                     
-                    // 健康保険の場合、同月内の過去の賞与の標準賞与額を計算して、累計から除外する必要がある
-                    const monthlyHealthBonusStandard = monthlyBonusTotal > 0
-                      ? calculateStandardBonus(monthlyBonusTotal, healthBonusCap)
-                      : 0;
-                    const adjustedHealthBonusCumulative = Math.max(
-                      healthBonusCumulative - monthlyHealthBonusStandard,
-                      0,
-                    );
-                    
-                    // 厚生年金の場合、同月内の過去の賞与の標準賞与額を計算して、累計から除外する必要がある
-                    const monthlyWelfareBonusStandard = monthlyBonusTotal > 0
-                      ? calculateStandardBonus(monthlyBonusTotal, welfareBonusCap)
-                      : 0;
-                    const adjustedWelfareBonusCumulative = Math.max(
-                      welfareBonusCumulative - monthlyWelfareBonusStandard,
-                      0,
-                    );
-                    
-                    // 合算した金額から標準賞与額を計算（同月内の過去の賞与は考慮しない）
+                    // 合算した金額から標準賞与額を計算
                     const totalStandardHealthBonus = this.calculateStandardBonusWithCumulative(
                       totalBonusTotal,
                       healthBonusCap,
