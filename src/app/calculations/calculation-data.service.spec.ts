@@ -205,6 +205,31 @@ type BonusCase = {
   note: string;
 };
 
+type DetailedStandardBonusCase = {
+  caseId: string;
+  employeeNo: string;
+  bonusPaidOn: string;
+  targetMonth: string;
+  bonusGrossThisPayment: number;
+  expectedMonthlyBonusBefore: number;
+  expectedMonthlyBonusAfter: number;
+  expectedHealthMonthlyStandardBefore: number;
+  expectedHealthMonthlyStandardAfter: number;
+  expectedHealthStandardThisPayment: number;
+  healthFiscalYear: number;
+  expectedHealthFiscalBefore: number;
+  expectedHealthFiscalAfter: number;
+  expectedWelfareMonthlyStandardBefore: number;
+  expectedWelfareMonthlyStandardAfter: number;
+  expectedWelfareStandardThisPayment: number;
+  welfareFiscalYear: number;
+  expectedWelfareFiscalBefore: number;
+  expectedWelfareFiscalAfter: number;
+  healthYearlyCap: number;
+  welfareMonthlyCap: number;
+  note: string;
+};
+
 type SocialInsuranceBonusCase = {
   caseId: string;
   prefecture: string;
@@ -509,6 +534,22 @@ K07b,2026-01-25,500,500000,5730000,0,0,5730000,500000,健保：増分0のまま�
 
 K08a,2026-02-10,1499999,0,5720000,10000,1499000,5730000,1499000,健保：残り10,000で即上限到達（厚年は149.9万）
 K08b,2026-02-25,10000,1499999,5730000,0,1000,5730000,1500000,健保：上限到達後は0／厚年：月150万上限で増分1,000`;
+
+const standardBonusDetailedCsv = `caseId,employeeNo,bonusPaidOn,targetMonth,bonusGrossThisPayment,expectedMonthlyBonusBefore,expectedMonthlyBonusAfter,expectedHealthMonthlyStandardBefore,expectedHealthMonthlyStandardAfter,expectedHealthStandardThisPayment,healthFiscalYear,expectedHealthFiscalBefore,expectedHealthFiscalAfter,expectedWelfareMonthlyStandardBefore,expectedWelfareMonthlyStandardAfter,expectedWelfareStandardThisPayment,welfareFiscalYear,expectedWelfareFiscalBefore,expectedWelfareFiscalAfter,healthYearlyCap,welfareMonthlyCap,note
+A01,EMP-A,2025-04-10,2025-04,2000500,0,2000500,0,2000000,2000000,2025,0,2000000,0,1500000,1500000,2025,0,1500000,5730000,1500000,厚年 月上限(150万)（単発）
+A02,EMP-A,2025-06-20,2025-06,1800999,0,1800999,0,1800000,1800000,2025,2000000,3800000,0,1500000,1500000,2025,1500000,3000000,5730000,1500000,千円未満切捨 + 厚年 月上限(150万)（単発）
+A03,EMP-A,2025-09-05,2025-09,2500000,0,2500000,0,1930000,1930000,2025,3800000,5730000,0,1500000,1500000,2025,3000000,4500000,5730000,1500000,健保 年度上限(573万)到達：月内標準賞与額が途中で抑制
+A04,EMP-A,2025-12-15,2025-12,500000,0,500000,0,0,0,2025,5730000,5730000,0,500000,500000,2025,4500000,5000000,5730000,1500000,健保 年度上限到達後：健保の標準賞与額は0
+B01,EMP-B,2025-04-15,2025-04,2500000,0,2500000,0,2500000,2500000,2025,0,2500000,0,1500000,1500000,2025,0,1500000,5730000,1500000,厚年 月上限(150万)（単発）
+B02,EMP-B,2025-07-10,2025-07,999500,0,999500,0,999000,999000,2025,2500000,3499000,0,999000,999000,2025,1500000,2499000,5730000,1500000,同月2回（合算→千円未満切捨）1回目
+B03,EMP-B,2025-07-25,2025-07,1200,999500,1000700,999000,1000000,1000,2025,3499000,3500000,999000,1000000,1000,2025,2499000,2500000,5730000,1500000,"同月2回（合算→千円未満切捨）2回目：切捨境界で+1,000"
+B04,EMP-B,2025-08-20,2025-08,1500000,0,1500000,0,1500000,1500000,2025,3500000,5000000,0,1500000,1500000,2025,2500000,4000000,5730000,1500000,"健保 年度累計を4,000,000に調整（以降の上限テスト用）"
+B05,EMP-B,2025-11-05,2025-11,1000000,0,1000000,0,730000,730000,2025,5000000,5730000,0,1000000,1000000,2025,4000000,5000000,5730000,1500000,同月2回：1回目（厚年月上限の途中到達 & 健保年度上限は未到達）
+B06,EMP-B,2025-11-25,2025-11,900000,1000000,1900000,730000,730000,0,2025,5730000,5730000,1000000,1500000,500000,2025,5000000,5500000,5730000,1500000,"同月2回：2回目（厚年は+500,000で月上限到達、健保は+730,000で年度上限到達）"
+B07,EMP-B,2026-01-10,2026-01,123456,0,123456,0,0,0,2025,5730000,5730000,0,123000,123000,2025,5500000,5623000,5730000,1500000,健保 年度上限到達後：健保0 / 千円未満切捨確認
+B08,EMP-B,2026-03-31,2026-03,300000,0,300000,0,0,0,2025,5730000,5730000,0,300000,300000,2025,5623000,5923000,5730000,1500000,年度末(3/31)は同じ年度(FY2025)扱い：健保は0のまま
+B09,EMP-B,2026-04-01,2026-04,2000000,0,2000000,0,2000000,2000000,2026,0,2000000,0,1500000,1500000,2026,0,1500000,5730000,1500000,年度切替(4/1)で健保年度累計リセット
+B10,EMP-B,2026-04-20,2026-04,5678,2000000,2005678,2000000,2005000,5000,2026,2000000,2005000,1500000,1500000,0,2026,1500000,1500000,5730000,1500000,"同月2回：合算後の千円未満切捨で健保が+5,000だけ増える（厚年は月上限で増えない）"`;
 
 const socialInsuranceSumCsv = `recordType,caseId,employeeNo,prefecture,careApplicable,healthStdMonthlyYen,pensionStdMonthlyYen,healthRateTotalPct,careRateTotalPct,pensionRateTotalPct,exp_health_employeeRawYen,exp_health_employeeYen,exp_health_totalRawYen,exp_care_employeeRawYen,exp_care_employeeYen,exp_care_totalRawYen,exp_pension_employeeRawYen,exp_pension_employeeYen,exp_pension_totalRawYen,exp_health_employeeSumYen,exp_health_totalFloorYen,exp_care_employeeSumYen,exp_care_totalFloorYen,exp_pension_employeeSumYen,exp_pension_totalFloorYen
 EMP,M-SUM-001,E001,北海道,1,58000,88000,10.31,1.59,18.30,2989.90,2990,5979.80,461.10,461,922.20,8052.00,8052,16104.00,,,,,,
@@ -977,6 +1018,44 @@ const csvStandardBonusCases: BonusCase[] = parseCsvWithTrailingNote(standardBonu
   }),
 );
 
+const detailedStandardBonusCases: DetailedStandardBonusCase[] =
+  parseCsvWithTrailingNote(standardBonusDetailedCsv).map((row) => ({
+    caseId: row['caseId'],
+    employeeNo: row['employeeNo'],
+    bonusPaidOn: row['bonusPaidOn'],
+    targetMonth: row['targetMonth'],
+    bonusGrossThisPayment: Number(row['bonusGrossThisPayment']),
+    expectedMonthlyBonusBefore: Number(row['expectedMonthlyBonusBefore']),
+    expectedMonthlyBonusAfter: Number(row['expectedMonthlyBonusAfter']),
+    expectedHealthMonthlyStandardBefore: Number(
+      row['expectedHealthMonthlyStandardBefore'],
+    ),
+    expectedHealthMonthlyStandardAfter: Number(
+      row['expectedHealthMonthlyStandardAfter'],
+    ),
+    expectedHealthStandardThisPayment: Number(
+      row['expectedHealthStandardThisPayment'],
+    ),
+    healthFiscalYear: Number(row['healthFiscalYear']),
+    expectedHealthFiscalBefore: Number(row['expectedHealthFiscalBefore']),
+    expectedHealthFiscalAfter: Number(row['expectedHealthFiscalAfter']),
+    expectedWelfareMonthlyStandardBefore: Number(
+      row['expectedWelfareMonthlyStandardBefore'],
+    ),
+    expectedWelfareMonthlyStandardAfter: Number(
+      row['expectedWelfareMonthlyStandardAfter'],
+    ),
+    expectedWelfareStandardThisPayment: Number(
+      row['expectedWelfareStandardThisPayment'],
+    ),
+    welfareFiscalYear: Number(row['welfareFiscalYear']),
+    expectedWelfareFiscalBefore: Number(row['expectedWelfareFiscalBefore']),
+    expectedWelfareFiscalAfter: Number(row['expectedWelfareFiscalAfter']),
+    healthYearlyCap: Number(row['healthYearlyCap']),
+    welfareMonthlyCap: Number(row['welfareMonthlyCap']),
+    note: row['note'],
+  }));
+
 const standardBonusCases: BonusCase[] = [
   ...legacyStandardBonusCases,
   ...csvStandardBonusCases,
@@ -1412,6 +1491,149 @@ describe('CalculationDataService standard bonus fixtures', () => {
       expect(priorWelfareStandard + row.standardWelfareBonus).toBe(
         testCase.expectedKouseiMonthTotal_After,
       );
+    });
+  });
+});
+
+describe('CalculationDataService detailed standard bonus fixtures', () => {
+  let service: CalculationDataService;
+  let employeesStub: EmployeesStub;
+  let ratesStub: RatesStub;
+
+  beforeEach(() => {
+    employeesStub = new EmployeesStub();
+    ratesStub = new RatesStub();
+
+    TestBed.configureTestingModule({
+      providers: [
+        CalculationDataService,
+        { provide: ShahoEmployeesService, useValue: employeesStub },
+        { provide: InsuranceRatesService, useValue: ratesStub },
+        { provide: CorporateInfoService, useClass: CorporateInfoStub },
+        provideFirebaseApp(() => initializeApp(firebaseConfig)),
+        provideAuth(() => getAuth(getApp())),
+        provideFirestore(() => initializeFirestore(getApp(), {})),
+      ],
+    });
+
+    service = TestBed.inject(CalculationDataService);
+  });
+
+  detailedStandardBonusCases.forEach((testCase) => {
+    it(`${testCase.caseId}: ${testCase.note}`, async () => {
+      ratesStub.rateHistory = [
+        createRateRecord({
+          healthYearlyCap: testCase.healthYearlyCap,
+          welfareMonthlyCap: testCase.welfareMonthlyCap,
+        }),
+      ];
+
+      const payrolls: PayrollData[] = [];
+
+      const healthRemainder = Math.max(
+        testCase.expectedHealthFiscalBefore -
+          testCase.expectedHealthMonthlyStandardBefore,
+        0,
+      );
+      const welfareRemainder = Math.max(
+        testCase.expectedWelfareFiscalBefore -
+          testCase.expectedWelfareMonthlyStandardBefore,
+        0,
+      );
+
+      if (healthRemainder > 0) {
+        payrolls.push({
+          yearMonth: `${testCase.healthFiscalYear}-04`,
+          bonusPaidOn: `${testCase.healthFiscalYear}-04-01`,
+          bonusTotal: healthRemainder,
+          standardHealthBonus: healthRemainder,
+        } as unknown as PayrollData);
+      }
+
+      if (welfareRemainder > 0) {
+        payrolls.push({
+          yearMonth: `${testCase.welfareFiscalYear}-04`,
+          bonusPaidOn: `${testCase.welfareFiscalYear}-04-01`,
+          bonusTotal: welfareRemainder,
+          standardWelfareBonus: welfareRemainder,
+        } as unknown as PayrollData);
+      }
+
+      if (
+        testCase.expectedMonthlyBonusBefore > 0 ||
+        testCase.expectedHealthMonthlyStandardBefore > 0 ||
+        testCase.expectedWelfareMonthlyStandardBefore > 0
+      ) {
+        payrolls.push({
+          yearMonth: testCase.targetMonth,
+          bonusPaidOn: `${testCase.targetMonth}-01`,
+          bonusTotal: testCase.expectedMonthlyBonusBefore,
+          standardHealthBonus: testCase.expectedHealthMonthlyStandardBefore ||
+            undefined,
+          standardWelfareBonus: testCase
+            .expectedWelfareMonthlyStandardBefore || undefined,
+        } as unknown as PayrollData);
+      }
+
+      payrolls.push({
+        yearMonth: testCase.targetMonth,
+        bonusPaidOn: testCase.bonusPaidOn,
+        bonusTotal: testCase.bonusGrossThisPayment,
+      } as unknown as PayrollData);
+
+      employeesStub.employees = [
+        {
+          employeeNo: testCase.employeeNo,
+          name: testCase.note,
+          department: '計算',
+          workPrefecture: '東京',
+          payrolls,
+        } as unknown as ShahoEmployee,
+      ];
+
+      const params: CalculationQueryParams = {
+        type: 'bonus',
+        targetMonth: testCase.targetMonth,
+        method: 'none',
+        standardMethod: '定時決定',
+        insurances: ['健康保険', '厚生年金'],
+        employeeNo: testCase.employeeNo,
+        bonusPaidOn: testCase.bonusPaidOn,
+      };
+
+      const [row] = await firstValueFrom(service.getCalculationRows(params));
+
+      expect(row.standardHealthBonus).toBe(
+        testCase.expectedHealthStandardThisPayment,
+      );
+      expect(row.standardWelfareBonus).toBe(
+        testCase.expectedWelfareStandardThisPayment,
+      );
+
+      const monthlyHealthAfter =
+        testCase.expectedHealthMonthlyStandardBefore + row.standardHealthBonus;
+      expect(monthlyHealthAfter).toBe(
+        testCase.expectedHealthMonthlyStandardAfter,
+      );
+
+      const monthlyWelfareAfter =
+        testCase.expectedWelfareMonthlyStandardBefore +
+        row.standardWelfareBonus;
+      expect(monthlyWelfareAfter).toBe(
+        testCase.expectedWelfareMonthlyStandardAfter,
+      );
+
+      const healthFiscalAfter =
+        testCase.expectedHealthFiscalBefore + row.standardHealthBonus;
+      expect(healthFiscalAfter).toBe(testCase.expectedHealthFiscalAfter);
+
+      const welfareFiscalAfter =
+        testCase.expectedWelfareFiscalBefore + row.standardWelfareBonus;
+      expect(welfareFiscalAfter).toBe(testCase.expectedWelfareFiscalAfter);
+
+      const monthlyBonusAfter =
+        testCase.expectedMonthlyBonusBefore + testCase.bonusGrossThisPayment;
+      expect(monthlyBonusAfter).toBe(testCase.expectedMonthlyBonusAfter);
     });
   });
 });
