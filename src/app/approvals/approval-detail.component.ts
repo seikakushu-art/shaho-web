@@ -779,9 +779,21 @@ export class ApprovalDetailComponent implements OnDestroy {
                         undefined,
                     ),
                 currentLeaveStatus: csvData['現在の休業状態'] || undefined,
-                currentLeaveStartDate: csvData['現在の休業開始日'] || undefined,
-                currentLeaveEndDate:
-                  csvData['現在の休業予定終了日'] || undefined,
+                // 現在の休業状態が空文字列または「なし」の場合は、日付フィールドをクリア
+                currentLeaveStartDate: (() => {
+                  const status = csvData['現在の休業状態'];
+                  if (!status || status.trim() === '' || status.trim() === 'なし') {
+                    return undefined;
+                  }
+                  return csvData['現在の休業開始日'] || undefined;
+                })(),
+                currentLeaveEndDate: (() => {
+                  const status = csvData['現在の休業状態'];
+                  if (!status || status.trim() === '' || status.trim() === 'なし') {
+                    return undefined;
+                  }
+                  return csvData['現在の休業予定終了日'] || undefined;
+                })(),
                 // 扶養情報（hasDependentのみ）
                 hasDependent: toBoolean(csvData['扶養の有無'], true),
               };

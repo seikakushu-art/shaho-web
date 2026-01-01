@@ -754,6 +754,62 @@ export function validateBusinessRules(
     }
   }
 
+  // 現在の休業状態のチェック
+  const currentLeaveStatus = row.data['現在の休業状態'];
+  const currentLeaveStartDate = row.data['現在の休業開始日'];
+  const currentLeaveEndDate = row.data['現在の休業予定終了日'];
+
+  // 現在の休業状態が空文字列または「なし」の場合、日付フィールドは入力不可
+  const isLeaveStatusValid = currentLeaveStatus && currentLeaveStatus.trim() !== '' && currentLeaveStatus.trim() !== 'なし';
+  
+  if (!isLeaveStatusValid) {
+    // 休業状態が無効な場合、日付フィールドが入力されているとエラー
+    if (currentLeaveStartDate && currentLeaveStartDate.trim() !== '') {
+      errors.push(
+        buildError(
+          row.rowIndex,
+          '現在の休業開始日',
+          '現在の休業状態が選択されていない、または「なし」の場合は、現在の休業開始日を入力できません',
+          templateType,
+        ),
+      );
+    }
+    if (currentLeaveEndDate && currentLeaveEndDate.trim() !== '') {
+      errors.push(
+        buildError(
+          row.rowIndex,
+          '現在の休業予定終了日',
+          '現在の休業状態が選択されていない、または「なし」の場合は、現在の休業予定終了日を入力できません',
+          templateType,
+        ),
+      );
+    }
+  }
+
+  // 現在の休業開始日と現在の休業予定終了日の関係チェック
+  if (currentLeaveStartDate && currentLeaveEndDate) {
+    const startDate = new Date(currentLeaveStartDate.replace(/-/g, '/'));
+    const endDate = new Date(currentLeaveEndDate.replace(/-/g, '/'));
+
+    // 日付が有効かチェック
+    if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(0, 0, 0, 0);
+
+      // 終了日が開始日より前の場合はエラー
+      if (endDate < startDate) {
+        errors.push(
+          buildError(
+            row.rowIndex,
+            '現在の休業予定終了日',
+            '現在の休業予定終了日は現在の休業開始日より後の日付である必要があります',
+            templateType,
+          ),
+        );
+      }
+    }
+  }
+
   return errors;
 }
 

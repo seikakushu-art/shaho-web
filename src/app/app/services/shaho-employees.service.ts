@@ -363,6 +363,14 @@ export class ShahoEmployeesService {
       }
     }
 
+    // 現住所の検証（最大80文字）
+    if (record.currentAddress) {
+      const currentAddressStr = record.currentAddress.trim();
+      if (currentAddressStr && currentAddressStr.length > 80) {
+        return `現住所は最大80文字まで入力できます（現在${currentAddressStr.length}文字）`;
+      }
+    }
+
     // 扶養家族情報のバリデーション
     if (record.dependents && Array.isArray(record.dependents)) {
       for (let i = 0; i < record.dependents.length; i++) {
@@ -394,6 +402,46 @@ export class ShahoEmployeesService {
           const addressStr = dependent.address.trim();
           if (addressStr && addressStr.length > 80) {
             return `扶養家族${i + 1}の住所は最大80文字まで入力できます（現在${addressStr.length}文字）`;
+          }
+        }
+      }
+    }
+
+    // 現在の休業状態のチェック
+    const currentLeaveStatus = record.currentLeaveStatus?.trim();
+    const currentLeaveStartDate = record.currentLeaveStartDate?.trim();
+    const currentLeaveEndDate = record.currentLeaveEndDate?.trim();
+
+    // 現在の休業状態が空文字列または「なし」の場合、日付フィールドは入力不可
+    const isLeaveStatusValid = currentLeaveStatus && currentLeaveStatus !== '' && currentLeaveStatus !== 'なし';
+    
+    if (!isLeaveStatusValid) {
+      // 休業状態が無効な場合、日付フィールドが入力されているとエラー
+      if (currentLeaveStartDate && currentLeaveStartDate !== '') {
+        return '現在の休業状態が選択されていない、または「なし」の場合は、現在の休業開始日を入力できません';
+      }
+      if (currentLeaveEndDate && currentLeaveEndDate !== '') {
+        return '現在の休業状態が選択されていない、または「なし」の場合は、現在の休業予定終了日を入力できません';
+      }
+    }
+
+    // 現在の休業開始日と現在の休業予定終了日の関係チェック
+    if (currentLeaveStartDate && currentLeaveEndDate) {
+      const startDateStr = currentLeaveStartDate;
+      const endDateStr = currentLeaveEndDate;
+      
+      if (startDateStr && endDateStr) {
+        const startDate = new Date(startDateStr.replace(/-/g, '/'));
+        const endDate = new Date(endDateStr.replace(/-/g, '/'));
+
+        // 日付が有効かチェック
+        if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+          startDate.setHours(0, 0, 0, 0);
+          endDate.setHours(0, 0, 0, 0);
+
+          // 終了日が開始日より前の場合はエラー
+          if (endDate < startDate) {
+            return '現在の休業予定終了日は現在の休業開始日より後の日付である必要があります';
           }
         }
       }
@@ -510,8 +558,21 @@ export class ShahoEmployeesService {
         pensionAcquisition: record.pensionAcquisition?.trim(),
         careSecondInsured: toBoolean(record.careSecondInsured),
         currentLeaveStatus: record.currentLeaveStatus?.trim(),
-        currentLeaveStartDate: record.currentLeaveStartDate?.trim(),
-        currentLeaveEndDate: record.currentLeaveEndDate?.trim(),
+        // 現在の休業状態が空文字列または「なし」の場合は、日付フィールドをクリア
+        currentLeaveStartDate: (() => {
+          const status = record.currentLeaveStatus?.trim();
+          if (!status || status === '' || status === 'なし') {
+            return undefined;
+          }
+          return record.currentLeaveStartDate?.trim();
+        })(),
+        currentLeaveEndDate: (() => {
+          const status = record.currentLeaveStatus?.trim();
+          if (!status || status === '' || status === 'なし') {
+            return undefined;
+          }
+          return record.currentLeaveEndDate?.trim();
+        })(),
         hasDependent: toBoolean(record.hasDependent),
       };
 

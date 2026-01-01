@@ -513,6 +513,25 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * 現在の休業状態が有効かどうかをチェック（空文字列または「なし」の場合は無効）
+   */
+  isCurrentLeaveStatusValid(): boolean {
+    const status = this.socialInsurance.currentLeaveStatus;
+    return status !== '' && status !== 'なし';
+  }
+
+  /**
+   * 現在の休業状態変更時の処理
+   */
+  onCurrentLeaveStatusChange(): void {
+    // 休業状態が空文字列または「なし」の場合は、日付フィールドをクリア
+    if (!this.isCurrentLeaveStatusValid()) {
+      this.socialInsurance.currentLeaveStartDate = '';
+      this.socialInsurance.currentLeaveEndDate = '';
+    }
+  }
+
+  /**
    * 郵便番号キー入力制御：数字とハイフンのみ許可
    */
   onPostalCodeKeypress(event: KeyboardEvent): void {

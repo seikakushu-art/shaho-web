@@ -255,7 +255,7 @@
           </div>
           <div>
             <label>現在の休業状態</label>
-            <select name="currentLeaveStatus" [(ngModel)]="socialInsurance.currentLeaveStatus" [disabled]="!editMode">
+            <select name="currentLeaveStatus" [(ngModel)]="socialInsurance.currentLeaveStatus" [disabled]="!editMode" (ngModelChange)="onCurrentLeaveStatusChange()">
               <option value="">選択してください</option>
               <option value="なし">なし</option>
               <option value="産前産後">産前産後</option>
@@ -268,7 +268,7 @@
               type="date"
               name="currentLeaveStartDate"
               [(ngModel)]="socialInsurance.currentLeaveStartDate"
-              [readonly]="!editMode"
+              [readonly]="!editMode || !isCurrentLeaveStatusValid()"
             />
           </div>
           <div>
@@ -277,7 +277,8 @@
               type="date"
               name="currentLeaveEndDate"
               [(ngModel)]="socialInsurance.currentLeaveEndDate"
-              [readonly]="!editMode"
+              [readonly]="!editMode || !isCurrentLeaveStatusValid()"
+              [min]="socialInsurance.currentLeaveStartDate"
             />
           </div>
           <div>
