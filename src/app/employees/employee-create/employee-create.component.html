@@ -150,11 +150,11 @@
                 <span>現住所は住民票住所と同じ</span>
               </label>
             </label>
-            <input name="address" [(ngModel)]="basicInfo.address" [readonly]="!editMode" />
+            <input name="address" [(ngModel)]="basicInfo.address" [readonly]="!editMode" maxlength="80" />
           </div>
           <div style="grid-column: span 2;" *ngIf="!basicInfo.isCurrentAddressSameAsResident">
             <label>現住所</label>
-            <input name="currentAddress" [(ngModel)]="basicInfo.currentAddress" [readonly]="!editMode" />
+            <input name="currentAddress" [(ngModel)]="basicInfo.currentAddress" [readonly]="!editMode" maxlength="80" />
           </div>
         </div>
       </article>

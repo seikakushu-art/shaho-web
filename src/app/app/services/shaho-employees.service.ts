@@ -355,6 +355,14 @@ export class ShahoEmployeesService {
       return '標準報酬月額（厚年）が数値ではありません';
     }
 
+    // 住所の検証（最大80文字）
+    if (record.address) {
+      const addressStr = record.address.trim();
+      if (addressStr && addressStr.length > 80) {
+        return `住民票住所は最大80文字まで入力できます（現在${addressStr.length}文字）`;
+      }
+    }
+
     // 扶養家族情報のバリデーション
     if (record.dependents && Array.isArray(record.dependents)) {
       for (let i = 0; i < record.dependents.length; i++) {
@@ -379,6 +387,13 @@ export class ShahoEmployeesService {
                 return `扶養家族${i + 1}の生年月日は未来の日付は入力できません`;
               }
             }
+          }
+        }
+        // 扶養家族の住所の検証（最大80文字）
+        if (dependent.address) {
+          const addressStr = dependent.address.trim();
+          if (addressStr && addressStr.length > 80) {
+            return `扶養家族${i + 1}の住所は最大80文字まで入力できます（現在${addressStr.length}文字）`;
           }
         }
       }
