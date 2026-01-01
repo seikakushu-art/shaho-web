@@ -802,6 +802,25 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // 扶養の有無が「有」の場合、各扶養情報について続柄と氏名（漢字）が必須
+    if (this.basicInfo.hasDependent === true) {
+      for (let i = 0; i < this.dependentInfos.length; i++) {
+        const dep = this.dependentInfos[i];
+        // 何らかのデータが入力されている場合のみチェック
+        const hasAnyData = this.hasDependentData(dep);
+        if (hasAnyData) {
+          if (!dep.relationship || dep.relationship.trim() === '') {
+            this.dependentValidationError = `扶養情報${i + 1}の続柄は必須です。`;
+            return;
+          }
+          if (!dep.nameKanji || dep.nameKanji.trim() === '') {
+            this.dependentValidationError = `扶養情報${i + 1}の氏名（漢字）は必須です。`;
+            return;
+          }
+        }
+      }
+    }
+
     this.sendingApproval = true;
     this.approvalMessage = '';
 

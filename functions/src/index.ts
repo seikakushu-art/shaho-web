@@ -15,6 +15,22 @@ type ExternalPayrollRecord = {
   standardWelfareBonus?: number; // 標準賞与額（厚生年金）
 };
 
+type ExternalDependentRecord = {
+  relationship?: string; // 扶養 続柄
+  nameKanji?: string; // 扶養 氏名(漢字)
+  nameKana?: string; // 扶養 氏名(カナ)
+  birthDate?: string; // 扶養 生年月日
+  gender?: string; // 扶養 性別
+  personalNumber?: string; // 扶養 個人番号
+  basicPensionNumber?: string; // 扶養 基礎年金番号
+  cohabitationType?: string; // 扶養 同居区分
+  address?: string; // 扶養 住所（別居の場合のみ入力）
+  occupation?: string; // 扶養 職業
+  annualIncome?: number | string; // 扶養 年収（見込みでも可）
+  dependentStartDate?: string; // 扶養 被扶養者になった日
+  thirdCategoryFlag?: boolean | string | number; // 扶養 国民年金第3号被保険者該当フラグ
+};
+
 type ExternalEmployeeRecord = {
   employeeNo: string;
   name: string;
@@ -39,6 +55,8 @@ type ExternalEmployeeRecord = {
   currentLeaveEndDate?: string;
   careSecondInsured?: boolean | string;
   exemption?: boolean | string;
+  hasDependent?: boolean | string | number; // 扶養の有無
+  dependents?: ExternalDependentRecord[]; // 扶養家族情報配列
   payrolls?: ExternalPayrollRecord[]; // 給与データ配列
 };
 
@@ -333,6 +351,73 @@ function validateExternalRecord(
         // 終了日が開始日より前の場合はエラー
         if (endDate < startDate) {
           return "現在の休業予定終了日は現在の休業開始日より後の日付である必要があります";
+        }
+      }
+    }
+  }
+
+  // 扶養の有無を正規化
+  const normalizeHasDependent = (value?: boolean | string | number): boolean => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === "boolean") return value;
+    const str = String(value).trim().toLowerCase();
+    return str === "1" || str === "on" || str === "true" || str === "yes" || str === "有";
+  };
+
+  const hasDependent = normalizeHasDependent(record.hasDependent);
+
+  // 扶養の有無が「有」の場合、扶養情報が1件以上必要
+  if (hasDependent) {
+    if (!record.dependents || !Array.isArray(record.dependents) || record.dependents.length === 0) {
+      return "扶養の有無が「有」の場合、扶養情報を1件以上入力してください";
+    }
+  }
+
+  // 扶養家族情報のバリデーション
+  if (record.dependents && Array.isArray(record.dependents)) {
+    for (let i = 0; i < record.dependents.length; i++) {
+      const dependent = record.dependents[i];
+      
+      // 扶養の有無が「有」の場合、続柄と氏名（漢字）が必須
+      if (hasDependent) {
+        if (!dependent.relationship || dependent.relationship.trim() === "") {
+          return `扶養家族${i + 1}の続柄は必須です`;
+        }
+        if (!dependent.nameKanji || dependent.nameKanji.trim() === "") {
+          return `扶養家族${i + 1}の氏名（漢字）は必須です`;
+        }
+      }
+
+      // 扶養家族の年収が数値かチェック
+      if (
+        dependent.annualIncome !== undefined &&
+        dependent.annualIncome !== null &&
+        isNaN(Number(dependent.annualIncome))
+      ) {
+        return `扶養家族${i + 1}の年収が数値ではありません`;
+      }
+
+      // 扶養家族の生年月日の未来日付チェック
+      if (dependent.birthDate) {
+        const birthDateStr = dependent.birthDate.trim();
+        if (birthDateStr) {
+          const date = new Date(birthDateStr.replace(/-/g, "/"));
+          if (!isNaN(date.getTime())) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            date.setHours(0, 0, 0, 0);
+            if (date.getTime() > today.getTime()) {
+              return `扶養家族${i + 1}の生年月日は未来の日付は入力できません`;
+            }
+          }
+        }
+      }
+
+      // 扶養家族の住所の検証（最大80文字）
+      if (dependent.address) {
+        const addressStr = dependent.address.trim();
+        if (addressStr && addressStr.length > 80) {
+          return `扶養家族${i + 1}の住所は最大80文字まで入力できます（現在${addressStr.length}文字）`;
         }
       }
     }

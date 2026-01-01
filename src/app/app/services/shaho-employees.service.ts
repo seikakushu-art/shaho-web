@@ -371,10 +371,38 @@ export class ShahoEmployeesService {
       }
     }
 
+    // 扶養の有無を正規化
+    const normalizeHasDependent = (value?: boolean | string | number): boolean => {
+      if (value === undefined || value === null) return false;
+      if (typeof value === 'boolean') return value;
+      const str = String(value).trim().toLowerCase();
+      return str === '1' || str === 'on' || str === 'true' || str === 'yes' || str === '有';
+    };
+
+    const hasDependent = normalizeHasDependent(record.hasDependent);
+
+    // 扶養の有無が「有」の場合、扶養情報が1件以上必要
+    if (hasDependent) {
+      if (!record.dependents || !Array.isArray(record.dependents) || record.dependents.length === 0) {
+        return '扶養の有無が「有」の場合、扶養情報を1件以上入力してください';
+      }
+    }
+
     // 扶養家族情報のバリデーション
     if (record.dependents && Array.isArray(record.dependents)) {
       for (let i = 0; i < record.dependents.length; i++) {
         const dependent = record.dependents[i];
+        
+        // 扶養の有無が「有」の場合、続柄と氏名（漢字）が必須
+        if (hasDependent) {
+          if (!dependent.relationship || dependent.relationship.trim() === '') {
+            return `扶養家族${i + 1}の続柄は必須です`;
+          }
+          if (!dependent.nameKanji || dependent.nameKanji.trim() === '') {
+            return `扶養家族${i + 1}の氏名（漢字）は必須です`;
+          }
+        }
+
         if (
           dependent.annualIncome !== undefined &&
           dependent.annualIncome !== null &&

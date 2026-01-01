@@ -334,20 +334,28 @@
             </div>
             <div class="grid three-col">
           <div>
-            <label>続柄</label>
+            <label>続柄 <span *ngIf="basicInfo.hasDependent && editMode" style="color: #d32f2f;">*</span></label>
             <input
                   [name]="'dependentRelationship' + i"
               [(ngModel)]="dependentInfo.relationship"
               [readonly]="!editMode"
+              [required]="basicInfo.hasDependent === true && editMode"
             />
+            <p class="hint warning" *ngIf="submitAttempted && basicInfo.hasDependent && editMode && !dependentInfo.relationship">
+              続柄は必須です。
+            </p>
           </div>
           <div>
-            <label>氏名（漢字）</label>
+            <label>氏名（漢字） <span *ngIf="basicInfo.hasDependent && editMode" style="color: #d32f2f;">*</span></label>
             <input
                   [name]="'dependentNameKanji' + i"
               [(ngModel)]="dependentInfo.nameKanji"
               [readonly]="!editMode"
+              [required]="basicInfo.hasDependent === true && editMode"
             />
+            <p class="hint warning" *ngIf="submitAttempted && basicInfo.hasDependent && editMode && !dependentInfo.nameKanji">
+              氏名（漢字）は必須です。
+            </p>
           </div>
           <div>
             <label>氏名（カナ）</label>
@@ -364,6 +372,7 @@
                   [name]="'dependentBirthDate' + i"
               [(ngModel)]="dependentInfo.birthDate"
               [readonly]="!editMode"
+              [max]="todayDate"
             />
           </div>
           <div>
