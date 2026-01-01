@@ -532,6 +532,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     this.employeeNoDuplicateError = null;
 
     try {
+      // 既存の社員番号をチェック
       const employees = await firstValueFrom(
         this.employeesService.getEmployees().pipe(take(1)),
       );
@@ -543,6 +544,50 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
 
       if (duplicate) {
         this.employeeNoDuplicateError = 'この社員番号は既に使用されています。';
+        this.checkingDuplicate = false;
+        this.cdr.detectChanges();
+        return;
+      }
+
+      // 承認待ちの新規社員登録リクエストの社員番号をチェック
+      const requests = await firstValueFrom(
+        this.approvalWorkflowService.requests$.pipe(take(1)),
+      );
+
+      const pendingNewEmployeeRequest = requests.find((request) => {
+        // 承認待ち状態でない場合はスキップ
+        if (request.status !== 'pending') {
+          return false;
+        }
+
+        // 新規社員登録のカテゴリのみチェック
+        if (request.category !== '新規社員登録') {
+          return false;
+        }
+
+        // employeeDiffsの社員番号をチェック
+        const diffs = request.employeeDiffs || [];
+        const hasDuplicateInDiffs = diffs.some(
+          (diff) => diff.employeeNo?.trim() === employeeNo,
+        );
+
+        if (hasDuplicateInDiffs) {
+          return true;
+        }
+
+        // employeeDataの社員番号もチェック（念のため）
+        const requestEmployeeNo =
+          request.employeeData?.basicInfo?.employeeNo?.trim();
+        if (requestEmployeeNo === employeeNo) {
+          return true;
+        }
+
+        return false;
+      });
+
+      if (pendingNewEmployeeRequest) {
+        this.employeeNoDuplicateError =
+          'この社員番号は承認待ちの新規社員登録申請で既に使用されています。';
       } else {
         this.employeeNoDuplicateError = null;
       }
@@ -616,8 +661,9 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
 
     // 編集モードの場合、同じ社員に対する承認待ちリクエストが既に存在するかチェック
     const isEdit = this.isEditMode && this.originalEmployee && this.employeeId;
+    const employeeNo = this.basicInfo.employeeNo || null;
+    
     if (isEdit) {
-      const employeeNo = this.basicInfo.employeeNo || null;
       const existingPendingRequest = this.approvalWorkflowService.getPendingRequestForEmployee(
         this.employeeId,
         employeeNo,
@@ -627,6 +673,20 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         const requestTitle = existingPendingRequest.title || '承認待ちの申請';
         this.approvalMessage = `この社員には既に承認待ちの申請が存在します（${requestTitle}）。既存の申請が承認または差し戻しされるまで、新しい申請を作成できません。`;
         return;
+      }
+    } else {
+      // 新規登録モードの場合、同じ社員番号の承認待ちリクエストが既に存在するかチェック
+      if (employeeNo) {
+        const existingPendingRequest = this.approvalWorkflowService.getPendingRequestForEmployee(
+          null,
+          employeeNo,
+        );
+
+        if (existingPendingRequest) {
+          const requestTitle = existingPendingRequest.title || '承認待ちの申請';
+          this.approvalMessage = `この社員番号は承認待ちの新規社員登録申請で既に使用されています（${requestTitle}）。既存の申請が承認または差し戻しされるまで、新しい申請を作成できません。`;
+          return;
+        }
       }
     }
 
@@ -805,13 +865,16 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         // 通知を送信
         this.pushApprovalNotifications({ ...saved, id: result.requestId });
 
-        // 編集モードの場合は社員詳細画面に遷移
-        if (this.isEditMode && this.employeeId) {
-          // メッセージを表示してから少し待ってから遷移
-          setTimeout(() => {
+        // メッセージを表示してから少し待ってから遷移
+        setTimeout(() => {
+          if (this.isEditMode && this.employeeId) {
+            // 編集モードの場合は社員詳細画面に遷移
             this.router.navigate(['/employees', this.employeeId]);
-          }, 1000);
-        }
+          } else {
+            // 新規登録モードの場合は社員一覧画面に遷移
+            this.router.navigate(['/employees']);
+          }
+        }, 1000);
       } else {
         this.approvalMessage =
           '承認依頼の送信に失敗しました。時間をおいて再度お試しください。';

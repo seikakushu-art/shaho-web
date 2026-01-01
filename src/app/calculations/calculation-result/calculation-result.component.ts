@@ -801,6 +801,12 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         return;
       }
 
+      // 標準賞与額計算の場合、個人＋会社 保険料合計はデフォルトで非表示
+      if (this.calculationType === 'bonus' && column.key === 'totalContribution') {
+        column.visible = false;
+        return;
+      }
+
       if (autoHide && hasRows) {
         const hasValue = this.rows.some((row) => {
           if (row.error) return false; // エラーがある行はスキップ

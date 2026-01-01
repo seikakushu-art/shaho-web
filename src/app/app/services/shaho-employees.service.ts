@@ -15,6 +15,7 @@ import {
   writeBatch,
   runTransaction,
   getDoc,
+  deleteField,
 } from '@angular/fire/firestore';
 import { Auth } from '@angular/fire/auth';
 import { Observable, combineLatest, map, of, switchMap, firstValueFrom, take } from 'rxjs';
@@ -797,11 +798,20 @@ export class ShahoEmployeesService {
     // app_usersのdisplayNameを取得
     const userDisplayName = await this.getUserDisplayName();
 
-    const updateData: Partial<ShahoEmployee> = {
-      ...data,
+    // null値をFieldValue.delete()に変換（フィールド削除のため）
+    const updateData: Record<string, any> = {
       updatedAt: now,
       updatedBy: userDisplayName,
     };
+    
+    for (const [key, value] of Object.entries(data)) {
+      if (value === null) {
+        // nullの場合はフィールドを削除
+        updateData[key] = deleteField();
+      } else if (value !== undefined) {
+        updateData[key] = value;
+      }
+    }
 
     return updateDoc(docRef, updateData);
   }

@@ -332,9 +332,12 @@ export const receiveEmployees = functions.https.onRequest(
           console.log("パース成功:", JSON.stringify(bodyData, null, 2));
         } catch (parseError) {
           console.error("JSONパースエラー:", parseError);
+          response.set("Content-Type", "application/json; charset=utf-8");
           response.status(400).json({
-            error: "Invalid JSON format in request body.",
+            error: "Bad Request",
+            message: "リクエストボディのJSON形式が無効です。",
             details: parseError instanceof Error ? parseError.message : "Unknown error",
+            code: "INVALID_JSON_FORMAT",
           });
           return;
         }
@@ -342,18 +345,24 @@ export const receiveEmployees = functions.https.onRequest(
       
       if (!bodyData) {
         console.error("リクエストボディが空です");
+        response.set("Content-Type", "application/json; charset=utf-8");
         response.status(400).json({
-          error: "Invalid request body. Request body is empty.",
+          error: "Bad Request",
+          message: "リクエストボディが空です。社員データの配列を送信してください。",
+          code: "EMPTY_REQUEST_BODY",
         });
         return;
       }
       
       if (!Array.isArray(bodyData)) {
         console.error("リクエストボディが配列ではありません。型:", typeof bodyData);
+        response.set("Content-Type", "application/json; charset=utf-8");
         response.status(400).json({
-          error: "Invalid request body. Expected an array of employee records.",
+          error: "Bad Request",
+          message: "リクエストボディは社員データの配列である必要があります。",
+          details: `受信したデータの型: ${typeof bodyData}`,
+          code: "INVALID_REQUEST_BODY_TYPE",
           receivedType: typeof bodyData,
-          receivedValue: bodyData,
         });
         return;
       }
@@ -368,13 +377,42 @@ export const receiveEmployees = functions.https.onRequest(
       const now = new Date().toISOString();
       const userId = "外部API連携";
 
+      // 社員番号を正規化（全ての空白文字を削除）
+      const normalizeEmployeeNoForComparison = (employeeNo: string): string => {
+        if (!employeeNo) return "";
+        // 全ての空白文字（半角スペース、全角スペース、タブ、改行など）を削除
+        return employeeNo.replace(/\s+/g, "").trim();
+      };
+
+      // 社員名を正規化（全ての空白文字を削除）
+      const normalizeNameForComparison = (name: string): string => {
+        if (!name) return "";
+        // 全ての空白文字（半角スペース、全角スペース、タブ、改行など）を削除
+        return name.replace(/\s+/g, "").trim();
+      };
+
+      // 社員番号と社員名の組み合わせでキーを生成
+      const createEmployeeKey = (employeeNo: string, name: string): string => {
+        const normalizedNo = normalizeEmployeeNoForComparison(employeeNo);
+        const normalizedName = normalizeNameForComparison(name);
+        return `${normalizedNo}_${normalizedName}`;
+      };
+
       // 既存の社員データを取得
       const snapshot = await colRef.get();
+      // 社員番号+社員名の組み合わせで検索するMap（更新判定用）
       const existingMap = new Map<string, { id: string; data: ShahoEmployee }>();
+      // 社員番号のみで検索するMap（重複チェック用）
+      const existingByEmployeeNoMap = new Map<string, { id: string; data: ShahoEmployee }>();
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as ShahoEmployee;
-        if (data.employeeNo) {
-          existingMap.set(data.employeeNo, { id: docSnap.id, data });
+        if (data.employeeNo && data.name) {
+          // 正規化した社員番号と社員名の組み合わせをキーとして使用
+          const key = createEmployeeKey(data.employeeNo, data.name);
+          existingMap.set(key, { id: docSnap.id, data });
+          // 社員番号のみでも登録（重複チェック用）
+          const normalizedNo = normalizeEmployeeNoForComparison(data.employeeNo);
+          existingByEmployeeNoMap.set(normalizedNo, { id: docSnap.id, data });
         }
       });
 
@@ -387,6 +425,80 @@ export const receiveEmployees = functions.https.onRequest(
         employeeId: string;
         payrollRecord: ExternalPayrollRecord;
       }> = [];
+
+      // 取り込みデータ内での社員番号の重複チェック
+      const importEmployeeNoSet = new Map<string, number>(); // 社員番号 -> 最初に出現したインデックス
+      console.log("=== 重複チェック開始 ===");
+      records.forEach((record, index) => {
+        const normalizedNo = normalizeEmployeeNoForComparison(`${record.employeeNo}`);
+        console.log(`インデックス ${index}: 社員番号=${record.employeeNo}, 正規化後=${normalizedNo}`);
+        if (normalizedNo) {
+          if (importEmployeeNoSet.has(normalizedNo)) {
+            const firstIndex = importEmployeeNoSet.get(normalizedNo)!;
+            const errorMessage = `取り込みデータ内で社員番号 ${record.employeeNo} が重複しています。最初の出現位置: インデックス ${firstIndex}、現在の位置: インデックス ${index}。`;
+            console.log(`重複エラー検出: ${errorMessage}`);
+            errors.push({
+              index,
+              employeeNo: record.employeeNo,
+              message: errorMessage,
+            });
+          } else {
+            importEmployeeNoSet.set(normalizedNo, index);
+          }
+        }
+      });
+      console.log(`重複チェック完了: エラー数=${errors.length}`);
+
+      // 重複エラーがある場合は、その後の処理をスキップ
+      if (errors.length > 0) {
+        console.log(`重複エラーが ${errors.length}件検出されました。エラーレスポンスを返します。`);
+        // エラーがある場合は、バリデーションエラーも含めて返す
+        const validationErrors: ExternalSyncError[] = records
+          .map((record, index) => {
+            const validationError = validateExternalRecord(record);
+            if (validationError) {
+              return {
+                index,
+                employeeNo: record.employeeNo,
+                message: validationError,
+              } as ExternalSyncError;
+            }
+            return null;
+          })
+          .filter((error): error is ExternalSyncError => error !== null);
+        
+        // 重複エラーとバリデーションエラーをマージ
+        const allErrors = [...errors, ...validationErrors];
+        
+        const errorMessage = allErrors.length === 1
+          ? allErrors[0].message
+          : `${allErrors.length}件のエラーが発生しました。詳細はerrors配列を確認してください。`;
+        
+        const errorResponse = {
+          error: "Bad Request",
+          message: errorMessage,
+          total: records.length,
+          processed: 0,
+          created: 0,
+          updated: 0,
+          errors: allErrors,
+        };
+        
+        console.log("=== エラーレスポンス ===");
+        console.log(JSON.stringify(errorResponse, null, 2));
+        console.log("response.headersSent:", response.headersSent);
+        
+        // Content-Typeヘッダーを明示的に設定
+        if (!response.headersSent) {
+          response.set("Content-Type", "application/json; charset=utf-8");
+          response.status(400);
+          response.json(errorResponse);
+          response.end();
+        } else {
+          console.error("警告: レスポンスヘッダーが既に送信されています");
+        }
+        return;
+      }
 
       // 各レコードを処理
       records.forEach((record, index) => {
@@ -428,9 +540,16 @@ export const receiveEmployees = functions.https.onRequest(
           return trimmed === "" ? undefined : trimmed;
         };
 
+        // 社員番号を正規化（全ての空白文字を削除）
+        const normalizedEmployeeNo = normalizeEmployeeNoForComparison(`${record.employeeNo}`);
+        // 社員名を正規化（全ての空白文字を削除）
+        const normalizedName = normalizeNameForComparison(record.name);
+        // 社員番号と社員名の組み合わせでキーを生成
+        const employeeKey = createEmployeeKey(`${record.employeeNo}`, record.name);
+
         const normalized: ShahoEmployee = {
-          employeeNo: `${record.employeeNo}`.trim(),
-          name: record.name.trim(),
+          employeeNo: normalizedEmployeeNo,
+          name: normalizedName,
           kana: normalizeString(record.kana),
           gender: normalizeGender(record.gender),
           birthDate: normalizeString(record.birthDate),
@@ -463,15 +582,36 @@ export const receiveEmployees = functions.https.onRequest(
         const cleanedData = removeUndefinedFields(normalized);
         
         // デバッグログ: 正規化後のデータを確認
-        console.log(`社員番号 ${normalized.employeeNo} の正規化後データ:`, JSON.stringify(cleanedData, null, 2));
+        console.log(`社員番号 ${normalizedEmployeeNo}、社員名 ${normalizedName} の正規化後データ:`, JSON.stringify(cleanedData, null, 2));
         
-        const existing = existingMap.get(normalized.employeeNo);
+        // まず社員番号のみで既存データを検索（重複チェック）
+        const existingByEmployeeNo = existingByEmployeeNoMap.get(normalizedEmployeeNo);
+        
+        if (existingByEmployeeNo) {
+          // 社員番号が存在する場合、社員名も一致するかチェック
+          const existingNormalizedName = normalizeNameForComparison(existingByEmployeeNo.data.name || "");
+          
+          if (normalizedName !== existingNormalizedName) {
+            // 社員番号は一致するが社員名が異なる場合はエラー
+            errors.push({
+              index,
+              employeeNo: record.employeeNo,
+              message: `社員番号 ${record.employeeNo} は既に登録されていますが、社員名が異なります。既存の社員名: ${existingByEmployeeNo.data.name}、取込データの社員名: ${record.name}。同じ社員番号の社員は同時に存在できません。`,
+            });
+            return;
+          }
+          
+          // 社員番号と社員名が両方一致する場合は更新処理へ進む
+        }
+
+        // 社員番号と社員名の組み合わせで既存データを検索（更新処理）
+        const existing = existingMap.get(employeeKey);
 
         if (existing) {
           const targetRef = colRef.doc(existing.id);
           
           // デバッグログ: 更新前の既存データを確認
-          console.log(`社員番号 ${normalized.employeeNo} の既存データ:`, JSON.stringify(existing.data, null, 2));
+          console.log(`社員番号 ${normalizedEmployeeNo}、社員名 ${normalizedName} の既存データ:`, JSON.stringify(existing.data, null, 2));
           
           // 更新データを準備（merge: trueを使用するため、送信されたフィールドのみを更新）
           const updateData = {
@@ -482,7 +622,7 @@ export const receiveEmployees = functions.https.onRequest(
           };
           
           // デバッグログ: 更新データを確認
-          console.log(`社員番号 ${normalized.employeeNo} の更新データ:`, JSON.stringify(updateData, null, 2));
+          console.log(`社員番号 ${normalizedEmployeeNo}、社員名 ${normalizedName} の更新データ:`, JSON.stringify(updateData, null, 2));
           
           batch.set(
             targetRef,
@@ -548,7 +688,7 @@ export const receiveEmployees = functions.https.onRequest(
               // 月給データを保存
               if (hasMonthlyData && monthlyYearMonth) {
                 payrollDataToProcess.push({
-                  employeeNo: normalized.employeeNo,
+                  employeeNo: normalizedEmployeeNo,
                   employeeId: existing.id,
                   payrollRecord: {
                     yearMonth: monthlyYearMonth,
@@ -562,7 +702,7 @@ export const receiveEmployees = functions.https.onRequest(
               // 賞与データを保存
               if (hasBonusData && bonusYearMonth) {
                 payrollDataToProcess.push({
-                  employeeNo: normalized.employeeNo,
+                  employeeNo: normalizedEmployeeNo,
                   employeeId: existing.id,
                   payrollRecord: {
                     yearMonth: bonusYearMonth,
@@ -645,7 +785,7 @@ export const receiveEmployees = functions.https.onRequest(
               // 月給データを保存
               if (hasMonthlyData && monthlyYearMonth) {
                 payrollDataToProcess.push({
-                  employeeNo: normalized.employeeNo,
+                  employeeNo: normalizedEmployeeNo,
                   employeeId: targetRef.id,
                   payrollRecord: {
                     yearMonth: monthlyYearMonth,
@@ -659,7 +799,7 @@ export const receiveEmployees = functions.https.onRequest(
               // 賞与データを保存
               if (hasBonusData && bonusYearMonth) {
                 payrollDataToProcess.push({
-                  employeeNo: normalized.employeeNo,
+                  employeeNo: normalizedEmployeeNo,
                   employeeId: targetRef.id,
                   payrollRecord: {
                     yearMonth: bonusYearMonth,
@@ -689,11 +829,17 @@ export const receiveEmployees = functions.https.onRequest(
         });
         
         for (const record of updatedRecords) {
-          const employeeNo = `${record.employeeNo}`.trim();
-          const employeeDoc = await colRef.where("employeeNo", "==", employeeNo).limit(1).get();
+          const normalizedEmployeeNo = normalizeEmployeeNoForComparison(`${record.employeeNo}`);
+          const normalizedName = normalizeNameForComparison(record.name);
+          // 正規化した社員番号と社員名で検索（DBに保存されている値も正規化されている前提）
+          const employeeDoc = await colRef
+            .where("employeeNo", "==", normalizedEmployeeNo)
+            .where("name", "==", normalizedName)
+            .limit(1)
+            .get();
           if (!employeeDoc.empty) {
             const savedData = employeeDoc.docs[0].data() as ShahoEmployee;
-            console.log(`社員番号 ${employeeNo} の保存後データ:`, JSON.stringify(savedData, null, 2));
+            console.log(`社員番号 ${normalizedEmployeeNo}、社員名 ${normalizedName} の保存後データ:`, JSON.stringify(savedData, null, 2));
           }
         }
 
@@ -702,11 +848,14 @@ export const receiveEmployees = functions.https.onRequest(
           const updatedSnapshot = await colRef.get();
           updatedSnapshot.forEach((docSnap) => {
             const data = docSnap.data() as ShahoEmployee;
-            if (data.employeeNo && !existingMap.has(data.employeeNo)) {
-              existingMap.set(data.employeeNo, {
-                id: docSnap.id,
-                data,
-              });
+            if (data.employeeNo && data.name) {
+              const key = createEmployeeKey(data.employeeNo, data.name);
+              if (!existingMap.has(key)) {
+                existingMap.set(key, {
+                  id: docSnap.id,
+                  data,
+                });
+              }
             }
           });
         }
@@ -764,18 +913,24 @@ export const receiveEmployees = functions.https.onRequest(
                   : undefined;
 
                 // 賞与明細を保存
-                const bonusPayment: BonusPayment = {
+                const bonusPayment: any = {
                   id: bonusPaymentId,
                   bonusPaidOn: payrollRecord.bonusPaidOn,
                   bonusTotal: payrollRecord.bonusTotal,
-                  standardHealthBonus: payrollRecord.standardHealthBonus,
-                  standardWelfareBonus: payrollRecord.standardWelfareBonus,
                   updatedAt: now,
                   updatedBy: userId,
                   createdAt: existingBonusPayment?.createdAt || now,
                   createdBy: existingBonusPayment?.createdBy || userId,
                   approvedBy: "外部API連携",
                 };
+
+                // undefinedのフィールドを除外
+                if (payrollRecord.standardHealthBonus !== undefined && payrollRecord.standardHealthBonus !== null) {
+                  bonusPayment.standardHealthBonus = payrollRecord.standardHealthBonus;
+                }
+                if (payrollRecord.standardWelfareBonus !== undefined && payrollRecord.standardWelfareBonus !== null) {
+                  bonusPayment.standardWelfareBonus = payrollRecord.standardWelfareBonus;
+                }
 
                 transaction.set(bonusPaymentRef, bonusPayment, { merge: true });
 
@@ -804,11 +959,9 @@ export const receiveEmployees = functions.https.onRequest(
                   (payrollRecord.standardWelfareBonus || 0);
 
                 // 月次ドキュメントを保存
-                const payrollMonth: PayrollMonth = {
+                const payrollMonth: any = {
                   id: yyyymm,
                   yearMonth: payrollRecord.yearMonth,
-                  amount: payrollRecord.amount,
-                  workedDays: payrollRecord.workedDays,
                   monthlyBonusTotal: newBonusTotal,
                   monthlyStandardHealthBonusTotal: newStandardHealthBonusTotal,
                   monthlyStandardWelfareBonusTotal: newStandardWelfareBonusTotal,
@@ -821,20 +974,34 @@ export const receiveEmployees = functions.https.onRequest(
                   approvedBy: "外部API連携",
                 };
 
+                // undefinedのフィールドを除外
+                if (payrollRecord.amount !== undefined && payrollRecord.amount !== null) {
+                  payrollMonth.amount = payrollRecord.amount;
+                }
+                if (payrollRecord.workedDays !== undefined && payrollRecord.workedDays !== null) {
+                  payrollMonth.workedDays = payrollRecord.workedDays;
+                }
+
                 transaction.set(payrollMonthRef, payrollMonth, { merge: true });
               } else {
                 // 月給データのみの場合
-                const payrollMonth: PayrollMonth = {
+                const payrollMonth: any = {
                   id: yyyymm,
                   yearMonth: payrollRecord.yearMonth,
-                  amount: payrollRecord.amount,
-                  workedDays: payrollRecord.workedDays,
                   updatedAt: now,
                   updatedBy: userId,
                   createdAt: existingPayrollMonth?.createdAt || now,
                   createdBy: existingPayrollMonth?.createdBy || userId,
                   approvedBy: "外部API連携",
                 };
+
+                // undefinedのフィールドを除外
+                if (payrollRecord.amount !== undefined && payrollRecord.amount !== null) {
+                  payrollMonth.amount = payrollRecord.amount;
+                }
+                if (payrollRecord.workedDays !== undefined && payrollRecord.workedDays !== null) {
+                  payrollMonth.workedDays = payrollRecord.workedDays;
+                }
 
                 transaction.set(payrollMonthRef, payrollMonth, { merge: true });
               }
@@ -857,7 +1024,24 @@ export const receiveEmployees = functions.https.onRequest(
 
       console.log("=== 処理完了 ===");
       console.log("結果:", JSON.stringify(result, null, 2));
-      response.status(200).json(result);
+      
+      // エラーがある場合は部分的な成功として200を返すが、エラーメッセージを含める
+      if (errors.length > 0) {
+        const errorMessage = errors.length === 1
+          ? errors[0].message
+          : `${errors.length}件のエラーが発生しましたが、一部のデータは処理されました。詳細はerrors配列を確認してください。`;
+        response.status(200).json({
+          ...result,
+          message: errorMessage,
+          hasErrors: true,
+        });
+      } else {
+        response.status(200).json({
+          ...result,
+          message: "すべてのデータが正常に処理されました。",
+          hasErrors: false,
+        });
+      }
     } catch (error) {
       console.error("=== エラーが発生しました ===");
       console.error("エラータイプ:", typeof error);
@@ -867,8 +1051,10 @@ export const receiveEmployees = functions.https.onRequest(
         console.error("エラースタック:", error.stack);
       }
       response.status(500).json({
-        error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
+        error: "Internal Server Error",
+        message: "サーバー内部でエラーが発生しました。",
+        details: error instanceof Error ? error.message : "Unknown error",
+        code: "INTERNAL_SERVER_ERROR",
       });
     }
   }
@@ -1168,8 +1354,10 @@ export const exportCsvData = functions.https.onRequest(
     } catch (error) {
       console.error("exportCsvData error", error);
       response.status(500).json({
-        error: "Internal server error",
-        message: error instanceof Error ? error.message : "Unknown error",
+        error: "Internal Server Error",
+        message: "サーバー内部でエラーが発生しました。",
+        details: error instanceof Error ? error.message : "Unknown error",
+        code: "INTERNAL_SERVER_ERROR",
       });
     }
   }

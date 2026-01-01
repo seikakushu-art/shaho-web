@@ -543,11 +543,20 @@ export class ApprovalDetailComponent implements OnDestroy {
       healthAcquisition: socialInsurance?.healthAcquisition || undefined,
       pensionAcquisition: socialInsurance?.pensionAcquisition || undefined,
       currentLeaveStatus:
-        (socialInsurance as any)?.currentLeaveStatus || undefined,
+        (socialInsurance as any)?.currentLeaveStatus === null ||
+        (socialInsurance as any)?.currentLeaveStatus === ''
+          ? null
+          : (socialInsurance as any)?.currentLeaveStatus || undefined,
       currentLeaveStartDate:
-        (socialInsurance as any)?.currentLeaveStartDate || undefined,
+        (socialInsurance as any)?.currentLeaveStartDate === null ||
+        (socialInsurance as any)?.currentLeaveStartDate === ''
+          ? null
+          : (socialInsurance as any)?.currentLeaveStartDate || undefined,
       currentLeaveEndDate:
-        (socialInsurance as any)?.currentLeaveEndDate || undefined,
+        (socialInsurance as any)?.currentLeaveEndDate === null ||
+        (socialInsurance as any)?.currentLeaveEndDate === ''
+          ? null
+          : (socialInsurance as any)?.currentLeaveEndDate || undefined,
       exemption: socialInsurance?.exemption || false,
       approvedBy: approverDisplayName,
     };
@@ -1012,6 +1021,7 @@ export class ApprovalDetailComponent implements OnDestroy {
     for (const key in obj) {
       if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
       const value = (obj as Record<string, unknown>)[key];
+      // undefinedは除外するが、nullは保持する（削除の意図を表すため）
       if (value === undefined) continue;
 
       if (Array.isArray(value)) {

@@ -804,9 +804,47 @@ export function validateFileLevelRules(
           );
         }
 
+        // 同じ社員番号で名前が異なる場合のチェック（先に実行）
+        // 名前が異なる行は、扶養家族情報のチェックをスキップする
+        const nameMismatchRowIndices = new Set<number>();
+        const firstRowName =
+          firstRow.data['氏名(漢字)'] || firstRow.data['氏名漢字'] || '';
+        if (firstRowName) {
+          const normalizedFirstRowName =
+            normalizeNameForComparison(firstRowName);
+          for (let i = 1; i < rowIndices.length; i++) {
+            const row = rows.find((r) => r.rowIndex === rowIndices[i]);
+            if (row) {
+              const rowName =
+                row.data['氏名(漢字)'] || row.data['氏名漢字'] || '';
+              if (rowName) {
+                const normalizedRowName = normalizeNameForComparison(rowName);
+                if (
+                  normalizedRowName &&
+                  normalizedRowName !== normalizedFirstRowName
+                ) {
+                  nameMismatchRowIndices.add(rowIndices[i]);
+                  errors.push(
+                    buildError(
+                      rowIndices[i],
+                      '氏名(漢字)',
+                      `社員番号 ${employeeNo} の${i + 1}行目の氏名（${rowName}）が最初の行の氏名（${firstRowName}）と異なります。同じ社員番号の場合は同じ氏名である必要があります`,
+                      templateType,
+                    ),
+                  );
+                }
+              }
+            }
+          }
+        }
+
         // 扶養の有無が「無」の場合、2行目以降に扶養家族情報が入力されていたらエラー
+        // ただし、名前が異なる行はスキップ
         if (isNoDependent) {
           for (let i = 1; i < rowIndices.length; i++) {
+            if (nameMismatchRowIndices.has(rowIndices[i])) {
+              continue;
+            }
             const row = rows.find((r) => r.rowIndex === rowIndices[i]);
             if (row) {
               const hasDependentInfo = DEPENDENT_BASE_FIELDS.some((field) => {
@@ -829,7 +867,11 @@ export function validateFileLevelRules(
         } else {
           // 2行目以降は扶養家族情報のみでOK（従業員情報の列は空でも可）
           // ただし、扶養情報が入力されていることを確認
+          // 名前が異なる行はスキップ
           for (let i = 1; i < rowIndices.length; i++) {
+            if (nameMismatchRowIndices.has(rowIndices[i])) {
+              continue;
+            }
             const row = rows.find((r) => r.rowIndex === rowIndices[i]);
             if (row) {
               const hasDependentInfo =
