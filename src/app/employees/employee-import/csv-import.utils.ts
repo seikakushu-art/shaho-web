@@ -536,8 +536,13 @@ export function validateDataRange(
 
     // 生年月日の場合は年分の制限をチェック
     if (field === '生年月日' || field === '扶養 生年月日') {
+      // 日付を0時0分0秒に設定して時刻の影響を排除
       date.setHours(0, 0, 0, 0);
-      if (date > today) {
+      const dateTime = date.getTime();
+      const todayTime = today.getTime();
+      
+      // 未来の日付チェック（今日より後は不可）
+      if (dateTime > todayTime) {
         errors.push(
           buildError(
             row.rowIndex,
@@ -547,7 +552,9 @@ export function validateDataRange(
           ),
         );
       }
-      if (date < hundredYearsAgo) {
+      // 100年前より前の日付チェック
+      const hundredYearsAgoTime = hundredYearsAgo.getTime();
+      if (dateTime < hundredYearsAgoTime) {
         errors.push(
           buildError(
             row.rowIndex,

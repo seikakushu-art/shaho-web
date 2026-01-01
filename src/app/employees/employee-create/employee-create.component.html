@@ -83,6 +83,7 @@
               (ngModelChange)="onBirthDateChange()"
               required
               [readonly]="!editMode"
+              [max]="todayDate"
               #birthDateModel="ngModel"
             />
             <p class="error" *ngIf="birthDateModel.invalid && (submitAttempted || birthDateModel.touched)">

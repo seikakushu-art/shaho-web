@@ -323,6 +323,22 @@ export class ShahoEmployeesService {
       return '氏名が入力されていません';
     }
 
+    // 生年月日の未来日付チェック
+    if (record.birthDate) {
+      const birthDateStr = record.birthDate.trim();
+      if (birthDateStr) {
+        const date = new Date(birthDateStr.replace(/-/g, '/'));
+        if (!isNaN(date.getTime())) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          date.setHours(0, 0, 0, 0);
+          if (date.getTime() > today.getTime()) {
+            return '生年月日は未来の日付は入力できません';
+          }
+        }
+      }
+    }
+
     if (
       record.healthStandardMonthly !== undefined &&
       record.healthStandardMonthly !== null &&
@@ -349,6 +365,21 @@ export class ShahoEmployeesService {
           isNaN(Number(dependent.annualIncome))
         ) {
           return `扶養家族${i + 1}の年収が数値ではありません`;
+        }
+        // 扶養家族の生年月日の未来日付チェック
+        if (dependent.birthDate) {
+          const birthDateStr = dependent.birthDate.trim();
+          if (birthDateStr) {
+            const date = new Date(birthDateStr.replace(/-/g, '/'));
+            if (!isNaN(date.getTime())) {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              date.setHours(0, 0, 0, 0);
+              if (date.getTime() > today.getTime()) {
+                return `扶養家族${i + 1}の生年月日は未来の日付は入力できません`;
+              }
+            }
+          }
         }
       }
     }
