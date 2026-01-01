@@ -133,7 +133,7 @@
           </div>
           <div>
             <label>郵便番号</label>
-            <input name="postalCode" [(ngModel)]="basicInfo.postalCode" [readonly]="!editMode" />
+            <input name="postalCode" [(ngModel)]="basicInfo.postalCode" [readonly]="!editMode" (input)="onPostalCodeInput($event)" (keypress)="onPostalCodeKeypress($event)" (compositionstart)="onPostalCodeCompositionStart($event)" maxlength="8" />
           </div>
           <div style="grid-column: span 2;">
             <label style="display: flex; align-items: center; gap: 0.5rem;">

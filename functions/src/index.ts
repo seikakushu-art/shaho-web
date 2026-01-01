@@ -264,6 +264,23 @@ function validateExternalRecord(
     return "標準報酬月額（厚年）が数値ではありません";
   }
 
+  // 郵便番号の検証（7桁の数字、ハイフンは任意）
+  if (record.postalCode) {
+    const postalCodeStr = record.postalCode.trim();
+    if (postalCodeStr) {
+      // ハイフンを除去して数字のみを取得
+      const normalized = postalCodeStr.replace(/-/g, "");
+      // 7桁の数字であることを確認
+      if (!/^\d{7}$/.test(normalized)) {
+        return "郵便番号は7桁の数字で入力してください（例：123-4567 または 1234567）";
+      }
+      // ハイフンがある場合は3桁-4桁の形式のみ許可
+      if (postalCodeStr.includes("-") && !/^\d{3}-\d{4}$/.test(postalCodeStr)) {
+        return "郵便番号は123-4567形式で入力してください";
+      }
+    }
+  }
+
   return undefined;
 }
 

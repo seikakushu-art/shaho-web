@@ -512,6 +512,69 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * 郵便番号キー入力制御：数字とハイフンのみ許可
+   */
+  onPostalCodeKeypress(event: KeyboardEvent): void {
+    // 特殊キー（Backspace、Delete、Tab、矢印キーなど）は許可
+    if (
+      event.key === 'Backspace' ||
+      event.key === 'Delete' ||
+      event.key === 'Tab' ||
+      event.key === 'ArrowLeft' ||
+      event.key === 'ArrowRight' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'ArrowDown' ||
+      event.key === 'Home' ||
+      event.key === 'End' ||
+      (event.ctrlKey && (event.key === 'a' || event.key === 'c' || event.key === 'v' || event.key === 'x'))
+    ) {
+      return;
+    }
+
+    // 数字（0-9）またはハイフン（-）のみ許可
+    if (!/[\d-]/.test(event.key)) {
+      event.preventDefault();
+      return;
+    }
+  }
+
+  /**
+   * 郵便番号IME入力制御：IME入力を防ぐ
+   */
+  onPostalCodeCompositionStart(event: Event): void {
+    event.preventDefault();
+  }
+
+  /**
+   * 郵便番号入力制御：ハイフン有無に関わらず数字7桁までに制限
+   */
+  onPostalCodeInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    let value = input.value;
+
+    // 数字とハイフン以外の文字を除去
+    const cleanedValue = value.replace(/[^\d-]/g, '');
+
+    // ハイフンを除去して数字のみを取得
+    const digitsOnly = cleanedValue.replace(/-/g, '');
+
+    // 7桁を超える場合は7桁までに制限
+    const limitedDigits = digitsOnly.slice(0, 7);
+
+    // ハイフンを含む形式に変換（3桁-4桁）
+    let formattedValue = limitedDigits;
+    if (limitedDigits.length > 3) {
+      formattedValue = `${limitedDigits.slice(0, 3)}-${limitedDigits.slice(3)}`;
+    }
+
+    // 入力要素の値を直接更新（即座に反映）
+    input.value = formattedValue;
+    
+    // モデルの値も更新
+    this.basicInfo.postalCode = formattedValue;
+  }
+
   handleProceedApproval(form: NgForm) {
     this.submitAttempted = true;
     if (form.invalid) return;
