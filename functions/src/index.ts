@@ -102,6 +102,7 @@ interface ShahoEmployee {
   currentLeaveStartDate?: string;
   currentLeaveEndDate?: string;
   exemption?: boolean;
+  hasDependent?: boolean;
   createdAt?: string | Date;
   updatedAt?: string | Date;
   createdBy?: string;
@@ -591,6 +592,37 @@ export const receiveEmployees = functions.https.onRequest(
         }
       });
 
+      // 承認待ちの新規社員登録申請の社員番号を取得
+      const approvalRequestsRef = db.collection("approval_requests");
+      const pendingNewEmployeeRequestsSnapshot = await approvalRequestsRef
+        .where("status", "==", "pending")
+        .where("category", "==", "新規社員登録")
+        .get();
+      
+      // 承認待ち中の社員番号セットを作成
+      const pendingEmployeeNos = new Set<string>();
+      pendingNewEmployeeRequestsSnapshot.forEach((docSnap) => {
+        const request = docSnap.data();
+        // employeeDiffsの社員番号をチェック
+        const diffs = request.employeeDiffs || [];
+        diffs.forEach((diff: any) => {
+          if (diff.employeeNo) {
+            const normalizedNo = normalizeEmployeeNoForComparison(diff.employeeNo);
+            if (normalizedNo) {
+              pendingEmployeeNos.add(normalizedNo);
+            }
+          }
+        });
+        // employeeDataの社員番号もチェック（念のため）
+        const requestEmployeeNo = request.employeeData?.basicInfo?.employeeNo;
+        if (requestEmployeeNo) {
+          const normalizedNo = normalizeEmployeeNoForComparison(requestEmployeeNo);
+          if (normalizedNo) {
+            pendingEmployeeNos.add(normalizedNo);
+          }
+        }
+      });
+
       const batch = db.batch();
       const errors: ExternalSyncError[] = [];
       let created = 0;
@@ -599,6 +631,12 @@ export const receiveEmployees = functions.https.onRequest(
         employeeNo: string;
         employeeId: string;
         payrollRecord: ExternalPayrollRecord;
+      }> = [];
+      const dependentDataToProcess: Array<{
+        employeeNo: string;
+        employeeId: string;
+        dependentRecords: ExternalDependentRecord[];
+        hasDependent: boolean;
       }> = [];
 
       // 取り込みデータ内での社員番号の重複チェック
@@ -674,6 +712,14 @@ export const receiveEmployees = functions.https.onRequest(
         }
         return;
       }
+
+      // 扶養の有無を正規化する関数（レコード処理ループの外で定義）
+      const normalizeHasDependent = (value?: boolean | string | number): boolean => {
+        if (value === undefined || value === null) return false;
+        if (typeof value === "boolean") return value;
+        const str = String(value).trim().toLowerCase();
+        return str === "1" || str === "on" || str === "true" || str === "yes" || str === "有";
+      };
 
       // 各レコードを処理
       records.forEach((record, index) => {
@@ -752,6 +798,7 @@ export const receiveEmployees = functions.https.onRequest(
           currentLeaveEndDate: normalizeString(record.currentLeaveEndDate),
           careSecondInsured: normalizeBoolean(record.careSecondInsured),
           exemption: normalizeBoolean(record.exemption),
+          hasDependent: normalizeHasDependent(record.hasDependent),
         };
 
         const cleanedData = removeUndefinedFields(normalized);
@@ -891,7 +938,36 @@ export const receiveEmployees = functions.https.onRequest(
               }
             });
           }
+
+          // 扶養情報を処理
+          const hasDependent = normalizeHasDependent(record.hasDependent);
+          if (record.dependents && Array.isArray(record.dependents) && record.dependents.length > 0) {
+            dependentDataToProcess.push({
+              employeeNo: normalizedEmployeeNo,
+              employeeId: existing.id,
+              dependentRecords: record.dependents,
+              hasDependent,
+            });
+          } else if (hasDependent === false) {
+            // 扶養の有無が明示的にfalseの場合は、既存の扶養情報を削除するために追加
+            dependentDataToProcess.push({
+              employeeNo: normalizedEmployeeNo,
+              employeeId: existing.id,
+              dependentRecords: [],
+              hasDependent: false,
+            });
+          }
         } else {
+          // 新規登録の場合：承認待ちの新規社員登録申請の社員番号をチェック
+          if (pendingEmployeeNos.has(normalizedEmployeeNo)) {
+            errors.push({
+              index,
+              employeeNo: record.employeeNo,
+              message: `社員番号 ${record.employeeNo} は承認待ちの新規社員登録申請で既に使用されています。既存の申請が承認または差し戻しされるまで、新しい登録はできません。`,
+            });
+            return;
+          }
+
           const targetRef = colRef.doc();
           batch.set(targetRef, {
             ...cleanedData,
@@ -986,6 +1062,25 @@ export const receiveEmployees = functions.https.onRequest(
                   },
                 });
               }
+            });
+          }
+
+          // 扶養情報を処理
+          const hasDependent = normalizeHasDependent(record.hasDependent);
+          if (record.dependents && Array.isArray(record.dependents) && record.dependents.length > 0) {
+            dependentDataToProcess.push({
+              employeeNo: normalizedEmployeeNo,
+              employeeId: targetRef.id,
+              dependentRecords: record.dependents,
+              hasDependent,
+            });
+          } else if (hasDependent === false) {
+            // 扶養の有無が明示的にfalseの場合は、既存の扶養情報を削除するために追加
+            dependentDataToProcess.push({
+              employeeNo: normalizedEmployeeNo,
+              employeeId: targetRef.id,
+              dependentRecords: [],
+              hasDependent: false,
             });
           }
         }
@@ -1187,6 +1282,108 @@ export const receiveEmployees = functions.https.onRequest(
 
       if (payrollPromises.length > 0) {
         await Promise.all(payrollPromises);
+      }
+
+      // 扶養情報を保存
+      const dependentPromises: Promise<any>[] = [];
+      dependentDataToProcess.forEach(({ employeeId, dependentRecords, hasDependent }) => {
+        dependentPromises.push(
+          (async () => {
+            const db = admin.firestore();
+            const dependentsRef = db
+              .collection("shaho_employees")
+              .doc(employeeId)
+              .collection("dependents");
+
+            // 既存の扶養家族情報を削除
+            const existingDependentsSnap = await dependentsRef.get();
+            const deletePromises = existingDependentsSnap.docs.map((doc) => doc.ref.delete());
+            await Promise.all(deletePromises);
+
+            // 扶養の有無がfalseの場合は削除のみで終了
+            if (hasDependent === false || dependentRecords.length === 0) {
+              return;
+            }
+
+            // 新しい扶養家族情報を追加
+            const addPromises = dependentRecords.map((dependentRecord) => {
+              // ブール値変換ヘルパー関数
+              const toBoolean = (
+                value: boolean | string | number | undefined,
+              ): boolean | undefined => {
+                if (value === undefined || value === null) return undefined;
+                if (typeof value === "boolean") return value;
+                const normalized = String(value).toLowerCase().trim();
+                if (
+                  normalized === "1" ||
+                  normalized === "true" ||
+                  normalized === "on" ||
+                  normalized === "yes" ||
+                  normalized === "有"
+                ) {
+                  return true;
+                }
+                if (
+                  normalized === "0" ||
+                  normalized === "false" ||
+                  normalized === "off" ||
+                  normalized === "no" ||
+                  normalized === "無"
+                ) {
+                  return false;
+                }
+                return undefined;
+              };
+
+              // 文字列フィールドの正規化
+              const normalizeString = (value?: string): string | undefined => {
+                if (value === undefined || value === null) return undefined;
+                const trimmed = value.trim();
+                return trimmed === "" ? undefined : trimmed;
+              };
+
+              // 数値フィールドの正規化
+              const normalizeNumber = (value?: number | string): number | undefined => {
+                if (value === undefined || value === null) return undefined;
+                if (typeof value === "number") return value;
+                const num = Number(value);
+                return isNaN(num) ? undefined : num;
+              };
+
+              const dependentData: any = {
+                relationship: normalizeString(dependentRecord.relationship),
+                nameKanji: normalizeString(dependentRecord.nameKanji),
+                nameKana: normalizeString(dependentRecord.nameKana),
+                birthDate: normalizeString(dependentRecord.birthDate),
+                gender: normalizeString(dependentRecord.gender),
+                personalNumber: normalizeString(dependentRecord.personalNumber),
+                basicPensionNumber: normalizeString(dependentRecord.basicPensionNumber),
+                cohabitationType: normalizeString(dependentRecord.cohabitationType),
+                address: normalizeString(dependentRecord.address),
+                occupation: normalizeString(dependentRecord.occupation),
+                annualIncome: normalizeNumber(dependentRecord.annualIncome),
+                dependentStartDate: normalizeString(dependentRecord.dependentStartDate),
+                thirdCategoryFlag: toBoolean(dependentRecord.thirdCategoryFlag),
+                createdAt: now,
+                updatedAt: now,
+                createdBy: userId,
+                updatedBy: userId,
+                approvedBy: "外部API連携",
+              };
+
+              // undefinedのフィールドを除外
+              const cleanedDependent = removeUndefinedFields(dependentData);
+
+              return dependentsRef.add(cleanedDependent);
+            });
+
+            await Promise.all(addPromises);
+          })(),
+        );
+      });
+
+      if (dependentPromises.length > 0) {
+        await Promise.all(dependentPromises);
       }
 
       const result: ExternalSyncResult = {

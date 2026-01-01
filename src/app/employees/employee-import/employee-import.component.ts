@@ -511,25 +511,72 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
     // 選択された社員のうち、承認待ちリクエストが既に存在する社員をチェック
     const employeesWithPendingRequests: Array<{ employeeNo: string; name: string; requestTitle: string }> = [];
+    
+    // 承認待ちのリクエストを取得
+    const requests = await firstValueFrom(
+      this.workflowService.requests$.pipe(take(1)),
+    );
+    
     for (const row of selectedRows) {
-      // 新規登録の場合はスキップ（既存の承認待ちリクエストは存在しない）
-      if (row.isNew) {
-        continue;
-      }
-
-      const employeeId = row.existingEmployeeId || null;
       const employeeNo = row.employeeNo || null;
-      const existingPendingRequest = this.workflowService.getPendingRequestForEmployee(
-        employeeId,
-        employeeNo,
-      );
+      if (!employeeNo) continue;
 
-      if (existingPendingRequest) {
-        employeesWithPendingRequests.push({
-          employeeNo: row.employeeNo,
-          name: row.name,
-          requestTitle: existingPendingRequest.title || '承認待ちの申請',
+      if (row.isNew) {
+        // 新規登録の場合：承認待ちの新規社員登録申請の社員番号をチェック
+        const pendingNewEmployeeRequest = requests.find((request) => {
+          // 承認待ち状態でない場合はスキップ
+          if (request.status !== 'pending') {
+            return false;
+          }
+
+          // 新規社員登録のカテゴリのみチェック
+          if (request.category !== '新規社員登録') {
+            return false;
+          }
+
+          // employeeDiffsの社員番号をチェック（正規化して比較）
+          const diffs = request.employeeDiffs || [];
+          const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
+          const hasDuplicateInDiffs = diffs.some(
+            (diff) => normalizeEmployeeNoForComparison(diff.employeeNo || '') === normalizedEmployeeNo,
+          );
+
+          if (hasDuplicateInDiffs) {
+            return true;
+          }
+
+          // employeeDataの社員番号もチェック（念のため）
+          const requestEmployeeNo =
+            request.employeeData?.basicInfo?.employeeNo;
+          if (requestEmployeeNo && normalizeEmployeeNoForComparison(requestEmployeeNo) === normalizedEmployeeNo) {
+            return true;
+          }
+
+          return false;
         });
+
+        if (pendingNewEmployeeRequest) {
+          employeesWithPendingRequests.push({
+            employeeNo: row.employeeNo,
+            name: row.name,
+            requestTitle: pendingNewEmployeeRequest.title || '承認待ちの新規社員登録申請',
+          });
+        }
+      } else {
+        // 更新の場合：既存の承認待ちリクエストをチェック
+        const employeeId = row.existingEmployeeId || null;
+        const existingPendingRequest = this.workflowService.getPendingRequestForEmployee(
+          employeeId,
+          employeeNo,
+        );
+
+        if (existingPendingRequest) {
+          employeesWithPendingRequests.push({
+            employeeNo: row.employeeNo,
+            name: row.name,
+            requestTitle: existingPendingRequest.title || '承認待ちの申請',
+          });
+        }
       }
     }
 
