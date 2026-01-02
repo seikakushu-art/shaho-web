@@ -140,11 +140,12 @@ export class ApprovalWorkflowService {
         return false;
       }
 
-      // 社員情報更新、新規社員登録、社員情報一括更新のカテゴリのみチェック
+      // 社員情報更新、新規社員登録、社員情報一括更新、社員削除のカテゴリのみチェック
       if (
         request.category !== '社員情報更新' &&
         request.category !== '新規社員登録' &&
-        request.category !== '社員情報一括更新'
+        request.category !== '社員情報一括更新' &&
+        request.category !== '社員削除'
       ) {
         return false;
       }

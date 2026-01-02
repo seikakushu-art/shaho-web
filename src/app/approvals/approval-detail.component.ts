@@ -1224,6 +1224,23 @@ export class ApprovalDetailComponent implements OnDestroy {
         }
       }
 
+      // 社員削除の最終承認時に社員データを削除
+      if (
+        action === 'approve' &&
+        result.request.status === 'approved' &&
+        result.request.category === '社員削除' &&
+        result.request.employeeDiffs?.[0]?.existingEmployeeId
+      ) {
+        try {
+          const employeeId = result.request.employeeDiffs[0].existingEmployeeId;
+          await this.employeesService.deleteEmployee(employeeId);
+          this.addToast('承認済みの社員データを削除しました。', 'success');
+        } catch (error) {
+          console.error('社員データの削除に失敗しました', error);
+          this.addToast('社員データの削除に失敗しました。', 'warning');
+        }
+      }
+
       // CSVインポート（社員情報一括更新）の最終承認時に社員データを保存
       if (
         action === 'approve' &&

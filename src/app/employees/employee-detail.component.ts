@@ -541,6 +541,18 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // 既存の承認待ちリクエストをチェック
+    const existingPendingRequest = this.workflowService.getPendingRequestForEmployee(
+      this.employee.id,
+      this.employee.employeeNo,
+    );
+
+    if (existingPendingRequest) {
+      const requestTitle = existingPendingRequest.title || '承認待ちの申請';
+      this.deleteMessage = `この社員には既に承認待ちの申請が存在します（${requestTitle}）。既存の申請が承認または差し戻しされるまで、新しい申請を作成できません。`;
+      return;
+    }
+
     const validation = this.attachmentService.validateFiles(this.selectedFiles);
     this.validationErrors = validation.errors;
 
