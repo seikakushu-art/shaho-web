@@ -1676,6 +1676,11 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     this.differences = [];
     let idCounter = 1;
 
+    // 承認待ちのリクエストを取得（承認待ちチェック用）
+    const requests = await firstValueFrom(
+      this.workflowService.requests$.pipe(take(1)),
+    );
+
     // 各バリデーション済み行を処理
     for (const validatedRow of validatedRows) {
       const parsedRow = validatedRow.parsedRow;
@@ -1742,6 +1747,89 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       const isDependentOnlyRow =
         !hasEmployeeInfo && hasDependentInfo && !!employeeNo;
 
+      // 既存社員のIDを取得（正規化された社員番号で比較）
+      // existingEmployeesのemployeeNoは既に正規化されているため、直接比較する
+      const existingEmployeeId = diffResult.existingEmployee
+        ? (this.existingEmployees.find(
+            (emp) =>
+              (emp.employeeNo || '') ===
+              (diffResult.existingEmployee?.employeeNo || ''),
+          )?.['id'] as string | undefined)
+        : undefined;
+
+      // 承認待ちリクエストのチェック（既存社員の場合のみ）
+      let pendingRequestTitle: string | null = null;
+      if (!diffResult.isNew && existingEmployeeId && employeeNo) {
+        const pendingRequest = this.workflowService.getPendingRequestForEmployee(
+          existingEmployeeId,
+          employeeNo,
+        );
+        if (pendingRequest) {
+          pendingRequestTitle = pendingRequest.title || '承認待ちの申請';
+          // 承認待ちがある場合は警告エラーを追加
+          const warningError: ValidationError = {
+            rowIndex: parsedRow.rowIndex,
+            fieldName: '承認待ち',
+            message: `この社員には既に承認待ちの申請が存在します（${pendingRequestTitle}）。既存の申請が承認または差し戻しされるまで、新しい申請を作成できません。`,
+            severity: 'warning',
+            templateType: this.templateType,
+            employeeNo,
+            name,
+          };
+          this.errors.push(warningError);
+        }
+      }
+
+      // 新規登録の場合も承認待ちチェック（社員番号でチェック）
+      if (diffResult.isNew && employeeNo) {
+        const normalizedEmployeeNo = normalizeEmployeeNoForComparison(employeeNo);
+        const pendingNewEmployeeRequest = requests.find((request) => {
+          // 承認待ち状態でない場合はスキップ
+          if (request.status !== 'pending') {
+            return false;
+          }
+
+          // 新規社員登録のカテゴリのみチェック
+          if (request.category !== '新規社員登録') {
+            return false;
+          }
+
+          // employeeDiffsの社員番号をチェック（正規化して比較）
+          const diffs = request.employeeDiffs || [];
+          const hasDuplicateInDiffs = diffs.some(
+            (diff) => normalizeEmployeeNoForComparison(diff.employeeNo || '') === normalizedEmployeeNo,
+          );
+
+          if (hasDuplicateInDiffs) {
+            return true;
+          }
+
+          // employeeDataの社員番号もチェック（念のため）
+          const requestEmployeeNo =
+            request.employeeData?.basicInfo?.employeeNo;
+          if (requestEmployeeNo && normalizeEmployeeNoForComparison(requestEmployeeNo) === normalizedEmployeeNo) {
+            return true;
+          }
+
+          return false;
+        });
+
+        if (pendingNewEmployeeRequest) {
+          pendingRequestTitle = pendingNewEmployeeRequest.title || '承認待ちの新規社員登録申請';
+          // 承認待ちがある場合は警告エラーを追加
+          const warningError: ValidationError = {
+            rowIndex: parsedRow.rowIndex,
+            fieldName: '承認待ち',
+            message: `この社員番号は承認待ちの新規社員登録申請で既に使用されています（${pendingRequestTitle}）。既存の申請が承認または差し戻しされるまで、新しい申請を作成できません。`,
+            severity: 'warning',
+            templateType: this.templateType,
+            employeeNo,
+            name,
+          };
+          this.errors.push(warningError);
+        }
+      }
+
       // 変更サマリを作成
       const changeCount = diffResult.changes.length;
       let summary: string;
@@ -1762,22 +1850,14 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         // 扶養家族追加行は常にOK
         status = 'ok';
       } else if (diffResult.isNew) {
-        status = 'ok';
+        // 新規登録の場合、承認待ちがある場合は警告
+        status = pendingRequestTitle ? 'warning' : 'ok';
       } else if (changeCount === 0) {
         status = 'warning'; // 変更なしの場合は警告
       } else {
-        status = 'ok';
+        // 更新の場合、承認待ちがある場合は警告
+        status = pendingRequestTitle ? 'warning' : 'ok';
       }
-
-      // 既存社員のIDを取得（正規化された社員番号で比較）
-      // existingEmployeesのemployeeNoは既に正規化されているため、直接比較する
-      const existingEmployeeId = diffResult.existingEmployee
-        ? (this.existingEmployees.find(
-            (emp) =>
-              (emp.employeeNo || '') ===
-              (diffResult.existingEmployee?.employeeNo || ''),
-          )?.['id'] as string | undefined)
-        : undefined;
 
       this.differences.push({
         id: idCounter++,

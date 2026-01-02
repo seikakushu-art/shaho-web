@@ -592,11 +592,11 @@ export const receiveEmployees = functions.https.onRequest(
         }
       });
 
-      // 承認待ちの新規社員登録申請の社員番号を取得
+      // 承認待ちの新規社員登録申請、CSVインポート（社員情報一括更新）、社員情報更新の社員番号を取得
       const approvalRequestsRef = db.collection("approval_requests");
       const pendingNewEmployeeRequestsSnapshot = await approvalRequestsRef
         .where("status", "==", "pending")
-        .where("category", "==", "新規社員登録")
+        .where("category", "in", ["新規社員登録", "社員情報一括更新", "社員情報更新"])
         .get();
       
       // 承認待ち中の社員番号セットを作成
@@ -830,6 +830,16 @@ export const receiveEmployees = functions.https.onRequest(
         const existing = existingMap.get(employeeKey);
 
         if (existing) {
+          // 更新の場合：承認待ちのCSVインポート（社員情報一括更新）または社員情報更新の社員番号をチェック
+          if (pendingEmployeeNos.has(normalizedEmployeeNo)) {
+            errors.push({
+              index,
+              employeeNo: record.employeeNo,
+              message: `社員番号 ${record.employeeNo} は承認待ちのCSVインポートまたは社員情報更新で既に使用されています。既存の申請が承認または差し戻しされるまで、更新はできません。`,
+            });
+            return;
+          }
+
           const targetRef = colRef.doc(existing.id);
           
           // デバッグログ: 更新前の既存データを確認
@@ -958,12 +968,12 @@ export const receiveEmployees = functions.https.onRequest(
             });
           }
         } else {
-          // 新規登録の場合：承認待ちの新規社員登録申請の社員番号をチェック
+          // 新規登録の場合：承認待ちの新規社員登録申請またはCSVインポートの社員番号をチェック
           if (pendingEmployeeNos.has(normalizedEmployeeNo)) {
             errors.push({
               index,
               employeeNo: record.employeeNo,
-              message: `社員番号 ${record.employeeNo} は承認待ちの新規社員登録申請で既に使用されています。既存の申請が承認または差し戻しされるまで、新しい登録はできません。`,
+              message: `社員番号 ${record.employeeNo} は承認待ちの新規社員登録申請またはCSVインポートで既に使用されています。既存の申請が承認または差し戻しされるまで、新しい登録はできません。`,
             });
             return;
           }
