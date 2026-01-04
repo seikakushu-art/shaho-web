@@ -964,14 +964,22 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 csvData['厚生年金 資格取得日'] ||
                 csvData['厚生年金資格取得日'] ||
                 undefined,
-              // 介護保険第2号被保険者フラグは生年月日から自動判定
-              careSecondInsured: csvData['生年月日']
-                ? calculateCareSecondInsured(csvData['生年月日'])
-                : toBoolean(
-                    csvData['介護保険第2号被保険者フラグ'] ||
-                      csvData['介護保険第2号フラグ'] ||
-                      undefined,
-                  ),
+              // 介護保険第2号被保険者フラグは、CSVに値があれば優先的に使用
+              // 値がない場合のみ生年月日から自動判定
+              careSecondInsured: (() => {
+                const csvValue = toBoolean(
+                  csvData['介護保険第2号被保険者フラグ'] ||
+                    csvData['介護保険第2号フラグ'] ||
+                    undefined,
+                );
+                if (csvValue !== undefined) {
+                  return csvValue;
+                }
+                // CSVに値がない場合のみ、生年月日から自動判定
+                return csvData['生年月日']
+                  ? calculateCareSecondInsured(csvData['生年月日'])
+                  : false;
+              })(),
               currentLeaveStatus: csvData['現在の休業状態'] || undefined,
               // 現在の休業状態が空文字列または「なし」の場合は、日付フィールドをクリア
               currentLeaveStartDate: (() => {
@@ -1388,14 +1396,22 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                   csvData['厚生年金 資格取得日'] ||
                   csvData['厚生年金資格取得日'] ||
                   undefined,
-                // 介護保険第2号被保険者フラグは生年月日から自動判定
-                careSecondInsured: csvData['生年月日']
-                  ? calculateCareSecondInsured(csvData['生年月日'])
-                  : toBoolean(
-                      csvData['介護保険第2号被保険者フラグ'] ||
-                        csvData['介護保険第2号フラグ'] ||
-                        undefined,
-                    ),
+                // 介護保険第2号被保険者フラグは、CSVに値があれば優先的に使用
+                // 値がない場合のみ生年月日から自動判定
+                careSecondInsured: (() => {
+                  const csvValue = toBoolean(
+                    csvData['介護保険第2号被保険者フラグ'] ||
+                      csvData['介護保険第2号フラグ'] ||
+                      undefined,
+                  );
+                  if (csvValue !== undefined) {
+                    return csvValue;
+                  }
+                  // CSVに値がない場合のみ、生年月日から自動判定
+                  return csvData['生年月日']
+                    ? calculateCareSecondInsured(csvData['生年月日'])
+                    : false;
+                })(),
                 currentLeaveStatus: csvData['現在の休業状態'] || undefined,
                 // 現在の休業状態が空文字列または「なし」の場合は、日付フィールドをクリア
                 currentLeaveStartDate: (() => {

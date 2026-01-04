@@ -417,6 +417,19 @@ export class ApprovalDetailComponent implements OnDestroy {
     );
     const employeeId = employeeRef.id;
 
+    // 承認リクエストのemployeeDiffsにexistingEmployeeIdを設定
+    if (request.id && request.employeeDiffs && request.employeeDiffs.length > 0) {
+      const updatedDiffs = request.employeeDiffs.map((diff) => ({
+        ...diff,
+        existingEmployeeId: employeeId,
+      }));
+      const updatedRequest: ApprovalRequest = {
+        ...request,
+        employeeDiffs: updatedDiffs,
+      };
+      await this.workflowService.saveRequest(updatedRequest);
+    }
+
     // 扶養情報（複数件対応。従来の単一形式もフォールバック）
     const dependentsSource =
       dependentInfos && dependentInfos.length > 0
@@ -620,6 +633,29 @@ export class ApprovalDetailComponent implements OnDestroy {
       templateType: string;
     }>,
   ): Promise<void> {
+    // 承認履歴から最新の承認者を取得
+    let approvedBy: string | undefined;
+    if (this.approval?.histories) {
+      const approvalHistories = this.approval.histories.filter(
+        (h) => h.action === 'approve',
+      );
+      if (approvalHistories.length > 0) {
+        // 最新の承認履歴を取得（作成日時でソート）
+        const latestApprovalHistory = approvalHistories.sort((a, b) => {
+          const aTime =
+            typeof a.createdAt?.toDate === 'function'
+              ? a.createdAt.toDate().getTime()
+              : new Date(a.createdAt as unknown as string).getTime();
+          const bTime =
+            typeof b.createdAt?.toDate === 'function'
+              ? b.createdAt.toDate().getTime()
+              : new Date(b.createdAt as unknown as string).getTime();
+          return bTime - aTime;
+        })[0];
+        approvedBy = latestApprovalHistory.actorName || latestApprovalHistory.actorId || undefined;
+      }
+    }
+
     // undefinedのフィールドを除外するヘルパー関数
     const removeUndefinedFields = <T extends Record<string, unknown>>(
       obj: T,
@@ -770,14 +806,22 @@ export class ApprovalDetailComponent implements OnDestroy {
                   csvData['厚生年金 資格取得日'] ||
                   csvData['厚生年金資格取得日'] ||
                   undefined,
-                // 介護保険第2号被保険者フラグは生年月日から自動判定
-                careSecondInsured: csvData['生年月日']
-                  ? calculateCareSecondInsured(csvData['生年月日'])
-                  : toBoolean(
-                      csvData['介護保険第2号被保険者フラグ'] ||
-                        csvData['介護保険第2号フラグ'] ||
-                        undefined,
-                    ),
+                // 介護保険第2号被保険者フラグは、CSVに値があれば優先的に使用
+                // 値がない場合のみ生年月日から自動判定
+                careSecondInsured: (() => {
+                  const csvValue = toBoolean(
+                    csvData['介護保険第2号被保険者フラグ'] ||
+                      csvData['介護保険第2号フラグ'] ||
+                      undefined,
+                  );
+                  if (csvValue !== undefined) {
+                    return csvValue;
+                  }
+                  // CSVに値がない場合のみ、生年月日から自動判定
+                  return csvData['生年月日']
+                    ? calculateCareSecondInsured(csvData['生年月日'])
+                    : false;
+                })(),
                 currentLeaveStatus: csvData['現在の休業状態'] || undefined,
                 // 現在の休業状態が空文字列または「なし」の場合は、日付フィールドをクリア
                 currentLeaveStartDate: (() => {
@@ -805,13 +849,20 @@ export class ApprovalDetailComponent implements OnDestroy {
                 // 新規登録
                 const result = await this.employeesService.addEmployee(
                   employeeData as ShahoEmployee,
+                  {
+                    approvedBy,
+                  },
                 );
                 employeeId = result.id;
               } else if (firstItem.existingEmployeeId) {
                 // 更新
+                const updateDataWithApprover = {
+                  ...employeeData,
+                  approvedBy,
+                };
                 await this.employeesService.updateEmployee(
                   firstItem.existingEmployeeId,
-                  employeeData,
+                  updateDataWithApprover,
                 );
                 employeeId = firstItem.existingEmployeeId;
               } else {

@@ -1290,15 +1290,12 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   }
 
   private matchesEmployee(request: ApprovalRequest, employee: ShahoEmployee) {
+    if (!employee.id) {
+      return false;
+    }
     const diffs = request.employeeDiffs || [];
     return diffs.some((diff) => {
-      const matchesId =
-        employee.id && diff.existingEmployeeId === employee.id;
-      const matchesEmployeeNo =
-        employee.employeeNo &&
-        diff.employeeNo &&
-        diff.employeeNo === employee.employeeNo;
-      return matchesId || matchesEmployeeNo;
+      return diff.existingEmployeeId === employee.id;
     });
   }
 
@@ -1366,9 +1363,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
 
         const targetDiffs =
           req.employeeDiffs?.filter((diff) =>
-            diff.existingEmployeeId
-              ? diff.existingEmployeeId === this.employee!.id
-              : diff.employeeNo === this.employee!.employeeNo,
+            diff.existingEmployeeId === this.employee!.id,
           ) ?? [];
 
         targetDiffs.forEach((diff) => {
