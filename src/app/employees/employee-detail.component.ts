@@ -684,6 +684,17 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     return result;
   }
 
+  private updateExemptionFlagFromPayroll(): void {
+    const currentMonthKey = this.formatMonthForInput(new Date());
+    const payrollWithFlag = this.allPayrolls.find(
+      (payroll) =>
+        this.formatYearMonthKey(payroll.yearMonth) === currentMonthKey &&
+        payroll.exemption !== undefined,
+    );
+
+    this.socialInsurance.exemption = payrollWithFlag?.exemption ?? false;
+  }
+
   private loadPayrollHistory(employeeId: string) {
     this.employeesService
       .getPayrolls(employeeId)
@@ -691,6 +702,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
         switchMap((payrolls) => {
           // 給与データを保存（年度累計計算用）
           this.allPayrolls = payrolls;
+          this.updateExemptionFlagFromPayroll();
           
           // 各月の賞与明細を取得するためのObservableを作成
           const monthKeys = new Set<string>();
@@ -1153,7 +1165,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       currentLeaveStartDate: this.formatDateForInput(employee.currentLeaveStartDate),
       currentLeaveEndDate: this.formatDateForInput(employee.currentLeaveEndDate),
       careSecondInsured: employee.careSecondInsured ?? this.socialInsurance.careSecondInsured,
-      exemption: employee.exemption ?? this.socialInsurance.exemption,
+      // exemptionは給与データから取得するため、ここでは既存の値を保持（loadPayrollHistoryで更新される）
+      exemption: this.socialInsurance.exemption,
     };
 
     // 扶養情報をdependentsサブコレクションから読み込む

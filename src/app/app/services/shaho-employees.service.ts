@@ -143,6 +143,7 @@ export interface PayrollMonth {
   healthInsuranceMonthly?: number;
   careInsuranceMonthly?: number;
   pensionMonthly?: number;
+  exemption?: boolean;
   // 賞与集計値
   monthlyBonusTotal?: number; // 同月内の賞与総支給額の合計
   monthlyStandardBonusTotal?: number; // 同月内の標準賞与額の合計
@@ -209,6 +210,7 @@ export interface PayrollData {
   createdBy?: string;
   updatedBy?: string;
   approvedBy?: string; // 承認者
+  exemption?: boolean;
 }
 
 export interface DependentData {
@@ -1271,6 +1273,7 @@ export class ShahoEmployeesService {
       healthInsuranceMonthly: payrollData.healthInsuranceMonthly,
       careInsuranceMonthly: payrollData.careInsuranceMonthly,
       pensionMonthly: payrollData.pensionMonthly,
+      exemption: payrollData.exemption,
       approvedBy: payrollData.approvedBy,
     };
 
@@ -1321,6 +1324,7 @@ export class ShahoEmployeesService {
       updatedBy: userId,
       createdAt: payrollData.createdAt || now,
       createdBy: payrollData.createdBy || userId,
+      exemption: payrollData.exemption,
     };
 
     return setDoc(payrollRef, data, { merge: true });
@@ -1357,6 +1361,7 @@ export class ShahoEmployeesService {
                 healthInsuranceMonthly: payrollMonth.healthInsuranceMonthly,
                 careInsuranceMonthly: payrollMonth.careInsuranceMonthly,
                 pensionMonthly: payrollMonth.pensionMonthly,
+                exemption: payrollMonth.exemption,
                 bonusPaidOn: firstBonus?.bonusPaidOn,
                 bonusTotal: firstBonus?.bonusTotal,
                 standardHealthBonus: firstBonus?.standardHealthBonus,
@@ -1420,6 +1425,7 @@ export class ShahoEmployeesService {
                       healthInsuranceMonthly: payrollMonth.healthInsuranceMonthly,
                       careInsuranceMonthly: payrollMonth.careInsuranceMonthly,
                       pensionMonthly: payrollMonth.pensionMonthly,
+                      exemption: payrollMonth.exemption,
                       bonusPaidOn: bonus.bonusPaidOn,
                       bonusTotal: bonus.bonusTotal,
                       standardHealthBonus: bonus.standardHealthBonus,
@@ -1448,6 +1454,7 @@ export class ShahoEmployeesService {
                     healthInsuranceMonthly: payrollMonth.healthInsuranceMonthly,
                     careInsuranceMonthly: payrollMonth.careInsuranceMonthly,
                     pensionMonthly: payrollMonth.pensionMonthly,
+                    exemption: payrollMonth.exemption,
                     createdAt: payrollMonth.createdAt,
                     updatedAt: payrollMonth.updatedAt,
                     createdBy: payrollMonth.createdBy,

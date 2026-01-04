@@ -642,7 +642,10 @@ export class CalculationDataService {
     );
 
     // 一時免除フラグがONの場合は、すべての保険料を0にする
-    const isExempted = employee.exemption === true;
+    const payrollExemption = payrolls.find(
+      (p) => p.yearMonth === context.targetMonth,
+    )?.exemption;
+    const isExempted = payrollExemption ?? employee.exemption === true;
     // bonusOnlyがtrueの場合は月例分を0にする
     const shouldCalculateMonthly = !(context.bonusOnly ?? false);
     // bonusOnlyがtrueの場合は賞与分を計算する（includeBonusInMonthの値に関係なく）

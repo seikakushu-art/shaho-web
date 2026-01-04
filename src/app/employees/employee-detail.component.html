@@ -130,8 +130,7 @@
                         <label>標準賞与額年度累計</label>
                         <p class="value">{{ displayAmount(displayedStandardBonusAnnualTotal) }}</p>
                         <p class="hint"
-                            *ngIf="socialInsurance.standardBonusAnnualTotal === null || socialInsurance.standardBonusAnnualTotal === undefined"
-                            style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                            *ngIf="socialInsurance.standardBonusAnnualTotal === null || socialInsurance.standardBonusAnnualTotal === undefined">
                             ※ 給与データから自動計算した値です
                         </p>
                     </div>
@@ -174,6 +173,7 @@
                     <div>
                         <label>健康保険・厚生年金一時免除フラグ</label>
                         <p class="value">{{ socialInsurance.exemption ? 'ON' : 'OFF' }}</p>
+                        <p class="hint">※給与データと一緒にインポートする値です</p>
                     </div>
                 </div>
             </article>

@@ -377,12 +377,18 @@ export class ApprovalDetailComponent implements OnDestroy {
         (socialInsurance as any)?.currentLeaveStartDate || undefined,
       currentLeaveEndDate:
         (socialInsurance as any)?.currentLeaveEndDate || undefined,
-      exemption: socialInsurance?.exemption || false,
+      // exemptionはfalseでも保存する必要があるため、明示的に設定
+      exemption: socialInsurance?.exemption !== undefined ? socialInsurance.exemption : false,
     };
 
     const cleanedEmployee = this.removeUndefinedFields(
       employeePayload,
     ) as ShahoEmployee;
+    
+    // exemptionがfalseの場合でも確実に保存されるようにする
+    if (employeePayload.exemption !== undefined) {
+      cleanedEmployee.exemption = employeePayload.exemption;
+    }
 
     // 申請者情報をcreatedByとして設定
     const createdBy = request.applicantName || request.applicantId || undefined;
@@ -570,13 +576,20 @@ export class ApprovalDetailComponent implements OnDestroy {
         (socialInsurance as any)?.currentLeaveEndDate === ''
           ? null
           : (socialInsurance as any)?.currentLeaveEndDate || undefined,
-      exemption: socialInsurance?.exemption || false,
+      // exemptionはfalseでも保存する必要があるため、明示的に設定
+      exemption: socialInsurance?.exemption !== undefined ? socialInsurance.exemption : false,
       approvedBy: approverDisplayName,
     };
 
+    // exemptionはfalseでも保存する必要があるため、removeUndefinedFieldsの前に保存
     const cleanedEmployee = this.removeUndefinedFields(
       employeePayload,
     ) as Partial<ShahoEmployee>;
+    
+    // exemptionがfalseの場合でも確実に保存されるようにする
+    if (employeePayload.exemption !== undefined) {
+      cleanedEmployee.exemption = employeePayload.exemption;
+    }
 
     // 社員情報を更新
     await this.employeesService.updateEmployee(employeeId, cleanedEmployee);

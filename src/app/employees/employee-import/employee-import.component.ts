@@ -1095,6 +1095,12 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
             // 月給データの処理
             if (monthlyPayMonth) {
+              const exemptionFlag = (() => {
+                const raw = csvData['健康保険・厚生年金一時免除フラグ'];
+                if (!raw) return false;
+                const normalized = raw.trim().toLowerCase();
+                return normalized === '1' || normalized === 'true';
+              })();
               // YYYY/MM形式をYYYY-MM形式に変換
               const yearMonth = monthlyPayMonth.replace(/\//g, '-');
               // 月が1桁の場合は0埋め（例: 2025-4 → 2025-04）
@@ -1109,6 +1115,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 amount: monthlyPayAmount
                   ? Number(monthlyPayAmount.replace(/,/g, ''))
                   : undefined,
+                  exemption: exemptionFlag,
               };
 
               // undefinedのフィールドを除外
@@ -1538,6 +1545,12 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
               // 月給データの処理
               if (monthlyPayMonth) {
+                const exemptionFlag = (() => {
+                  const raw = csvData['健康保険・厚生年金一時免除フラグ'];
+                  if (!raw) return false;
+                  const normalized = raw.trim().toLowerCase();
+                  return normalized === '1' || normalized === 'true';
+                })();
                 // YYYY/MM形式をYYYY-MM形式に変換
                 const yearMonth = monthlyPayMonth.replace(/\//g, '-');
                 // 月が1桁の場合は0埋め（例: 2025-4 → 2025-04）
@@ -1574,6 +1587,7 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                   bonusTotal: bonusTotal
                     ? Number(bonusTotal.replace(/,/g, ''))
                     : existingPayroll?.bonusTotal,
+                    exemption: exemptionFlag,
                 };
 
                 // undefined と空文字列のフィールドを除外
@@ -2016,6 +2030,23 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           });
         }
       }
+
+      // 健康保険・厚生年金一時免除フラグの差分（月の情報を含める）
+      const exemptionFlagRaw = csvData['健康保険・厚生年金一時免除フラグ'];
+      if (exemptionFlagRaw !== undefined && exemptionFlagRaw !== null && exemptionFlagRaw !== '') {
+        const csvExemptionFlag = (() => {
+          const normalized = String(exemptionFlagRaw).trim().toLowerCase();
+          return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '有';
+        })();
+        const existingExemptionFlag = existingPayroll?.exemption ?? false;
+        if (existingExemptionFlag !== csvExemptionFlag) {
+          changes.push({
+            fieldName: `健康保険・厚生年金一時免除フラグ（${csvYearMonthDisplay}）`,
+            oldValue: existingExemptionFlag ? '1' : '0',
+            newValue: csvExemptionFlag ? '1' : '0',
+          });
+        }
+      }
     } else if (bonusPaidOn) {
       // 月給データがなく、賞与データのみの場合
       const bonusDate = new Date(bonusPaidOn.replace(/\//g, '-'));
@@ -2197,10 +2228,11 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       '支払基礎日数',
       '賞与支給日',
       '賞与総支給額',
+      '健康保険・厚生年金一時免除フラグ',
     ];
 
     // 1行目：各項目の入力制限（カラムごとに対応）
-    const restrictions = ['(必須)', '(必須)', '', '', '', '', ''];
+    const restrictions = ['(必須)', '(必須)', '', '', '', '', '', ''];
 
     // CSVコンテンツを作成（UTF-8 BOM付きでExcel互換性を確保）
     const csvContent =

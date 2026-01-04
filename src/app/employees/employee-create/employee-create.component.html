@@ -288,7 +288,7 @@
                 type="checkbox"
                 name="exemption"
                 [(ngModel)]="socialInsurance.exemption"
-                [disabled]="!editMode"
+                [disabled]="!editMode || isEditMode"
               />
               <span></span>
             </label>
