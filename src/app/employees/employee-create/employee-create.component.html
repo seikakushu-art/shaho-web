@@ -118,7 +118,20 @@
           </div>
           <div>
             <label>個人番号</label>
-            <input name="myNumber" [(ngModel)]="basicInfo.myNumber" [readonly]="!editMode" />
+            <input
+              name="myNumber"
+              [(ngModel)]="basicInfo.myNumber"
+              [readonly]="!editMode"
+              maxlength="12"
+              pattern="^\d{12}$"
+              (input)="onPersonalNumberInput($event)"
+              (keypress)="onPersonalNumberKeypress($event)"
+              (compositionstart)="onPersonalNumberCompositionStart($event)"
+              #myNumberModel="ngModel"
+            />
+            <p class="error" *ngIf="myNumberModel.invalid && basicInfo.myNumber && (submitAttempted || myNumberModel.touched)">
+              個人番号は12桁の数字で入力してください。
+            </p>
           </div>
           <div>
             <label>基礎年金番号</label>
@@ -153,7 +166,10 @@
             <input name="address" [(ngModel)]="basicInfo.address" [readonly]="!editMode" maxlength="80" />
           </div>
           <div style="grid-column: span 2;" *ngIf="!basicInfo.isCurrentAddressSameAsResident">
-            <label>現住所</label>
+            <label style="display: flex; align-items: center; gap: 0.5rem;">
+              <span>現住所</span>
+              <small style="font-size: 0.85em; color: #666; font-weight: normal;">（郵便番号も合わせて入力してください）</small>
+            </label>
             <input name="currentAddress" [(ngModel)]="basicInfo.currentAddress" [readonly]="!editMode" maxlength="80" />
           </div>
         </div>
@@ -378,10 +394,19 @@
           <div>
             <label>個人番号</label>
             <input
-                  [name]="'dependentPersonalNumber' + i"
+              [name]="'dependentPersonalNumber' + i"
               [(ngModel)]="dependentInfo.personalNumber"
               [readonly]="!editMode"
+              maxlength="12"
+              pattern="^\d{12}$"
+              (input)="onDependentPersonalNumberInput($event, i)"
+              (keypress)="onPersonalNumberKeypress($event)"
+              (compositionstart)="onPersonalNumberCompositionStart($event)"
+              #dependentPersonalNumberModel="ngModel"
             />
+            <p class="error" *ngIf="dependentPersonalNumberModel.invalid && dependentInfo.personalNumber && (submitAttempted || dependentPersonalNumberModel.touched)">
+              個人番号は12桁の数字で入力してください。
+            </p>
           </div>
           <div>
             <label>基礎年金番号</label>

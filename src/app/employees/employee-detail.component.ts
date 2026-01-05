@@ -345,6 +345,20 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     return `${value.toLocaleString()} 円`;
   }
 
+  /**
+   * 個人番号をマスクして表示（下4桁のみ表示、それ以外は*でマスク）
+   */
+  formatPersonalNumber(value: string | null | undefined): string {
+    if (!value) return '—';
+    // 数字以外の文字を除去
+    const digitsOnly = value.replace(/[^\d]/g, '');
+    // 12桁でない場合はそのまま返す
+    if (digitsOnly.length !== 12) return value;
+    // 下4桁のみ表示、それ以外は*でマスク
+    const last4Digits = digitsOnly.slice(8, 12);
+    return `**** **** ${last4Digits}`;
+  }
+
   updateInsuranceHistoryRange(field: 'start' | 'end', value: string) {
     this.insuranceHistoryFilter = { ...this.insuranceHistoryFilter, [field]: value };
     this.refreshDisplayedMonths();

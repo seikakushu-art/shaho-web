@@ -468,6 +468,27 @@ export function validateDataFormat(
     }
   });
 
+  // 個人番号の検証（12桁の数字）
+  const personalNumberFields = ['個人番号', '扶養 個人番号'];
+  personalNumberFields.forEach((field) => {
+    const value = row.data[field];
+    if (!value) return;
+    // データは既に正規化済み
+    // 数字以外の文字を除去
+    const digitsOnly = value.replace(/[^\d]/g, '');
+    // 12桁の数字であることを確認
+    if (!/^\d{12}$/.test(digitsOnly)) {
+      errors.push(
+        buildError(
+          row.rowIndex,
+          field,
+          `${field}は12桁の数字で入力してください`,
+          templateType,
+        ),
+      );
+    }
+  });
+
   const gender = row.data['性別'];
   if (gender && !GENDER_VALUES.includes(gender.toLowerCase())) {
     errors.push(

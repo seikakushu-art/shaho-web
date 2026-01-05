@@ -58,7 +58,7 @@
                     </div>
                     <div>
                         <label>個人番号</label>
-                        <p class="value">{{ basicInfo.personalNumber || '—' }}</p>
+                        <p class="value">{{ formatPersonalNumber(basicInfo.personalNumber) }}</p>
                     </div>
                     <div>
                         <label>基礎年金番号</label>
@@ -268,7 +268,7 @@
                     </div>
                     <div>
                         <label>個人番号</label>
-                        <p class="value">{{ dependentInfo.personalNumber || '—' }}</p>
+                        <p class="value">{{ formatPersonalNumber(dependentInfo.personalNumber) }}</p>
                     </div>
                     <div>
                         <label>基礎年金番号</label>

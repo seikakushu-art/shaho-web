@@ -408,6 +408,19 @@ export class ShahoEmployeesService {
       }
     }
 
+    // 個人番号の検証（12桁の数字）
+    if (record.personalNumber) {
+      const personalNumberStr = record.personalNumber.trim();
+      if (personalNumberStr) {
+        // 数字以外の文字を除去
+        const digitsOnly = personalNumberStr.replace(/[^\d]/g, '');
+        // 12桁の数字であることを確認
+        if (!/^\d{12}$/.test(digitsOnly)) {
+          return '個人番号は12桁の数字で入力してください';
+        }
+      }
+    }
+
     // 扶養の有無を正規化
     const normalizeHasDependent = (value?: boolean | string | number): boolean => {
       if (value === undefined || value === null) return false;
@@ -467,6 +480,19 @@ export class ShahoEmployeesService {
           const addressStr = dependent.address.trim();
           if (addressStr && addressStr.length > 80) {
             return `扶養家族${i + 1}の住所は最大80文字まで入力できます（現在${addressStr.length}文字）`;
+          }
+        }
+
+        // 扶養家族の個人番号の検証（12桁の数字）
+        if (dependent.personalNumber) {
+          const personalNumberStr = dependent.personalNumber.trim();
+          if (personalNumberStr) {
+            // 数字以外の文字を除去
+            const digitsOnly = personalNumberStr.replace(/[^\d]/g, '');
+            // 12桁の数字であることを確認
+            if (!/^\d{12}$/.test(digitsOnly)) {
+              return `扶養家族${i + 1}の個人番号は12桁の数字で入力してください`;
+            }
           }
         }
       }

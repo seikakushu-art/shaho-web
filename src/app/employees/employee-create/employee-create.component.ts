@@ -592,6 +592,82 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     this.basicInfo.postalCode = formattedValue;
   }
 
+  /**
+   * 個人番号キー入力制御：数字のみ許可
+   */
+  onPersonalNumberKeypress(event: KeyboardEvent): void {
+    // 制御キー（Backspace、Delete、Tab、Enter、矢印キーなど）は許可
+    if (
+      event.key === 'Backspace' ||
+      event.key === 'Delete' ||
+      event.key === 'Tab' ||
+      event.key === 'Enter' ||
+      event.key === 'ArrowLeft' ||
+      event.key === 'ArrowRight' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'ArrowDown' ||
+      event.ctrlKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+
+    // 数字（0-9）のみ許可
+    if (!/[\d]/.test(event.key)) {
+      event.preventDefault();
+      return;
+    }
+  }
+
+  /**
+   * 個人番号IME入力制御：IME入力を防ぐ
+   */
+  onPersonalNumberCompositionStart(event: Event): void {
+    event.preventDefault();
+  }
+
+  /**
+   * 個人番号入力制御：数字のみ、12桁までに制限
+   */
+  onPersonalNumberInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    let value = input.value;
+
+    // 数字以外の文字を除去
+    const digitsOnly = value.replace(/[^\d]/g, '');
+
+    // 12桁を超える場合は12桁までに制限
+    const limitedDigits = digitsOnly.slice(0, 12);
+
+    // 入力要素の値を直接更新（即座に反映）
+    input.value = limitedDigits;
+    
+    // モデルの値も更新
+    this.basicInfo.myNumber = limitedDigits;
+  }
+
+  /**
+   * 扶養情報の個人番号入力制御：数字のみ、12桁までに制限
+   */
+  onDependentPersonalNumberInput(event: Event, index: number): void {
+    const input = event.target as HTMLInputElement;
+    let value = input.value;
+
+    // 数字以外の文字を除去
+    const digitsOnly = value.replace(/[^\d]/g, '');
+
+    // 12桁を超える場合は12桁までに制限
+    const limitedDigits = digitsOnly.slice(0, 12);
+
+    // 入力要素の値を直接更新（即座に反映）
+    input.value = limitedDigits;
+    
+    // モデルの値も更新
+    if (this.dependentInfos[index]) {
+      this.dependentInfos[index].personalNumber = limitedDigits;
+    }
+  }
+
   handleProceedApproval(form: NgForm) {
     this.submitAttempted = true;
     if (form.invalid) return;
