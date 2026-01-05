@@ -98,6 +98,16 @@
           <div>
             <div class="option-title">{{ option.label }}</div>
             <p class="description">{{ option.description }}</p>
+            <div *ngIf="option.key === 'basic'" class="dependent-checkbox">
+              <label class="dependent-label">
+                <input
+                  type="checkbox"
+                  [(ngModel)]="includeDependents"
+                  [disabled]="!canSelectItems || !selectedSections.has('basic')"
+                />
+                <span>扶養情報も出力する</span>
+              </label>
+            </div>
           </div>
         </label>
       </li>

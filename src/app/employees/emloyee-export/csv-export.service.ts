@@ -1,6 +1,9 @@
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom, Observable } from 'rxjs';
-import { ShahoEmployeesService } from '../../app/services/shaho-employees.service';
+import {
+  ShahoEmployeesService,
+  DependentData,
+} from '../../app/services/shaho-employees.service';
 import {
   CalculationRow,
   CalculationResultHistory,
@@ -108,11 +111,15 @@ type EmployeeWithPayrolls =
       : never
     : never;
 type Payroll = NonNullable<EmployeeWithPayrolls['payrolls']>[number];
+type EmployeeWithDependents = EmployeeWithPayrolls & {
+  dependents?: DependentData[];
+};
 
 interface CsvColumn {
   header: string;
   value: (
-    employee: EmployeeWithPayrolls,
+    employee: EmployeeWithDependents,
+    dependent?: DependentData,
   ) => string | number | boolean | null | undefined;
 }
 
@@ -125,6 +132,7 @@ export class CsvExportService {
     context: ExportContext;
     calculationContext?: CalculationCsvContext;
     calculationFields?: CalculationResultField[];
+    includeDependents?: boolean;
     department?: string;
     workPrefecture?: string;
     payrollStartMonth?: string;
@@ -147,19 +155,52 @@ export class CsvExportService {
       options.department,
       options.workPrefecture,
     );
+
+    // 各社員の扶養情報を取得
+    const employeesWithDependents = await Promise.all(
+      filteredEmployees.map(async (employee) => {
+        const dependents = employee.id
+          ? await firstValueFrom(
+              this.employeesService.getDependents(employee.id),
+            )
+          : [];
+        return { ...employee, dependents };
+      }),
+    );
+
     const columns = this.buildColumns(
       options.sections,
       options.context,
       options.calculationContext,
       options.calculationFields,
-      filteredEmployees,
+      employeesWithDependents,
       options.payrollStartMonth,
       options.payrollEndMonth,
+      options.includeDependents ?? false,
     );
 
-    const rows = filteredEmployees.map((employee) =>
-      columns.map((column) => this.escapeForCsv(column.value(employee))),
-    );
+    // 扶養情報がある場合は複数行に展開
+    const rows: string[][] = [];
+    const includeDependents = options.includeDependents ?? false;
+    employeesWithDependents.forEach((employee) => {
+      const dependents = includeDependents ? (employee.dependents ?? []) : [];
+      if (dependents.length === 0) {
+        // 扶養情報がない場合は1行のみ
+        rows.push(
+          columns.map((column) => this.escapeForCsv(column.value(employee))),
+        );
+      } else {
+        // 扶養情報がある場合は、各扶養情報ごとに1行ずつ生成
+        dependents.forEach((dependent) => {
+          rows.push(
+            columns.map((column) =>
+              this.escapeForCsv(column.value(employee, dependent)),
+            ),
+          );
+        });
+      }
+    });
+
     const csvMatrix = [columns.map((column) => column.header), ...rows];
     let csvContent = csvMatrix.map((row) => row.join(',')).join('\n');
 
@@ -198,9 +239,10 @@ export class CsvExportService {
     context: ExportContext,
     calculationContext?: CalculationCsvContext,
     calculationFields?: CalculationResultField[],
-    employees: EmployeeWithPayrolls[] = [],
+    employees: EmployeeWithDependents[] = [],
     payrollStartMonth?: string,
     payrollEndMonth?: string,
+    includeDependents: boolean = false,
   ): CsvColumn[] {
     const columns: CsvColumn[] = [];
 
@@ -229,6 +271,70 @@ export class CsvExportService {
         {
           header: '扶養の有無',
           value: (employee) => (employee.hasDependent ? 'はい' : 'いいえ'),
+        },
+      );
+    }
+
+    // 扶養情報のカラム（includeDependentsがtrueの場合のみ追加）
+    if (includeDependents && sections.includes('basic')) {
+      columns.push(
+        {
+          header: '扶養続柄',
+          value: (employee, dependent) => dependent?.relationship ?? '',
+        },
+        {
+          header: '扶養氏名(漢字)',
+          value: (employee, dependent) => dependent?.nameKanji ?? '',
+        },
+        {
+          header: '扶養氏名(カナ)',
+          value: (employee, dependent) => dependent?.nameKana ?? '',
+        },
+        {
+          header: '扶養生年月日',
+          value: (employee, dependent) =>
+            dependent?.birthDate ? this.formatDate(dependent.birthDate) : '',
+        },
+        {
+          header: '扶養性別',
+          value: (employee, dependent) => dependent?.gender ?? '',
+        },
+        {
+          header: '扶養個人番号',
+          value: (employee, dependent) => dependent?.personalNumber ?? '',
+        },
+        {
+          header: '扶養基礎年金番号',
+          value: (employee, dependent) =>
+            dependent?.basicPensionNumber ?? '',
+        },
+        {
+          header: '扶養同居区分',
+          value: (employee, dependent) => dependent?.cohabitationType ?? '',
+        },
+        {
+          header: '扶養住所',
+          value: (employee, dependent) => dependent?.address ?? '',
+        },
+        {
+          header: '扶養職業',
+          value: (employee, dependent) => dependent?.occupation ?? '',
+        },
+        {
+          header: '扶養年収',
+          value: (employee, dependent) => dependent?.annualIncome ?? '',
+        },
+        {
+          header: '扶養被扶養者になった日',
+          value: (employee, dependent) =>
+            dependent?.dependentStartDate
+              ? this.formatDate(dependent.dependentStartDate)
+              : '',
+        },
+        {
+          header: '扶養第3号被保険者フラグ',
+          value: (employee, dependent) =>
+            dependent?.thirdCategoryFlag ? 'はい' : 'いいえ',
         },
       );
     }
@@ -625,7 +731,7 @@ export class CsvExportService {
   }
 
   private filterEmployeesByCalculationRows(
-    employees: EmployeeWithPayrolls[],
+    employees: EmployeeWithDependents[],
     rows: CalculationRow[],
   ) {
     const employeeNoSet = new Set(rows.map((row) => row.employeeNo));
@@ -635,7 +741,7 @@ export class CsvExportService {
   }
 
   private filterEmployees(
-    employees: EmployeeWithPayrolls[],
+    employees: EmployeeWithDependents[],
     department?: string,
     workPrefecture?: string,
   ) {
@@ -652,7 +758,7 @@ export class CsvExportService {
     });
   }
   private determinePayrollMonths(
-    employees: EmployeeWithPayrolls[],
+    employees: EmployeeWithDependents[],
     start?: string,
     end?: string,
   ): string[] {

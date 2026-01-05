@@ -377,18 +377,11 @@ export class ApprovalDetailComponent implements OnDestroy {
         (socialInsurance as any)?.currentLeaveStartDate || undefined,
       currentLeaveEndDate:
         (socialInsurance as any)?.currentLeaveEndDate || undefined,
-      // exemptionはfalseでも保存する必要があるため、明示的に設定
-      exemption: socialInsurance?.exemption !== undefined ? socialInsurance.exemption : false,
     };
 
     const cleanedEmployee = this.removeUndefinedFields(
       employeePayload,
     ) as ShahoEmployee;
-    
-    // exemptionがfalseの場合でも確実に保存されるようにする
-    if (employeePayload.exemption !== undefined) {
-      cleanedEmployee.exemption = employeePayload.exemption;
-    }
 
     // 申請者情報をcreatedByとして設定
     const createdBy = request.applicantName || request.applicantId || undefined;
@@ -576,20 +569,12 @@ export class ApprovalDetailComponent implements OnDestroy {
         (socialInsurance as any)?.currentLeaveEndDate === ''
           ? null
           : (socialInsurance as any)?.currentLeaveEndDate || undefined,
-      // exemptionはfalseでも保存する必要があるため、明示的に設定
-      exemption: socialInsurance?.exemption !== undefined ? socialInsurance.exemption : false,
       approvedBy: approverDisplayName,
     };
 
-    // exemptionはfalseでも保存する必要があるため、removeUndefinedFieldsの前に保存
     const cleanedEmployee = this.removeUndefinedFields(
       employeePayload,
     ) as Partial<ShahoEmployee>;
-    
-    // exemptionがfalseの場合でも確実に保存されるようにする
-    if (employeePayload.exemption !== undefined) {
-      cleanedEmployee.exemption = employeePayload.exemption;
-    }
 
     // 社員情報を更新
     await this.employeesService.updateEmployee(employeeId, cleanedEmployee);
@@ -964,6 +949,9 @@ export class ApprovalDetailComponent implements OnDestroy {
               const workedDays = csvData['支払基礎日数'];
               const bonusPaidOn = csvData['賞与支給日'];
               const bonusTotal = csvData['賞与総支給額'];
+              const exemptionFlag = toBoolean(
+                csvData['健康保険・厚生年金一時免除フラグ'],
+              ) ?? false;
 
               // 月給データの処理
               if (monthlyPayMonth) {
@@ -975,6 +963,7 @@ export class ApprovalDetailComponent implements OnDestroy {
 
                 // 月次データを準備
                 const payrollMonthData: any = {
+                  exemption: exemptionFlag,
                   workedDays: workedDays
                     ? Number(workedDays.replace(/,/g, ''))
                     : undefined,
@@ -985,7 +974,7 @@ export class ApprovalDetailComponent implements OnDestroy {
 
                 // undefinedのフィールドを除外
                 Object.keys(payrollMonthData).forEach((key) => {
-                  if (payrollMonthData[key] === undefined) {
+                  if (key !== 'exemption' && payrollMonthData[key] === undefined) {
                     delete payrollMonthData[key];
                   }
                 });
@@ -1038,7 +1027,7 @@ export class ApprovalDetailComponent implements OnDestroy {
                     this.employeesService.addOrUpdatePayrollMonth(
                       employeeId,
                       normalizedYearMonth,
-                      {}, // 月次データなし
+                      { exemption: exemptionFlag }, // 月次データなし
                       bonusPaymentData,
                     ),
                   );

@@ -281,18 +281,6 @@
               [min]="socialInsurance.currentLeaveStartDate"
             />
           </div>
-          <div>
-            <label>健康保険・厚生年金一時免除フラグ</label>
-            <label class="switch">
-              <input
-                type="checkbox"
-                name="exemption"
-                [(ngModel)]="socialInsurance.exemption"
-                [disabled]="!editMode || isEditMode"
-              />
-              <span></span>
-            </label>
-          </div>
         </div>
       </article>
 

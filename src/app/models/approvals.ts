@@ -176,7 +176,6 @@ export interface ApprovalRequest {
       currentLeaveStatus: string;
       currentLeaveStartDate: string;
       currentLeaveEndDate: string;
-      exemption: boolean;
     };
     dependentInfo?: {
       relationship: string;

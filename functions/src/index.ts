@@ -13,6 +13,7 @@ type ExternalPayrollRecord = {
   standardBonus?: number; // 標準賞与額（後方互換性のため）
   standardHealthBonus?: number; // 標準賞与額（健・介）
   standardWelfareBonus?: number; // 標準賞与額（厚生年金）
+  exemption?: boolean | string | number; // 健康保険・厚生年金一時免除フラグ
 };
 
 type ExternalDependentRecord = {
@@ -54,7 +55,6 @@ type ExternalEmployeeRecord = {
   currentLeaveStartDate?: string;
   currentLeaveEndDate?: string;
   careSecondInsured?: boolean | string;
-  exemption?: boolean | string;
   hasDependent?: boolean | string | number; // 扶養の有無
   dependents?: ExternalDependentRecord[]; // 扶養家族情報配列
   payrolls?: ExternalPayrollRecord[]; // 給与データ配列
@@ -101,7 +101,6 @@ interface ShahoEmployee {
   currentLeaveStatus?: string;
   currentLeaveStartDate?: string;
   currentLeaveEndDate?: string;
-  exemption?: boolean;
   hasDependent?: boolean;
   createdAt?: string | Date;
   updatedAt?: string | Date;
@@ -890,7 +889,6 @@ export const receiveEmployees = functions.https.onRequest(
               ? calculateCareSecondInsured(record.birthDate)
               : false;
           })(),
-          exemption: normalizeBoolean(record.exemption),
           hasDependent: normalizeHasDependent(record.hasDependent),
         };
 
@@ -1019,6 +1017,7 @@ export const receiveEmployees = functions.https.onRequest(
                     yearMonth: monthlyYearMonth,
                     amount: payrollRecord.amount,
                     workedDays: payrollRecord.workedDays,
+                    exemption: payrollRecord.exemption,
                     // 賞与データは含めない
                   },
                 });
@@ -1035,6 +1034,7 @@ export const receiveEmployees = functions.https.onRequest(
                     bonusTotal: payrollRecord.bonusTotal,
                     standardHealthBonus: payrollRecord.standardHealthBonus,
                     standardWelfareBonus: payrollRecord.standardWelfareBonus,
+                    exemption: payrollRecord.exemption,
                     // 月給データは含めない
                   },
                 });
@@ -1145,6 +1145,7 @@ export const receiveEmployees = functions.https.onRequest(
                     yearMonth: monthlyYearMonth,
                     amount: payrollRecord.amount,
                     workedDays: payrollRecord.workedDays,
+                    exemption: payrollRecord.exemption,
                     // 賞与データは含めない
                   },
                 });
@@ -1161,6 +1162,7 @@ export const receiveEmployees = functions.https.onRequest(
                     bonusTotal: payrollRecord.bonusTotal,
                     standardHealthBonus: payrollRecord.standardHealthBonus,
                     standardWelfareBonus: payrollRecord.standardWelfareBonus,
+                    exemption: payrollRecord.exemption,
                     // 月給データは含めない
                   },
                 });
@@ -1233,6 +1235,34 @@ export const receiveEmployees = functions.https.onRequest(
           });
         }
       }
+
+      // ブール値変換ヘルパー関数
+      const toBoolean = (
+        value: boolean | string | number | undefined,
+      ): boolean | undefined => {
+        if (value === undefined || value === null) return undefined;
+        if (typeof value === "boolean") return value;
+        const normalized = String(value).toLowerCase().trim();
+        if (
+          normalized === "1" ||
+          normalized === "true" ||
+          normalized === "on" ||
+          normalized === "yes" ||
+          normalized === "有"
+        ) {
+          return true;
+        }
+        if (
+          normalized === "0" ||
+          normalized === "false" ||
+          normalized === "off" ||
+          normalized === "no" ||
+          normalized === "無"
+        ) {
+          return false;
+        }
+        return undefined;
+      };
 
       // 給与データを保存（新しい構造を使用）
       const payrollPromises: Promise<any>[] = [];
@@ -1354,6 +1384,13 @@ export const receiveEmployees = functions.https.onRequest(
                 if (payrollRecord.workedDays !== undefined && payrollRecord.workedDays !== null) {
                   payrollMonth.workedDays = payrollRecord.workedDays;
                 }
+                // exemptionフィールドを処理
+                if (payrollRecord.exemption !== undefined && payrollRecord.exemption !== null) {
+                  const exemptionValue = toBoolean(payrollRecord.exemption);
+                  if (exemptionValue !== undefined) {
+                    payrollMonth.exemption = exemptionValue;
+                  }
+                }
 
                 transaction.set(payrollMonthRef, payrollMonth, { merge: true });
               } else {
@@ -1374,6 +1411,13 @@ export const receiveEmployees = functions.https.onRequest(
                 }
                 if (payrollRecord.workedDays !== undefined && payrollRecord.workedDays !== null) {
                   payrollMonth.workedDays = payrollRecord.workedDays;
+                }
+                // exemptionフィールドを処理
+                if (payrollRecord.exemption !== undefined && payrollRecord.exemption !== null) {
+                  const exemptionValue = toBoolean(payrollRecord.exemption);
+                  if (exemptionValue !== undefined) {
+                    payrollMonth.exemption = exemptionValue;
+                  }
                 }
 
                 transaction.set(payrollMonthRef, payrollMonth, { merge: true });

@@ -51,7 +51,6 @@ export interface ShahoEmployee {
   currentLeaveStatus?: string;
   currentLeaveStartDate?: string;
   currentLeaveEndDate?: string;
-  exemption?: boolean;
   // 監査情報
   createdAt?: string | Date;
   updatedAt?: string | Date;
@@ -67,6 +66,7 @@ export type ExternalPayrollRecord = {
   bonusPaidOn?: string; // 賞与支給日（YYYY-MM-DD形式）
   bonusTotal?: number; // 賞与総支給額
   standardBonus?: number; // 標準賞与額
+  exemption?: boolean | string | number; // 健康保険・厚生年金一時免除フラグ
 };
 
 export type ExternalDependentRecord = {
@@ -703,6 +703,7 @@ export class ShahoEmployeesService {
                 yearMonth: monthlyYearMonth,
                 amount: payrollRecord.amount,
                 workedDays: payrollRecord.workedDays,
+                exemption: payrollRecord.exemption,
                 // 賞与データは含めない
               },
             });
@@ -857,6 +858,34 @@ export class ShahoEmployeesService {
         return;
       }
 
+      // ブール値変換ヘルパー関数
+      const toBoolean = (
+        value: boolean | string | number | undefined,
+      ): boolean | undefined => {
+        if (value === undefined || value === null) return undefined;
+        if (typeof value === 'boolean') return value;
+        const normalized = String(value).toLowerCase().trim();
+        if (
+          normalized === '1' ||
+          normalized === 'true' ||
+          normalized === 'on' ||
+          normalized === 'yes' ||
+          normalized === '有'
+        ) {
+          return true;
+        }
+        if (
+          normalized === '0' ||
+          normalized === 'false' ||
+          normalized === 'off' ||
+          normalized === 'no' ||
+          normalized === '無'
+        ) {
+          return false;
+        }
+        return undefined;
+      };
+
       // 月給データと賞与データは既に分離されているので、そのまま保存
       const payrollData: Partial<PayrollData> = {
         yearMonth: payrollRecord.yearMonth,
@@ -865,6 +894,7 @@ export class ShahoEmployeesService {
         bonusPaidOn: payrollRecord.bonusPaidOn,
         bonusTotal: payrollRecord.bonusTotal,
         standardBonus: payrollRecord.standardBonus,
+        exemption: toBoolean(payrollRecord.exemption),
         approvedBy: '外部データ連携',
       };
 

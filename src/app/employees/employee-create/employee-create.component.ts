@@ -153,7 +153,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     currentLeaveStatus: '',
     currentLeaveStartDate: '',
     currentLeaveEndDate: '',
-    exemption: false,
   };
 
   dependentInfos: Array<{
@@ -425,7 +424,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         this.formatDateForInput(employee.currentLeaveStartDate) || '',
       currentLeaveEndDate:
         this.formatDateForInput(employee.currentLeaveEndDate) || '',
-      exemption: employee.exemption ?? this.socialInsurance.exemption,
     };
 
     // 扶養情報をdependentsサブコレクションから読み込む
@@ -1281,11 +1279,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         newValue: this.socialInsurance.currentLeaveEndDate,
       });
     }
-    changes.push({
-      field: '保険料免除',
-      oldValue: null,
-      newValue: this.socialInsurance.exemption ? 'はい' : 'いいえ',
-    });
 
     // 扶養情報
     if (this.basicInfo.hasDependent && this.dependentInfos.length > 0) {
@@ -1646,13 +1639,6 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         field: '現在の休業予定終了日',
         oldValue: originalCurrentLeaveEndDate || null,
         newValue: this.socialInsurance.currentLeaveEndDate || null,
-      });
-    }
-    if ((original.exemption ?? false) !== this.socialInsurance.exemption) {
-      changes.push({
-        field: '保険料免除',
-        oldValue: (original.exemption ?? false) ? 'はい' : 'いいえ',
-        newValue: this.socialInsurance.exemption ? 'はい' : 'いいえ',
       });
     }
 

@@ -217,7 +217,6 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           currentLeaveStatus: emp.currentLeaveStatus,
           currentLeaveStartDate: emp.currentLeaveStartDate,
           currentLeaveEndDate: emp.currentLeaveEndDate,
-          exemption: emp.exemption,
         };
       },
     );
@@ -917,7 +916,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 normalized === '1' ||
                 normalized === 'true' ||
                 normalized === 'on' ||
-                normalized === 'yes'
+                normalized === 'yes' ||
+                normalized === '有'
               ) {
                 return true;
               }
@@ -925,7 +925,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
                 normalized === '0' ||
                 normalized === 'false' ||
                 normalized === 'off' ||
-                normalized === 'no'
+                normalized === 'no' ||
+                normalized === '無'
               ) {
                 return false;
               }
@@ -1086,6 +1087,38 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
             const employeeId = existingEmployee.id;
             const payrollPromises: Promise<void>[] = [];
 
+            // ブール値変換ヘルパー関数（1/0, true/false, on/off などを変換）
+            const toBoolean = (
+              value: string | undefined,
+            ): boolean | undefined => {
+              if (value === undefined || value === null) {
+                return undefined;
+              }
+              const normalized = value.toLowerCase().trim();
+              if (normalized === '') {
+                return undefined;
+              }
+              if (
+                normalized === '1' ||
+                normalized === 'true' ||
+                normalized === 'on' ||
+                normalized === 'yes' ||
+                normalized === '有'
+              ) {
+                return true;
+              }
+              if (
+                normalized === '0' ||
+                normalized === 'false' ||
+                normalized === 'off' ||
+                normalized === 'no' ||
+                normalized === '無'
+              ) {
+                return false;
+              }
+              return undefined;
+            };
+
             // 月給支払月から年月を抽出（YYYY/MM形式をYYYY-MM形式に変換）
             const monthlyPayMonth = csvData['月給支払月'];
             const monthlyPayAmount = csvData['月給支払額'];
@@ -1095,12 +1128,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
             // 月給データの処理
             if (monthlyPayMonth) {
-              const exemptionFlag = (() => {
-                const raw = csvData['健康保険・厚生年金一時免除フラグ'];
-                if (!raw) return false;
-                const normalized = raw.trim().toLowerCase();
-                return normalized === '1' || normalized === 'true';
-              })();
+              const exemptionFlag = toBoolean(
+                csvData['健康保険・厚生年金一時免除フラグ'],
+              ) ?? false;
               // YYYY/MM形式をYYYY-MM形式に変換
               const yearMonth = monthlyPayMonth.replace(/\//g, '-');
               // 月が1桁の場合は0埋め（例: 2025-4 → 2025-04）
@@ -1545,12 +1575,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
               // 月給データの処理
               if (monthlyPayMonth) {
-                const exemptionFlag = (() => {
-                  const raw = csvData['健康保険・厚生年金一時免除フラグ'];
-                  if (!raw) return false;
-                  const normalized = raw.trim().toLowerCase();
-                  return normalized === '1' || normalized === 'true';
-                })();
+                const exemptionFlag = toBoolean(
+                  csvData['健康保険・厚生年金一時免除フラグ'],
+                ) ?? false;
                 // YYYY/MM形式をYYYY-MM形式に変換
                 const yearMonth = monthlyPayMonth.replace(/\//g, '-');
                 // 月が1桁の場合は0埋め（例: 2025-4 → 2025-04）

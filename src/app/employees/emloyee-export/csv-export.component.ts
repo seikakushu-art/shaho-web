@@ -68,6 +68,7 @@ export class CsvExportComponent implements OnInit {
 
   selectedSections = new Set<ExportSection>();
   selectedCalculationFields = new Set<CalculationResultField>();
+  includeDependents = false;
   departmentOptions: string[] = [];
   workPrefectureOptions: string[] = [];
   selectedDepartment = '';
@@ -238,6 +239,7 @@ export class CsvExportComponent implements OnInit {
         calculationContext: this.calculationContext,
         calculationFields: Array.from(this.selectedCalculationFields),
         sections: Array.from(this.selectedSections),
+        includeDependents: this.includeDependents,
         department: this.selectedDepartment || undefined,
         workPrefecture: this.selectedWorkPrefecture || undefined,
         payrollStartMonth: this.payrollStartMonth || undefined,

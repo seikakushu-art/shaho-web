@@ -239,7 +239,10 @@ export class CalculationDataService {
                       : (employee.birthDate
                           ? isCareSecondInsured(employee.birthDate, context.targetMonth)
                           : false);
-                    const isExempted = employee.exemption === true;
+                    const payrollExemption = payrolls.find(
+                      (p) => p.yearMonth === context.targetMonth,
+                    )?.exemption;
+                    const isExempted = payrollExemption === true;
                     const shouldCalculateBonus = (context.bonusOnly ?? false) || (context.includeBonusInMonth ?? true);
                     
                     const totalHealthBonus =
@@ -645,7 +648,7 @@ export class CalculationDataService {
     const payrollExemption = payrolls.find(
       (p) => p.yearMonth === context.targetMonth,
     )?.exemption;
-    const isExempted = payrollExemption ?? employee.exemption === true;
+    const isExempted = payrollExemption === true;
     // bonusOnlyがtrueの場合は月例分を0にする
     const shouldCalculateMonthly = !(context.bonusOnly ?? false);
     // bonusOnlyがtrueの場合は賞与分を計算する（includeBonusInMonthの値に関係なく）
