@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import {
   Firestore,
+  Timestamp,
   collection,
   collectionData,
   addDoc,
@@ -21,6 +22,8 @@ import { Auth } from '@angular/fire/auth';
 import { Observable, combineLatest, map, of, switchMap, firstValueFrom, take } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { UserDirectoryService } from '../../auth/user-directory.service';
+import { ApprovalWorkflowService } from '../../approvals/approval-workflow.service';
+import { ApprovalEmployeeDiff, ApprovalHistory, ApprovalRequest } from '../../models/approvals';
 
 export interface ShahoEmployee {
   id?: string;
@@ -235,11 +238,43 @@ export interface DependentData {
   approvedBy?: string; // 承認者
 }
 
+const EMPLOYEE_FIELD_LABELS: Partial<Record<keyof ShahoEmployee, string>> = {
+  name: '氏名',
+  employeeNo: '社員番号',
+  kana: '氏名(カナ)',
+  gender: '性別',
+  birthDate: '生年月日',
+  postalCode: '郵便番号',
+  address: '住民票住所',
+  currentAddress: '現住所',
+  department: '所属部署',
+  departmentCode: '所属部署コード',
+  workPrefecture: '勤務地都道府県',
+  workPrefectureCode: '勤務地都道府県コード',
+  personalNumber: '個人番号',
+  basicPensionNumber: '基礎年金番号',
+  healthStandardMonthly: '健保標準報酬月額',
+  welfareStandardMonthly: '厚年標準報酬月額',
+  standardBonusAnnualTotal: '標準賞与年間合計',
+  healthInsuredNumber: '健康保険 被保険者番号',
+  pensionInsuredNumber: '厚生年金 被保険者番号',
+  insuredNumber: '被保険者番号',
+  careSecondInsured: '介護保険第2号被保険者',
+  healthAcquisition: '健康保険 資格取得日',
+  pensionAcquisition: '厚生年金 資格取得日',
+  currentLeaveStatus: '現在の休業状態',
+  currentLeaveStartDate: '現在の休業開始日',
+  currentLeaveEndDate: '現在の休業予定終了日',
+  hasDependent: '扶養有無',
+};
+
+
 @Injectable({ providedIn: 'root' })
 export class ShahoEmployeesService {
   private firestore = inject(Firestore);
   private auth = inject(Auth);
   private userDirectory = inject(UserDirectoryService);
+  private workflowService = inject(ApprovalWorkflowService);
   private colRef = collection(this.firestore, 'shaho_employees');
 
   getEmployees(): Observable<ShahoEmployee[]> {
@@ -493,6 +528,117 @@ export class ShahoEmployeesService {
     return result;
   }
 
+  private formatValueForDiff(value: unknown): string | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    if (typeof value === 'boolean') {
+      return value ? '有' : '無';
+    }
+    return `${value}`;
+  }
+
+  private buildExternalDiff(
+    updatedData: Partial<ShahoEmployee>,
+    normalized: ShahoEmployee,
+    employeeId: string,
+    existing?: ShahoEmployee,
+  ): ApprovalEmployeeDiff | undefined {
+    const changes: ApprovalEmployeeDiff['changes'] = [];
+    (Object.keys(updatedData) as (keyof ShahoEmployee)[]).forEach((field) => {
+      const label = EMPLOYEE_FIELD_LABELS[field] ?? `${field}`;
+      const oldValue = this.formatValueForDiff(existing?.[field]);
+      const newValue = this.formatValueForDiff(updatedData[field]);
+      if (oldValue !== newValue) {
+        changes.push({
+          field: label,
+          oldValue,
+          newValue,
+        });
+      }
+    });
+
+    if (!existing && changes.length === 0) {
+      changes.push({ field: '新規登録', oldValue: null, newValue: '登録' });
+    }
+
+    if (changes.length === 0) return undefined;
+
+    return {
+      employeeNo: normalized.employeeNo,
+      name: normalized.name,
+      status: 'ok',
+      changes,
+      isNew: !existing,
+      existingEmployeeId: employeeId,
+    };
+  }
+
+  private async recordExternalSyncHistories(
+    diffs: ApprovalEmployeeDiff[],
+  ): Promise<void> {
+    if (!diffs.length) return;
+
+    const actorId = 'external-sync';
+    const actorName = '外部データ連携';
+
+    const historiesFromDiff = (now: Date): ApprovalHistory[] => {
+      const applyHistory: ApprovalHistory = {
+        id: `hist-${now.getTime()}-apply`,
+        statusAfter: 'pending',
+        action: 'apply',
+        actorId,
+        actorName,
+        comment: '外部データ取り込み',
+        attachments: [],
+        createdAt: Timestamp.fromDate(now),
+      };
+
+      const approveHistory: ApprovalHistory = {
+        id: `hist-${now.getTime()}-approve`,
+        statusAfter: 'approved',
+        action: 'approve',
+        actorId,
+        actorName,
+        comment: '外部データ取り込み',
+        attachments: [],
+        createdAt: Timestamp.fromDate(new Date(now.getTime() + 1)),
+      };
+
+      return [applyHistory, approveHistory];
+    };
+
+    const promises = diffs.map(async (diff, index) => {
+      const now = new Date();
+      now.setMilliseconds(now.getMilliseconds() + index);
+      const histories = historiesFromDiff(now);
+      const baseTimestamp = Timestamp.fromDate(now);
+
+      const request: ApprovalRequest = {
+        title: `外部データ連携（${diff.employeeNo}）`,
+        category: diff.isNew ? '新規社員登録' : '社員情報更新',
+        targetCount: 1,
+        applicantId: actorId,
+        applicantName: actorName,
+        flowId: 'external-sync',
+        status: 'approved',
+        steps: [],
+        histories,
+        employeeDiffs: [diff],
+        diffSummary: diff.isNew
+          ? '新規登録'
+          : `${diff.changes.length}項目更新`,
+        createdAt: baseTimestamp,
+        updatedAt: baseTimestamp,
+      };
+
+      await this.workflowService.saveRequest(request);
+    });
+
+    await Promise.all(promises);
+  }
+
+
   private async importExternalEmployees(
     records: ExternalEmployeeRecord[],
   ): Promise<ExternalSyncResult> {
@@ -513,6 +659,7 @@ export class ShahoEmployeesService {
     const errors: ExternalSyncError[] = [];
     let created = 0;
     let updated = 0;
+    const employeeDiffsForHistory: ApprovalEmployeeDiff[] = [];
     const payrollDataToProcess: Array<{
       employeeNo: string;
       payrollRecord: ExternalPayrollRecord;
@@ -612,6 +759,15 @@ export class ShahoEmployeesService {
       const existing = existingMap.get(normalized.employeeNo);
       
       if (existing) {
+        const diff = this.buildExternalDiff(
+          cleanedData,
+          normalized,
+          existing.id,
+          existing.data,
+        );
+        if (diff) {
+          employeeDiffsForHistory.push(diff);
+        }
         const targetRef = doc(this.colRef, existing.id);
         batch.set(
           targetRef,
@@ -626,6 +782,14 @@ export class ShahoEmployeesService {
         updated += 1;
       } else {
         const targetRef = doc(this.colRef);
+        const diff = this.buildExternalDiff(
+          cleanedData,
+          normalized,
+          targetRef.id,
+        );
+        if (diff) {
+          employeeDiffsForHistory.push(diff);
+        }
         batch.set(targetRef, {
           ...cleanedData,
           createdAt: now,
@@ -910,6 +1074,8 @@ export class ShahoEmployeesService {
     if (payrollPromises.length > 0) {
       await Promise.all(payrollPromises);
     }
+
+    await this.recordExternalSyncHistories(employeeDiffsForHistory);
 
     return {
       total: records.length,

@@ -83,6 +83,7 @@ interface ShahoEmployee {
   birthDate?: string;
   postalCode?: string;
   address?: string;
+  currentAddress?: string;
   department?: string;
   departmentCode?: string;
   workPrefecture?: string;
@@ -212,6 +213,105 @@ interface DependentData {
 
 // APIキーの検証（環境変数から取得）
 const API_KEY = functions.config().api?.key || "";
+
+// 社員フィールドのラベルマッピング
+const EMPLOYEE_FIELD_LABELS: Partial<Record<keyof ShahoEmployee, string>> = {
+  name: "氏名",
+  employeeNo: "社員番号",
+  kana: "氏名(カナ)",
+  gender: "性別",
+  birthDate: "生年月日",
+  postalCode: "郵便番号",
+  address: "住民票住所",
+  currentAddress: "現住所",
+  department: "所属部署",
+  departmentCode: "所属部署コード",
+  workPrefecture: "勤務地都道府県",
+  workPrefectureCode: "勤務地都道府県コード",
+  personalNumber: "個人番号",
+  basicPensionNumber: "基礎年金番号",
+  healthStandardMonthly: "健保標準報酬月額",
+  welfareStandardMonthly: "厚年標準報酬月額",
+  standardBonusAnnualTotal: "標準賞与年間合計",
+  healthInsuredNumber: "健康保険 被保険者番号",
+  pensionInsuredNumber: "厚生年金 被保険者番号",
+  insuredNumber: "被保険者番号",
+  careSecondInsured: "介護保険第2号被保険者",
+  healthAcquisition: "健康保険 資格取得日",
+  pensionAcquisition: "厚生年金 資格取得日",
+  currentLeaveStatus: "現在の休業状態",
+  currentLeaveStartDate: "現在の休業開始日",
+  currentLeaveEndDate: "現在の休業予定終了日",
+  hasDependent: "扶養有無",
+};
+
+/**
+ * 値を差分表示用にフォーマット
+ */
+function formatValueForDiff(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  if (typeof value === "boolean") {
+    return value ? "有" : "無";
+  }
+  return `${value}`;
+}
+
+/**
+ * 外部データ取り込み用の差分情報を作成
+ */
+function buildExternalDiff(
+  updatedData: Partial<ShahoEmployee>,
+  normalized: ShahoEmployee,
+  employeeId: string,
+  existing?: ShahoEmployee,
+): {
+  employeeNo: string;
+  name: string;
+  status: "ok" | "warning" | "error";
+  changes: Array<{
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
+  }>;
+  isNew: boolean;
+  existingEmployeeId: string;
+} | undefined {
+  const changes: Array<{
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
+  }> = [];
+  
+  (Object.keys(updatedData) as (keyof ShahoEmployee)[]).forEach((field) => {
+    const label = EMPLOYEE_FIELD_LABELS[field] ?? `${field}`;
+    const oldValue = formatValueForDiff(existing?.[field]);
+    const newValue = formatValueForDiff(updatedData[field]);
+    if (oldValue !== newValue) {
+      changes.push({
+        field: label,
+        oldValue,
+        newValue,
+      });
+    }
+  });
+
+  if (!existing && changes.length === 0) {
+    changes.push({ field: "新規登録", oldValue: null, newValue: "登録" });
+  }
+
+  if (changes.length === 0) return undefined;
+
+  return {
+    employeeNo: normalized.employeeNo,
+    name: normalized.name,
+    status: "ok",
+    changes,
+    isNew: !existing,
+    existingEmployeeId: employeeId,
+  };
+}
 
 /**
  * APIキーを検証する関数
@@ -717,6 +817,19 @@ export const receiveEmployees = functions.https.onRequest(
         dependentRecords: ExternalDependentRecord[];
         hasDependent: boolean;
       }> = [];
+      // 変更履歴記録用の差分情報を収集
+      const employeeDiffsForHistory: Array<{
+        employeeNo: string;
+        name: string;
+        status: "ok" | "warning" | "error";
+        changes: Array<{
+          field: string;
+          oldValue: string | null;
+          newValue: string | null;
+        }>;
+        isNew: boolean;
+        existingEmployeeId: string;
+      }> = [];
 
       // 取り込みデータ内での社員番号の重複チェック
       const importEmployeeNoSet = new Map<string, number>(); // 社員番号 -> 最初に出現したインデックス
@@ -857,6 +970,7 @@ export const receiveEmployees = functions.https.onRequest(
           birthDate: normalizeString(record.birthDate),
           postalCode: normalizeString(record.postalCode),
           address: normalizeString(record.address),
+          currentAddress: normalizeString(record.currentAddress),
           department: normalizeString(record.department),
           workPrefecture: normalizeString(record.workPrefecture),
           personalNumber: normalizeString(record.personalNumber),
@@ -946,6 +1060,17 @@ export const receiveEmployees = functions.https.onRequest(
           
           // デバッグログ: 更新データを確認
           console.log(`社員番号 ${normalizedEmployeeNo}、社員名 ${normalizedName} の更新データ:`, JSON.stringify(updateData, null, 2));
+          
+          // 差分情報を作成
+          const diff = buildExternalDiff(
+            cleanedData,
+            normalized,
+            existing.id,
+            existing.data,
+          );
+          if (diff) {
+            employeeDiffsForHistory.push(diff);
+          }
           
           batch.set(
             targetRef,
@@ -1072,6 +1197,17 @@ export const receiveEmployees = functions.https.onRequest(
           }
 
           const targetRef = colRef.doc();
+          
+          // 差分情報を作成
+          const diff = buildExternalDiff(
+            cleanedData,
+            normalized,
+            targetRef.id,
+          );
+          if (diff) {
+            employeeDiffsForHistory.push(diff);
+          }
+          
           batch.set(targetRef, {
             ...cleanedData,
             createdAt: now,
@@ -1531,6 +1667,85 @@ export const receiveEmployees = functions.https.onRequest(
 
       if (dependentPromises.length > 0) {
         await Promise.all(dependentPromises);
+      }
+
+      // 変更履歴を記録（コミット後に実行）
+      if (employeeDiffsForHistory.length > 0) {
+        // 新規作成した社員のIDを取得して差分情報を更新
+        if (created > 0) {
+          const updatedSnapshot = await colRef.get();
+          const newEmployeeIdMap = new Map<string, string>(); // 社員番号 -> 社員ID
+          updatedSnapshot.forEach((docSnap) => {
+            const data = docSnap.data() as ShahoEmployee;
+            if (data.employeeNo && data.name) {
+              const key = createEmployeeKey(data.employeeNo, data.name);
+              if (!existingMap.has(key)) {
+                newEmployeeIdMap.set(data.employeeNo, docSnap.id);
+              }
+            }
+          });
+          
+          // 新規作成の差分情報のexistingEmployeeIdを更新
+          employeeDiffsForHistory.forEach((diff) => {
+            if (diff.isNew && newEmployeeIdMap.has(diff.employeeNo)) {
+              diff.existingEmployeeId = newEmployeeIdMap.get(diff.employeeNo)!;
+            }
+          });
+        }
+        
+        const actorId = "external-sync";
+        const actorName = "外部データ連携";
+        const approvalRequestsRef = db.collection("approval_requests");
+        
+        const historyPromises = employeeDiffsForHistory.map(async (diff, index) => {
+          const now = new Date();
+          now.setMilliseconds(now.getMilliseconds() + index);
+          
+          const applyHistory = {
+            id: `hist-${now.getTime()}-apply`,
+            statusAfter: "pending",
+            action: "apply",
+            actorId,
+            actorName,
+            comment: "外部データ取り込み",
+            attachments: [],
+            createdAt: admin.firestore.Timestamp.fromDate(now),
+          };
+
+          const approveHistory = {
+            id: `hist-${now.getTime()}-approve`,
+            statusAfter: "approved",
+            action: "approve",
+            actorId,
+            actorName,
+            comment: "外部データ取り込み",
+            attachments: [],
+            createdAt: admin.firestore.Timestamp.fromDate(new Date(now.getTime() + 1)),
+          };
+
+          const request = {
+            title: `外部データ連携（${diff.employeeNo}）`,
+            category: diff.isNew ? "新規社員登録" : "社員情報更新",
+            targetCount: 1,
+            applicantId: actorId,
+            applicantName: actorName,
+            flowId: "external-sync",
+            status: "approved",
+            steps: [],
+            histories: [applyHistory, approveHistory],
+            employeeDiffs: [diff],
+            diffSummary: diff.isNew
+              ? "新規登録"
+              : `${diff.changes.length}項目更新`,
+            createdAt: admin.firestore.Timestamp.fromDate(now),
+            updatedAt: admin.firestore.Timestamp.fromDate(now),
+          };
+
+          await approvalRequestsRef.add(request);
+        });
+
+        await Promise.all(historyPromises);
+        console.log(`変更履歴を ${employeeDiffsForHistory.length}件記録しました`);
       }
 
       const result: ExternalSyncResult = {
