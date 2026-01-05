@@ -489,6 +489,27 @@ export function validateDataFormat(
     }
   });
 
+  // 基礎年金番号の検証（10桁の数字）
+  const basicPensionNumberFields = ['基礎年金番号', '扶養 基礎年金番号'];
+  basicPensionNumberFields.forEach((field) => {
+    const value = row.data[field];
+    if (!value) return;
+    // データは既に正規化済み
+    // 数字以外の文字を除去
+    const digitsOnly = value.replace(/[^\d]/g, '');
+    // 10桁の数字であることを確認
+    if (!/^\d{10}$/.test(digitsOnly)) {
+      errors.push(
+        buildError(
+          row.rowIndex,
+          field,
+          `${field}は10桁の数字で入力してください`,
+          templateType,
+        ),
+      );
+    }
+  });
+
   const gender = row.data['性別'];
   if (gender && !GENDER_VALUES.includes(gender.toLowerCase())) {
     errors.push(

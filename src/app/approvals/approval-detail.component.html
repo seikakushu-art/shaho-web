@@ -199,9 +199,9 @@
                 <span
                   *ngFor="let diff of employee.diffs | slice:0:2"
                   class="pill"
-                  [title]="diff.oldValue + ' → ' + diff.newValue"
+                  [title]="formatFieldValue(diff.field, diff.oldValue) + ' → ' + formatFieldValue(diff.field, diff.newValue)"
                 >
-                  {{ diff.field }}: {{ diff.oldValue || '—' }} → {{ diff.newValue || '—' }}
+                  {{ diff.field }}: {{ formatFieldValue(diff.field, diff.oldValue) }} → {{ formatFieldValue(diff.field, diff.newValue) }}
                 </span>
               </span>
               <ng-template #noDiffs>-</ng-template>
@@ -268,9 +268,9 @@
       <li *ngFor="let diff of target.diffs">
         <div class="diff-name">{{ diff.field }}</div>
         <div class="diff-values">
-          <span class="old">{{ diff.oldValue }}</span>
+          <span class="old">{{ formatFieldValue(diff.field, diff.oldValue) }}</span>
           <span class="arrow">→</span>
-          <span class="new" [class.changed]="diff.oldValue !== diff.newValue">{{ diff.newValue }}</span>
+          <span class="new" [class.changed]="diff.oldValue !== diff.newValue">{{ formatFieldValue(diff.field, diff.newValue) }}</span>
         </div>
       </li>
     </ul>

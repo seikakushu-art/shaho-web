@@ -668,6 +668,97 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * 基礎年金番号キー入力制御：数字のみ許可
+   */
+  onBasicPensionNumberKeypress(event: KeyboardEvent): void {
+    // 制御キー（Backspace、Delete、Tab、Enter、矢印キーなど）は許可
+    if (
+      event.key === 'Backspace' ||
+      event.key === 'Delete' ||
+      event.key === 'Tab' ||
+      event.key === 'Enter' ||
+      event.key === 'ArrowLeft' ||
+      event.key === 'ArrowRight' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'ArrowDown' ||
+      event.ctrlKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+
+    // 数字（0-9）のみ許可
+    if (!/[\d]/.test(event.key)) {
+      event.preventDefault();
+      return;
+    }
+  }
+
+  /**
+   * 基礎年金番号IME入力制御：IME入力を防ぐ
+   */
+  onBasicPensionNumberCompositionStart(event: Event): void {
+    event.preventDefault();
+  }
+
+  /**
+   * 基礎年金番号入力制御：数字のみ、10桁までに制限
+   */
+  onBasicPensionNumberInput(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    let value = input.value;
+
+    // 数字以外の文字を除去
+    const digitsOnly = value.replace(/[^\d]/g, '');
+
+    // 10桁を超える場合は10桁までに制限
+    const limitedDigits = digitsOnly.slice(0, 10);
+
+    // 入力要素の値を直接更新（即座に反映）
+    input.value = limitedDigits;
+    
+    // モデルの値も更新
+    this.basicInfo.basicPensionNumber = limitedDigits;
+  }
+
+  /**
+   * 扶養情報の基礎年金番号入力制御：数字のみ、10桁までに制限
+   */
+  onDependentBasicPensionNumberInput(event: Event, index: number): void {
+    const input = event.target as HTMLInputElement;
+    let value = input.value;
+
+    // 数字以外の文字を除去
+    const digitsOnly = value.replace(/[^\d]/g, '');
+
+    // 10桁を超える場合は10桁までに制限
+    const limitedDigits = digitsOnly.slice(0, 10);
+
+    // 入力要素の値を直接更新（即座に反映）
+    input.value = limitedDigits;
+    
+    // モデルの値も更新
+    if (this.dependentInfos[index]) {
+      this.dependentInfos[index].basicPensionNumber = limitedDigits;
+    }
+  }
+
+  /**
+   * 基礎年金番号をマスクして表示（下4桁のみ表示、それ以外は*でマスク）
+   * 形式: ****-**7890
+   */
+  formatBasicPensionNumber(value: string | null | undefined): string {
+    if (!value) return '—';
+    // 数字以外の文字を除去
+    const digitsOnly = value.replace(/[^\d]/g, '');
+    // 10桁でない場合はそのまま返す
+    if (digitsOnly.length !== 10) return value;
+    // 下4桁のみ表示、それ以外は*でマスク
+    const last4Digits = digitsOnly.slice(6, 10);
+    return `****-**${last4Digits}`;
+  }
+
   handleProceedApproval(form: NgForm) {
     this.submitAttempted = true;
     if (form.invalid) return;

@@ -413,6 +413,19 @@ function validateExternalRecord(
     }
   }
 
+  // 基礎年金番号の検証（10桁の数字）
+  if (record.basicPensionNumber) {
+    const basicPensionNumberStr = record.basicPensionNumber.trim();
+    if (basicPensionNumberStr) {
+      // 数字以外の文字を除去
+      const digitsOnly = basicPensionNumberStr.replace(/[^\d]/g, "");
+      // 10桁の数字であることを確認
+      if (!/^\d{10}$/.test(digitsOnly)) {
+        return "基礎年金番号は10桁の数字で入力してください";
+      }
+    }
+  }
+
   // 住所の検証（最大80文字）
   if (record.address) {
     const addressStr = record.address.trim();
@@ -543,6 +556,19 @@ function validateExternalRecord(
           // 12桁の数字であることを確認
           if (!/^\d{12}$/.test(digitsOnly)) {
             return `扶養家族${i + 1}の個人番号は12桁の数字で入力してください`;
+          }
+        }
+      }
+
+      // 扶養家族の基礎年金番号の検証（10桁の数字）
+      if (dependent.basicPensionNumber) {
+        const basicPensionNumberStr = dependent.basicPensionNumber.trim();
+        if (basicPensionNumberStr) {
+          // 数字以外の文字を除去
+          const digitsOnly = basicPensionNumberStr.replace(/[^\d]/g, "");
+          // 10桁の数字であることを確認
+          if (!/^\d{10}$/.test(digitsOnly)) {
+            return `扶養家族${i + 1}の基礎年金番号は10桁の数字で入力してください`;
           }
         }
       }

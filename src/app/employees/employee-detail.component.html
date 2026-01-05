@@ -62,7 +62,7 @@
                     </div>
                     <div>
                         <label>基礎年金番号</label>
-                        <p class="value">{{ basicInfo.basicPensionNumber || '—' }}</p>
+                        <p class="value">{{ formatBasicPensionNumber(basicInfo.basicPensionNumber) }}</p>
                     </div>
                     <div>
                         <label>扶養の有無</label>
@@ -272,7 +272,7 @@
                     </div>
                     <div>
                         <label>基礎年金番号</label>
-                        <p class="value">{{ dependentInfo.basicPensionNumber || '—' }}</p>
+                        <p class="value">{{ formatBasicPensionNumber(dependentInfo.basicPensionNumber) }}</p>
                     </div>
                     <div>
                         <label>同居区分</label>

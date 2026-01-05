@@ -135,7 +135,22 @@
           </div>
           <div>
             <label>基礎年金番号</label>
-            <input name="basicPensionNumber" [(ngModel)]="basicInfo.basicPensionNumber" [readonly]="!editMode" />
+            <ng-container *ngIf="editMode">
+              <input
+                name="basicPensionNumber"
+                [(ngModel)]="basicInfo.basicPensionNumber"
+                maxlength="10"
+                pattern="^\d{10}$"
+                (input)="onBasicPensionNumberInput($event)"
+                (keypress)="onBasicPensionNumberKeypress($event)"
+                (compositionstart)="onBasicPensionNumberCompositionStart($event)"
+                #basicPensionNumberModel="ngModel"
+              />
+              <p class="error" *ngIf="basicPensionNumberModel.invalid && basicInfo.basicPensionNumber && (submitAttempted || basicPensionNumberModel.touched)">
+                基礎年金番号は10桁の数字で入力してください。
+              </p>
+            </ng-container>
+            <p *ngIf="!editMode" class="value">{{ formatBasicPensionNumber(basicInfo.basicPensionNumber) }}</p>
           </div>
           <div>
             <label>扶養の有無</label>
@@ -410,11 +425,22 @@
           </div>
           <div>
             <label>基礎年金番号</label>
-            <input
-                  [name]="'dependentBasicPensionNumber' + i"
-              [(ngModel)]="dependentInfo.basicPensionNumber"
-              [readonly]="!editMode"
-            />
+            <ng-container *ngIf="editMode">
+              <input
+                [name]="'dependentBasicPensionNumber' + i"
+                [(ngModel)]="dependentInfo.basicPensionNumber"
+                maxlength="10"
+                pattern="^\d{10}$"
+                (input)="onDependentBasicPensionNumberInput($event, i)"
+                (keypress)="onBasicPensionNumberKeypress($event)"
+                (compositionstart)="onBasicPensionNumberCompositionStart($event)"
+                #dependentBasicPensionNumberModel="ngModel"
+              />
+              <p class="error" *ngIf="dependentBasicPensionNumberModel.invalid && dependentInfo.basicPensionNumber && (submitAttempted || dependentBasicPensionNumberModel.touched)">
+                基礎年金番号は10桁の数字で入力してください。
+              </p>
+            </ng-container>
+            <p *ngIf="!editMode" class="value">{{ formatBasicPensionNumber(dependentInfo.basicPensionNumber) }}</p>
           </div>
           <div>
             <label>同居区分</label>
