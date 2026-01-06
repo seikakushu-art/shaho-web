@@ -365,7 +365,7 @@
             </p>
           </div>
           <div>
-            <label>氏名（漢字） <span *ngIf="basicInfo.hasDependent && editMode" style="color: #d32f2f;">*</span></label>
+            <label>氏名 <span *ngIf="basicInfo.hasDependent && editMode" style="color: #d32f2f;">*</span></label>
             <input
                   [name]="'dependentNameKanji' + i"
               [(ngModel)]="dependentInfo.nameKanji"
@@ -373,7 +373,7 @@
               [required]="basicInfo.hasDependent === true && editMode"
             />
             <p class="hint warning" *ngIf="submitAttempted && basicInfo.hasDependent && editMode && !dependentInfo.nameKanji">
-              氏名（漢字）は必須です。
+              氏名は必須です。
             </p>
           </div>
           <div>

@@ -617,11 +617,27 @@ function validateExternalRecord(
   }
 
   if (
+    record.healthStandardMonthly !== undefined &&
+    record.healthStandardMonthly !== null &&
+    Number(record.healthStandardMonthly) < 0
+  ) {
+    return "標準報酬月額（健保）は0以上で入力してください";
+  }
+
+  if (
     record.welfareStandardMonthly !== undefined &&
     record.welfareStandardMonthly !== null &&
     isNaN(Number(record.welfareStandardMonthly))
   ) {
     return "標準報酬月額（厚年）が数値ではありません";
+  }
+
+  if (
+    record.welfareStandardMonthly !== undefined &&
+    record.welfareStandardMonthly !== null &&
+    Number(record.welfareStandardMonthly) < 0
+  ) {
+    return "標準報酬月額（厚年）は0以上で入力してください";
   }
 
   // 郵便番号の検証（7桁の数字、ハイフンは任意）
@@ -751,7 +767,7 @@ function validateExternalRecord(
           return `扶養家族${i + 1}の続柄は必須です`;
         }
         if (!dependent.nameKanji || dependent.nameKanji.trim() === "") {
-          return `扶養家族${i + 1}の氏名（漢字）は必須です`;
+          return `扶養家族${i + 1}の氏名は必須です`;
         }
       }
 

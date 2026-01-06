@@ -104,6 +104,7 @@ export class CsvExportComponent implements OnInit {
     'standardWelfareBonus',
   ];
   private readonly healthInsuranceFields: CalculationResultField[] = [
+    'exemption',
     'healthStandardMonthly',
     'standardHealthBonus',
     'healthEmployeeMonthly',
@@ -114,6 +115,7 @@ export class CsvExportComponent implements OnInit {
     'healthTotalBonus',
   ];
   private readonly welfareInsuranceFields: CalculationResultField[] = [
+    'exemption',
     'welfareStandardMonthly',
     'standardWelfareBonus',
     'welfareEmployeeMonthly',
@@ -369,7 +371,7 @@ export class CsvExportComponent implements OnInit {
     
     // 標準賞与額計算の場合は計算ID、計算種別、対象年/年月、標準賞与額(健・介)、標準賞与額(厚生年金)のみ
     if (this.calculationContext?.meta?.calculationType === 'bonus') {
-      return [...alwaysIncluded, 'targetMonth', ...this.bonusFields];
+      return [...alwaysIncluded, 'targetMonth', 'exemption', ...this.bonusFields];
     }
     
     // 社会保険料計算で保険種別が1つのみ選択されている場合

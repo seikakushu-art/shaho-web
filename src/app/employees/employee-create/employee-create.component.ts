@@ -955,6 +955,25 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // 標準報酬月額の負の数チェック
+    if (
+      this.socialInsurance.healthStandardMonthly !== undefined &&
+      this.socialInsurance.healthStandardMonthly !== null &&
+      this.socialInsurance.healthStandardMonthly < 0
+    ) {
+      this.approvalMessage = '健保標準報酬月額は0以上で入力してください。';
+      return;
+    }
+
+    if (
+      this.socialInsurance.welfareStandardMonthly !== undefined &&
+      this.socialInsurance.welfareStandardMonthly !== null &&
+      this.socialInsurance.welfareStandardMonthly < 0
+    ) {
+      this.approvalMessage = '厚年標準報酬月額は0以上で入力してください。';
+      return;
+    }
+
     const filledDependentInfos = this.filterDependentsWithData(
       this.dependentInfos,
     );
@@ -979,7 +998,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             return;
           }
           if (!dep.nameKanji || dep.nameKanji.trim() === '') {
-            this.dependentValidationError = `扶養情報${i + 1}の氏名（漢字）は必須です。`;
+            this.dependentValidationError = `扶養情報${i + 1}の氏名は必須です。`;
             return;
           }
         }

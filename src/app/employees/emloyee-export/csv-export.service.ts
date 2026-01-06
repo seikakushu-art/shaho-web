@@ -22,6 +22,7 @@ export type CalculationResultField =
   | 'calculationType'
   | 'targetMonth'
   | 'activeInsurances'
+  | 'exemption'
   | 'healthStandardMonthly'
   | 'welfareStandardMonthly'
   | 'standardHealthBonus'
@@ -55,6 +56,7 @@ export const CALCULATION_RESULT_FIELD_DEFS: ReadonlyArray<{
   { key: 'calculationType', header: '計算種別' },
   { key: 'targetMonth', header: '対象年/年月' },
   { key: 'activeInsurances', header: '対象保険種別' },
+  { key: 'exemption', header: '健康保険・厚生年金一時免除フラグ' },
   { key: 'healthStandardMonthly', header: '健保標準報酬月額(計算結果)' },
   { key: 'welfareStandardMonthly', header: '厚年標準報酬月額(計算結果)' },
   { key: 'standardHealthBonus', header: '標準賞与額(健・介)' },
@@ -274,6 +276,19 @@ export class CsvExportService {
   ): CsvColumn[] {
     const columns: CsvColumn[] = [];
 
+    // 基本情報が出力されない場合、社員番号と社員名（漢字）を先頭に追加
+    const shouldAddEmployeeInfo = !sections.includes('basic') && 
+      (sections.includes('socialInsurance') || 
+       sections.includes('payrollHistory') || 
+       sections.includes('calculationResult'));
+    
+    if (shouldAddEmployeeInfo) {
+      columns.push(
+        { header: '社員番号', value: (employee) => employee.employeeNo },
+        { header: '氏名(漢字)', value: (employee) => employee.name },
+      );
+    }
+
     if (sections.includes('basic')) {
       columns.push(
         { header: '社員番号', value: (employee) => employee.employeeNo },
@@ -462,70 +477,92 @@ export class CsvExportService {
                 (payroll) => payroll.yearMonth === month,
               )?.pensionMonthly ?? '',
           },
-          // 賞与情報（最大4件まで）
-          ...Array.from({ length: 4 }, (_, index) => {
-            const bonusIndex = index + 1;
-            const suffix = bonusIndex === 1 ? '' : bonusIndex.toString();
-            return [
-              {
-                header: `賞与${suffix}(${month})`,
-                value: (employee: EmployeeWithDependents) => {
-                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
-                  const bonus = bonusPayments[index];
-                  return bonus?.bonusTotal ?? '';
-                },
-              },
-              {
-                header: `賞与支給日${suffix}(${month})`,
-                value: (employee: EmployeeWithDependents) => {
-                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
-                  const bonus = bonusPayments[index];
-                  return bonus?.bonusPaidOn ?? '';
-                },
-              },
-              {
-                header: `標準賞与額（健・介）${suffix}(${month})`,
-                value: (employee: EmployeeWithDependents) => {
-                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
-                  const bonus = bonusPayments[index];
-                  return bonus?.standardHealthBonus ?? '';
-                },
-              },
-              {
-                header: `標準賞与額（厚生年金）${suffix}(${month})`,
-                value: (employee: EmployeeWithDependents) => {
-                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
-                  const bonus = bonusPayments[index];
-                  return bonus?.standardWelfareBonus ?? '';
-                },
-              },
-              {
-                header: `健康保険（賞与）${suffix}(${month})`,
-                value: (employee: EmployeeWithDependents) => {
-                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
-                  const bonus = bonusPayments[index];
-                  return bonus?.healthInsuranceBonus ?? '';
-                },
-              },
-              {
-                header: `介護保険（賞与）${suffix}(${month})`,
-                value: (employee: EmployeeWithDependents) => {
-                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
-                  const bonus = bonusPayments[index];
-                  return bonus?.careInsuranceBonus ?? '';
-                },
-              },
-              {
-                header: `厚生年金（賞与）${suffix}(${month})`,
-                value: (employee: EmployeeWithDependents) => {
-                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
-                  const bonus = bonusPayments[index];
-                  return bonus?.pensionBonus ?? '';
-                },
-              },
-            ];
-          }).flat(),
         );
+
+        // その月に賞与が存在するかどうかを確認
+        const hasBonusInMonth = employees.some((employee) => {
+          const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+          return bonusPayments.length > 0;
+        });
+
+        // 賞与が存在する場合のみ、賞与情報をエクスポート（最大4件まで）
+        if (hasBonusInMonth) {
+          // その月に存在する最大の賞与数を取得
+          const maxBonusCount = Math.max(
+            ...employees.map((employee) => {
+              const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+              return bonusPayments.length;
+            }),
+            0,
+          );
+          // 最大4件まで
+          const bonusCount = Math.min(maxBonusCount, 4);
+
+          columns.push(
+            ...Array.from({ length: bonusCount }, (_, index) => {
+              const bonusIndex = index + 1;
+              const suffix = bonusIndex === 1 ? '' : bonusIndex.toString();
+              return [
+                {
+                  header: `賞与${suffix}(${month})`,
+                  value: (employee: EmployeeWithDependents) => {
+                    const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                    const bonus = bonusPayments[index];
+                    return bonus?.bonusTotal ?? '';
+                  },
+                },
+                {
+                  header: `賞与支給日${suffix}(${month})`,
+                  value: (employee: EmployeeWithDependents) => {
+                    const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                    const bonus = bonusPayments[index];
+                    return bonus?.bonusPaidOn ?? '';
+                  },
+                },
+                {
+                  header: `標準賞与額（健・介）${suffix}(${month})`,
+                  value: (employee: EmployeeWithDependents) => {
+                    const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                    const bonus = bonusPayments[index];
+                    return bonus?.standardHealthBonus ?? '';
+                  },
+                },
+                {
+                  header: `標準賞与額（厚生年金）${suffix}(${month})`,
+                  value: (employee: EmployeeWithDependents) => {
+                    const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                    const bonus = bonusPayments[index];
+                    return bonus?.standardWelfareBonus ?? '';
+                  },
+                },
+                {
+                  header: `健康保険（賞与）${suffix}(${month})`,
+                  value: (employee: EmployeeWithDependents) => {
+                    const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                    const bonus = bonusPayments[index];
+                    return bonus?.healthInsuranceBonus ?? '';
+                  },
+                },
+                {
+                  header: `介護保険（賞与）${suffix}(${month})`,
+                  value: (employee: EmployeeWithDependents) => {
+                    const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                    const bonus = bonusPayments[index];
+                    return bonus?.careInsuranceBonus ?? '';
+                  },
+                },
+                {
+                  header: `厚生年金（賞与）${suffix}(${month})`,
+                  value: (employee: EmployeeWithDependents) => {
+                    const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                    const bonus = bonusPayments[index];
+                    return bonus?.pensionBonus ?? '';
+                  },
+                },
+              ];
+            }).flat(),
+          );
+        }
       });
     }
 
@@ -572,6 +609,13 @@ export class CsvExportService {
       activeInsurances: {
         header: '対象保険種別',
         value: () => (meta.activeInsurances ?? []).join('/'),
+      },
+      exemption: {
+        header: '健康保険・厚生年金一時免除フラグ',
+        value: (employee) => {
+          const exemption = rowMap.get(employee.employeeNo)?.exemption;
+          return exemption === true ? 'はい' : exemption === false ? 'いいえ' : '';
+        },
       },
       healthStandardMonthly: {
         header: '健保標準報酬月額(計算結果)',

@@ -157,6 +157,10 @@ export class ApprovalListComponent {
 
       const filtered = mapped
         .filter(approval => {
+          // API外部データ連携の承認リクエストは除外
+          if (approval.flowId === 'external-sync') {
+            return false;
+          }
           if (flowId && approval.flowId !== flowId) {
             return false;
           }
