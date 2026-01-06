@@ -34,7 +34,7 @@ import {
   ShahoEmployee,
   ShahoEmployeesService,
 } from '../app/services/shaho-employees.service';
-import { normalizeEmployeeNoForComparison } from '../employees/employee-import/csv-import.utils';
+import { normalizeEmployeeNoForComparison, normalizeNameForComparison } from '../employees/employee-import/csv-import.utils';
 import {
   CalculationDataService,
   CalculationRow,
@@ -1880,7 +1880,8 @@ export class ApprovalDetailComponent implements OnDestroy {
       return;
     }
 
-    if (hasDependent === false || filteredDependents.length > 0) {
+    // 「扶養の有無」がfalseの場合は既存の扶養情報をすべて削除
+    if (hasDependent === false) {
       const existingDependents = await firstValueFrom(
         this.employeesService.getDependents(employeeId).pipe(take(1)),
       );
@@ -1889,17 +1890,45 @@ export class ApprovalDetailComponent implements OnDestroy {
           await this.employeesService.deleteDependent(employeeId, existing.id);
         }
       }
-    }
-
-    if (hasDependent === false) {
       return;
     }
 
+    // CSVに扶養情報がある場合、既存の扶養情報を取得して比較
+    const existingDependents = await firstValueFrom(
+      this.employeesService.getDependents(employeeId).pipe(take(1)),
+    );
+
+    // CSVの扶養情報を処理（既存のものは更新、新しいものは追加）
     for (const dependentData of filteredDependents) {
-      await this.employeesService.addOrUpdateDependent(
-        employeeId,
-        dependentData,
-      );
+      // 氏名(漢字)で既存の扶養情報を検索
+      const csvNameKanji = dependentData.nameKanji?.trim() || '';
+      let matchedExisting: DependentData | undefined;
+
+      if (csvNameKanji) {
+        const normalizedCsvName = normalizeNameForComparison(csvNameKanji);
+        matchedExisting = existingDependents.find((existing) => {
+          if (!existing.nameKanji) return false;
+          const normalizedExistingName = normalizeNameForComparison(
+            existing.nameKanji,
+          );
+          return normalizedExistingName === normalizedCsvName;
+        });
+      }
+
+      if (matchedExisting && matchedExisting.id) {
+        // 既存の扶養情報を更新
+        await this.employeesService.addOrUpdateDependent(
+          employeeId,
+          dependentData,
+          matchedExisting.id,
+        );
+      } else {
+        // 新しい扶養情報を追加
+        await this.employeesService.addOrUpdateDependent(
+          employeeId,
+          dependentData,
+        );
+      }
     }
   }
 

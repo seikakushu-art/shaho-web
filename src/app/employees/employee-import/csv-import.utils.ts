@@ -63,6 +63,47 @@ const DEPENDENT_BASE_FIELDS = [
   '扶養 国民年金第3号被保険者該当フラグ',
 ];
 
+// 従業員情報フィールド（2行目以降で入力不可）
+// 社員番号と扶養情報フィールド以外の従業員情報
+const EMPLOYEE_INFO_FIELDS = [
+  '氏名(漢字)',
+  '氏名漢字',
+  '氏名(カナ)',
+  '性別',
+  '生年月日',
+  '所属部署名',
+  '勤務地都道府県名',
+  '健康保険資格取得日',
+  '健康保険 資格取得日',
+  '厚生年金資格取得日',
+  '厚生年金 資格取得日',
+  '郵便番号',
+  '住民票住所',
+  '現住所',
+  '個人番号',
+  '基礎年金番号',
+  '健保標準報酬月額',
+  '厚年標準報酬月額',
+  '被保険者番号（健康保険)',
+  '被保険者番号（厚生年金）',
+  '介護保険第2号フラグ',
+  '介護保険第2号被保険者フラグ',
+  '一時免除フラグ（健康保険料・厚生年金一時免除）',
+  '健康保険・厚生年金一時免除フラグ',
+  '現在の休業開始日',
+  '現在の休業予定終了日',
+  '現在の休業状況',
+  '算定対象期間開始年月',
+  '算定対象期間終了年月',
+  '算定年度',
+  '賞与支給日',
+  '賞与総支給額',
+  '賞与支給年度',
+  '月給支払月',
+  '月給支払額',
+  '支払基礎日数',
+];
+
 const REQUIRED_FIELDS: Record<TemplateType, string[]> = {
   new: [
     '社員番号',
@@ -231,7 +272,7 @@ export function convertToRecordArray(
  * 氏名を正規化（全ての空白文字を削除）
  * 半角スペース、全角スペース、タブなどの空白文字を全て削除して比較用に正規化
  */
-function normalizeNameForComparison(name: string): string {
+export function normalizeNameForComparison(name: string): string {
   if (!name) return '';
   // 全ての空白文字（半角スペース、全角スペース、タブ、改行など）を削除
   return name.replace(/\s+/g, '').trim();
@@ -953,6 +994,26 @@ export function validateFileLevelRules(
             }
             const row = rows.find((r) => r.rowIndex === rowIndices[i]);
             if (row) {
+              // 2行目以降で従業員情報が入力されている場合、エラーを出す
+              const employeeInfoFields: string[] = [];
+              for (const field of EMPLOYEE_INFO_FIELDS) {
+                const value = row.data[field];
+                if (value && value.trim().length > 0) {
+                  employeeInfoFields.push(field);
+                }
+              }
+
+              if (employeeInfoFields.length > 0) {
+                errors.push(
+                  buildError(
+                    rowIndices[i],
+                    employeeInfoFields[0],
+                    `社員番号 ${employeeNo} の${i + 1}行目には従業員情報（${employeeInfoFields.join('、')}など）を入力できません。社員番号のみ入力してください`,
+                    templateType,
+                  ),
+                );
+              }
+
               const hasDependentInfo = DEPENDENT_BASE_FIELDS.some((field) => {
                 const value = row.data[field];
                 return value && value.trim().length > 0;
@@ -980,6 +1041,27 @@ export function validateFileLevelRules(
             }
             const row = rows.find((r) => r.rowIndex === rowIndices[i]);
             if (row) {
+              // 2行目以降で従業員情報が入力されている場合、エラーを出す
+              const employeeInfoFields: string[] = [];
+              for (const field of EMPLOYEE_INFO_FIELDS) {
+                const value = row.data[field];
+                if (value && value.trim().length > 0) {
+                  employeeInfoFields.push(field);
+                }
+              }
+
+              if (employeeInfoFields.length > 0) {
+                errors.push(
+                  buildError(
+                    rowIndices[i],
+                    employeeInfoFields[0],
+                    `社員番号 ${employeeNo} の${i + 1}行目には社員番号と扶養家族情報のみ入力してください`,
+                    templateType,
+                  ),
+                );
+              }
+
+              // 扶養情報が入力されていることを確認
               const hasDependentInfo =
                 row.data['扶養 続柄'] || row.data['扶養 氏名(漢字)'];
               if (!hasDependentInfo) {
@@ -1511,7 +1593,34 @@ export function calculateDifferences(
       isUpdate = true;
     }
   } else {
-    // 存在しない場合 → 新規
+    // 存在しない場合 → 新規登録
+    // 既存の社員番号と重複していないことを確認（念のため再チェック）
+    // 正規化された社員番号で既存社員を検索
+    const duplicateEmployee = existingEmployees.find(
+      (emp) =>
+        normalizeEmployeeNoForComparison(emp.employeeNo || '') ===
+        normalizedEmployeeNo,
+    );
+
+    if (duplicateEmployee) {
+      // 既存の社員番号と重複している場合（通常は発生しないが、念のため）
+      errors.push({
+        rowIndex: parsedRow.rowIndex,
+        fieldName: '社員番号',
+        message: `社員番号 ${employeeNo} は既に登録されています`,
+        severity: 'error',
+        templateType,
+      });
+      return {
+        isNew: false,
+        isUpdate: false,
+        existingEmployee: null,
+        errors,
+        changes: [],
+      };
+    }
+
+    // 重複がない場合 → 新規登録
     isNew = true;
   }
 

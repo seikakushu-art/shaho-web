@@ -3,6 +3,7 @@ import { firstValueFrom, Observable } from 'rxjs';
 import {
   ShahoEmployeesService,
   DependentData,
+  BonusPayment,
 } from '../../app/services/shaho-employees.service';
 import {
   CalculationRow,
@@ -113,6 +114,7 @@ type EmployeeWithPayrolls =
 type Payroll = NonNullable<EmployeeWithPayrolls['payrolls']>[number];
 type EmployeeWithDependents = EmployeeWithPayrolls & {
   dependents?: DependentData[];
+  bonusPaymentsByMonth?: Map<string, BonusPayment[]>;
 };
 
 interface CsvColumn {
@@ -156,7 +158,7 @@ export class CsvExportService {
       options.workPrefecture,
     );
 
-    // 各社員の扶養情報を取得
+    // 各社員の扶養情報と賞与明細を取得
     const employeesWithDependents = await Promise.all(
       filteredEmployees.map(async (employee) => {
         const dependents = employee.id
@@ -164,7 +166,33 @@ export class CsvExportService {
               this.employeesService.getDependents(employee.id),
             )
           : [];
-        return { ...employee, dependents };
+        
+        // 各月の賞与明細を取得
+        const bonusPaymentsByMonth = new Map<string, BonusPayment[]>();
+        if (employee.id && options.sections.includes('payrollHistory')) {
+          const targetMonths = this.determinePayrollMonths(
+            [employee],
+            options.payrollStartMonth,
+            options.payrollEndMonth,
+          );
+          
+          await Promise.all(
+            targetMonths.map(async (month) => {
+              const bonusPayments = await firstValueFrom(
+                this.employeesService.getBonusPayments(employee.id!, month),
+              );
+              // 賞与支払い日順（昇順）にソート
+              const sortedBonusPayments = [...bonusPayments].sort((a, b) => {
+                const dateA = new Date(a.bonusPaidOn.replace(/\//g, '-'));
+                const dateB = new Date(b.bonusPaidOn.replace(/\//g, '-'));
+                return dateA.getTime() - dateB.getTime();
+              });
+              bonusPaymentsByMonth.set(month, sortedBonusPayments);
+            }),
+          );
+        }
+        
+        return { ...employee, dependents, bonusPaymentsByMonth };
       }),
     );
 
@@ -434,48 +462,69 @@ export class CsvExportService {
                 (payroll) => payroll.yearMonth === month,
               )?.pensionMonthly ?? '',
           },
-          {
-            header: `賞与(${month})`,
-            value: (employee) =>
-              (employee.payrolls ?? []).find(
-                (payroll) => payroll.yearMonth === month,
-              )?.bonusTotal ?? '',
-          },
-          {
-            header: `賞与支給日(${month})`,
-            value: (employee) =>
-              (employee.payrolls ?? []).find(
-                (payroll) => payroll.yearMonth === month,
-              )?.bonusPaidOn ?? '',
-          },
-          {
-            header: `標準賞与額(${month})`,
-            value: (employee) =>
-              (employee.payrolls ?? []).find(
-                (payroll) => payroll.yearMonth === month,
-              )?.standardHealthBonus ?? '',
-          },
-          {
-            header: `健康保険（賞与）(${month})`,
-            value: (employee) =>
-              (employee.payrolls ?? []).find(
-                (payroll) => payroll.yearMonth === month,
-              )?.healthInsuranceBonus ?? '',
-          },
-          {
-            header: `介護保険（賞与）(${month})`,
-            value: (employee) =>
-              (employee.payrolls ?? []).find(
-                (payroll) => payroll.yearMonth === month,
-              )?.careInsuranceBonus ?? '',
-          },
-          {
-            header: `厚生年金（賞与）(${month})`,
-            value: (employee) =>
-              (employee.payrolls ?? []).find(
-                (payroll) => payroll.yearMonth === month,
-              )?.pensionBonus ?? '',
-          },
+          // 賞与情報（最大4件まで）
+          ...Array.from({ length: 4 }, (_, index) => {
+            const bonusIndex = index + 1;
+            const suffix = bonusIndex === 1 ? '' : bonusIndex.toString();
+            return [
+              {
+                header: `賞与${suffix}(${month})`,
+                value: (employee: EmployeeWithDependents) => {
+                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                  const bonus = bonusPayments[index];
+                  return bonus?.bonusTotal ?? '';
+                },
+              },
+              {
+                header: `賞与支給日${suffix}(${month})`,
+                value: (employee: EmployeeWithDependents) => {
+                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                  const bonus = bonusPayments[index];
+                  return bonus?.bonusPaidOn ?? '';
+                },
+              },
+              {
+                header: `標準賞与額（健・介）${suffix}(${month})`,
+                value: (employee: EmployeeWithDependents) => {
+                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                  const bonus = bonusPayments[index];
+                  return bonus?.standardHealthBonus ?? '';
+                },
+              },
+              {
+                header: `標準賞与額（厚生年金）${suffix}(${month})`,
+                value: (employee: EmployeeWithDependents) => {
+                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                  const bonus = bonusPayments[index];
+                  return bonus?.standardWelfareBonus ?? '';
+                },
+              },
+              {
+                header: `健康保険（賞与）${suffix}(${month})`,
+                value: (employee: EmployeeWithDependents) => {
+                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                  const bonus = bonusPayments[index];
+                  return bonus?.healthInsuranceBonus ?? '';
+                },
+              },
+              {
+                header: `介護保険（賞与）${suffix}(${month})`,
+                value: (employee: EmployeeWithDependents) => {
+                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                  const bonus = bonusPayments[index];
+                  return bonus?.careInsuranceBonus ?? '';
+                },
+              },
+              {
+                header: `厚生年金（賞与）${suffix}(${month})`,
+                value: (employee: EmployeeWithDependents) => {
+                  const bonusPayments = employee.bonusPaymentsByMonth?.get(month) ?? [];
+                  const bonus = bonusPayments[index];
+                  return bonus?.pensionBonus ?? '';
+                },
+              },
+            ];
+          }).flat(),
         );
       });
     }

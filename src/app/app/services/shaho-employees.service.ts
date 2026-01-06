@@ -283,7 +283,60 @@ export class ShahoEmployeesService {
     >;
   }
 
+  /**
+   * 社員とすべてのサブコレクションを削除
+   * @param id 社員ID
+   */
   async deleteEmployee(id: string): Promise<void> {
+    // 1. 扶養情報を削除
+    const dependentsRef = collection(
+      this.firestore,
+      'shaho_employees',
+      id,
+      'dependents',
+    );
+    const dependentsSnapshot = await getDocs(dependentsRef);
+    const dependentDeletes: Promise<void>[] = [];
+    dependentsSnapshot.forEach((docSnap) => {
+      dependentDeletes.push(deleteDoc(docSnap.ref));
+    });
+    await Promise.all(dependentDeletes);
+
+    // 2. 月次給与データとそのサブコレクション（賞与明細）を削除
+    const payrollMonthsRef = collection(
+      this.firestore,
+      'shaho_employees',
+      id,
+      'payrollMonths',
+    );
+    const payrollMonthsSnapshot = await getDocs(payrollMonthsRef);
+    
+    // 各月次データの賞与明細を削除
+    const bonusPaymentDeletes: Promise<void>[] = [];
+    for (const payrollMonthDoc of payrollMonthsSnapshot.docs) {
+      const bonusPaymentsRef = collection(
+        this.firestore,
+        'shaho_employees',
+        id,
+        'payrollMonths',
+        payrollMonthDoc.id,
+        'bonusPayments',
+      );
+      const bonusPaymentsSnapshot = await getDocs(bonusPaymentsRef);
+      bonusPaymentsSnapshot.forEach((bonusDoc) => {
+        bonusPaymentDeletes.push(deleteDoc(bonusDoc.ref));
+      });
+    }
+    await Promise.all(bonusPaymentDeletes);
+
+    // 月次給与データを削除
+    const payrollMonthDeletes: Promise<void>[] = [];
+    payrollMonthsSnapshot.forEach((docSnap) => {
+      payrollMonthDeletes.push(deleteDoc(docSnap.ref));
+    });
+    await Promise.all(payrollMonthDeletes);
+
+    // 3. 最後に社員ドキュメントを削除
     const ref = doc(this.colRef, id);
     await deleteDoc(ref);
   }
@@ -600,6 +653,232 @@ export class ShahoEmployeesService {
     };
   }
 
+  /**
+   * 扶養情報の差分を計算して変更履歴に追加
+   */
+  private buildDependentDiff(
+    existingDependents: DependentData[],
+    newDependents: ExternalDependentRecord[],
+    normalized: ShahoEmployee,
+    employeeId: string,
+  ): ApprovalEmployeeDiff | undefined {
+    const changes: ApprovalEmployeeDiff['changes'] = [];
+    
+    // ブール値変換ヘルパー関数
+    const toBoolean = (
+      value: boolean | string | number | undefined,
+    ): boolean | undefined => {
+      if (value === undefined || value === null) return undefined;
+      if (typeof value === 'boolean') return value;
+      const normalized = String(value).toLowerCase().trim();
+      if (
+        normalized === '1' ||
+        normalized === 'true' ||
+        normalized === 'on' ||
+        normalized === 'yes' ||
+        normalized === '有'
+      ) {
+        return true;
+      }
+      if (
+        normalized === '0' ||
+        normalized === 'false' ||
+        normalized === 'off' ||
+        normalized === 'no' ||
+        normalized === '無'
+      ) {
+        return false;
+      }
+      return undefined;
+    };
+
+    const formatDependentValue = (value: unknown): string | null => {
+      if (value === undefined || value === null || value === '') {
+        return null;
+      }
+      if (typeof value === 'boolean') {
+        return value ? '有' : '無';
+      }
+      return `${value}`;
+    };
+
+    // 最大長を取得
+    const maxLength = Math.max(existingDependents.length, newDependents.length);
+    
+    for (let i = 0; i < maxLength; i++) {
+      const prefix = maxLength > 1 ? `扶養${i + 1} ` : '扶養 ';
+      const oldDep = existingDependents[i];
+      const newDep = newDependents[i];
+
+      if (!oldDep && newDep) {
+        // 新規追加：有効なデータがある場合のみ差分を追加
+        const hasNewData = Object.values(newDep).some(
+          (value) =>
+            value !== '' &&
+            value !== null &&
+            value !== false &&
+            value !== undefined,
+        );
+        if (hasNewData) {
+          if (newDep.relationship) {
+            changes.push({
+              field: `${prefix}続柄`,
+              oldValue: null,
+              newValue: newDep.relationship.trim(),
+            });
+          }
+          if (newDep.nameKanji) {
+            changes.push({
+              field: `${prefix}氏名(漢字)`,
+              oldValue: null,
+              newValue: newDep.nameKanji.trim(),
+            });
+          }
+          if (newDep.nameKana) {
+            changes.push({
+              field: `${prefix}氏名(カナ)`,
+              oldValue: null,
+              newValue: newDep.nameKana.trim(),
+            });
+          }
+          if (newDep.birthDate) {
+            changes.push({
+              field: `${prefix}生年月日`,
+              oldValue: null,
+              newValue: newDep.birthDate.trim(),
+            });
+          }
+          if (newDep.gender) {
+            changes.push({
+              field: `${prefix}性別`,
+              oldValue: null,
+              newValue: newDep.gender.trim(),
+            });
+          }
+          if (newDep.personalNumber) {
+            changes.push({
+              field: `${prefix}個人番号`,
+              oldValue: null,
+              newValue: newDep.personalNumber.trim(),
+            });
+          }
+          if (newDep.basicPensionNumber) {
+            changes.push({
+              field: `${prefix}基礎年金番号`,
+              oldValue: null,
+              newValue: newDep.basicPensionNumber.trim(),
+            });
+          }
+          if (newDep.cohabitationType) {
+            changes.push({
+              field: `${prefix}同居区分`,
+              oldValue: null,
+              newValue: newDep.cohabitationType.trim(),
+            });
+          }
+          if (newDep.address) {
+            changes.push({
+              field: `${prefix}住所`,
+              oldValue: null,
+              newValue: newDep.address.trim(),
+            });
+          }
+          if (newDep.occupation) {
+            changes.push({
+              field: `${prefix}職業`,
+              oldValue: null,
+              newValue: newDep.occupation.trim(),
+            });
+          }
+          if (newDep.annualIncome !== undefined && newDep.annualIncome !== null) {
+            changes.push({
+              field: `${prefix}年収`,
+              oldValue: null,
+              newValue: formatDependentValue(newDep.annualIncome),
+            });
+          }
+          if (newDep.dependentStartDate) {
+            changes.push({
+              field: `${prefix}被扶養者になった日`,
+              oldValue: null,
+              newValue: newDep.dependentStartDate.trim(),
+            });
+          }
+          if (newDep.thirdCategoryFlag !== undefined && newDep.thirdCategoryFlag !== null) {
+            changes.push({
+              field: `${prefix}国民年金第3号被保険者該当フラグ`,
+              oldValue: null,
+              newValue: formatDependentValue(toBoolean(newDep.thirdCategoryFlag)),
+            });
+          }
+        }
+      } else if (oldDep && !newDep) {
+        // 削除
+        if (oldDep.nameKanji) {
+          changes.push({
+            field: `${prefix}氏名(漢字)`,
+            oldValue: oldDep.nameKanji,
+            newValue: null,
+          });
+        }
+      } else if (oldDep && newDep) {
+        // 更新：各フィールドを比較
+        const fields: Array<{
+          key: keyof DependentData;
+          label: string;
+          newValue?: string | number | boolean;
+        }> = [
+          { key: 'relationship', label: '続柄', newValue: newDep.relationship?.trim() },
+          { key: 'nameKanji', label: '氏名(漢字)', newValue: newDep.nameKanji?.trim() },
+          { key: 'nameKana', label: '氏名(カナ)', newValue: newDep.nameKana?.trim() },
+          { key: 'birthDate', label: '生年月日', newValue: newDep.birthDate?.trim() },
+          { key: 'gender', label: '性別', newValue: newDep.gender?.trim() },
+          { key: 'personalNumber', label: '個人番号', newValue: newDep.personalNumber?.trim() },
+          { key: 'basicPensionNumber', label: '基礎年金番号', newValue: newDep.basicPensionNumber?.trim() },
+          { key: 'cohabitationType', label: '同居区分', newValue: newDep.cohabitationType?.trim() },
+          { key: 'address', label: '住所', newValue: newDep.address?.trim() },
+          { key: 'occupation', label: '職業', newValue: newDep.occupation?.trim() },
+          { key: 'annualIncome', label: '年収', newValue: newDep.annualIncome !== undefined && newDep.annualIncome !== null ? Number(newDep.annualIncome) : undefined },
+          { key: 'dependentStartDate', label: '被扶養者になった日', newValue: newDep.dependentStartDate?.trim() },
+        ];
+
+        fields.forEach(({ key, label, newValue }) => {
+          const oldValue = formatDependentValue(oldDep[key]);
+          const formattedNewValue = formatDependentValue(newValue);
+          if (oldValue !== formattedNewValue) {
+            changes.push({
+              field: `${prefix}${label}`,
+              oldValue,
+              newValue: formattedNewValue,
+            });
+          }
+        });
+
+        // 国民年金第3号被保険者該当フラグ
+        const oldThirdCategoryFlag = formatDependentValue(oldDep.thirdCategoryFlag);
+        const newThirdCategoryFlag = formatDependentValue(toBoolean(newDep.thirdCategoryFlag));
+        if (oldThirdCategoryFlag !== newThirdCategoryFlag) {
+          changes.push({
+            field: `${prefix}国民年金第3号被保険者該当フラグ`,
+            oldValue: oldThirdCategoryFlag,
+            newValue: newThirdCategoryFlag,
+          });
+        }
+      }
+    }
+
+    if (changes.length === 0) return undefined;
+
+    return {
+      employeeNo: normalized.employeeNo,
+      name: normalized.name,
+      status: 'ok',
+      changes,
+      isNew: false,
+      existingEmployeeId: employeeId,
+    };
+  }
+
   private async recordExternalSyncHistories(
     diffs: ApprovalEmployeeDiff[],
   ): Promise<void> {
@@ -693,6 +972,8 @@ export class ShahoEmployeesService {
     const dependentDataToProcess: Array<{
       employeeNo: string;
       dependentRecords: ExternalDependentRecord[];
+      normalized: ShahoEmployee;
+      employeeId: string;
     }> = [];
 
     records.forEach((record, index) => {
@@ -832,6 +1113,8 @@ export class ShahoEmployeesService {
         dependentDataToProcess.push({
           employeeNo: normalized.employeeNo,
           dependentRecords: record.dependents,
+          normalized,
+          employeeId: existing?.id || '', // 新規登録の場合は空文字列（後でexistingMapから取得）
         });
       }
 
@@ -934,7 +1217,7 @@ export class ShahoEmployeesService {
 
     // 扶養家族情報を保存
     const dependentPromises: Promise<void>[] = [];
-    dependentDataToProcess.forEach(({ employeeNo, dependentRecords }) => {
+    dependentDataToProcess.forEach(({ employeeNo, dependentRecords, normalized, employeeId: storedEmployeeId }) => {
       const employee = existingMap.get(employeeNo);
       if (!employee) {
         errors.push({
@@ -944,6 +1227,9 @@ export class ShahoEmployeesService {
         });
         return;
       }
+      
+      // employeeIdが空文字列の場合はexistingMapから取得（新規登録の場合）
+      const actualEmployeeId = storedEmployeeId || employee.id;
 
       // 既存の扶養家族情報を削除（更新の場合）
       dependentPromises.push(
@@ -951,9 +1237,33 @@ export class ShahoEmployeesService {
           const existingDependents: DependentData[] = await firstValueFrom(
             this.getDependents(employee.id).pipe(take(1)),
           );
+          
+          // 扶養情報の差分を計算して変更履歴に追加
+          const dependentDiff = this.buildDependentDiff(
+            existingDependents,
+            dependentRecords,
+            normalized,
+            actualEmployeeId,
+          );
+          if (dependentDiff) {
+            // 既存のdiffを検索してマージ、なければ追加
+            const existingDiffIndex = employeeDiffsForHistory.findIndex(
+              (diff) => diff.existingEmployeeId === actualEmployeeId,
+            );
+            if (existingDiffIndex >= 0) {
+              // 既存のdiffに変更をマージ
+              employeeDiffsForHistory[existingDiffIndex].changes.push(
+                ...dependentDiff.changes,
+              );
+            } else {
+              // 新しいdiffを追加
+              employeeDiffsForHistory.push(dependentDiff);
+            }
+          }
+          
           for (const existing of existingDependents) {
             if (existing.id) {
-              await this.deleteDependent(employee.id, existing.id);
+              await this.deleteDependent(actualEmployeeId, existing.id);
             }
           }
 
@@ -1022,7 +1332,7 @@ export class ShahoEmployeesService {
 
             if (hasDependentData) {
               await this.addOrUpdateDependent(
-                employee.id,
+                actualEmployeeId,
                 cleanedDependentData as DependentData,
               );
             }

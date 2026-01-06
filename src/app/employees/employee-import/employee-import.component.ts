@@ -37,6 +37,7 @@ import {
   detectTemplateType,
   ExistingEmployee,
   normalizeEmployeeNoForComparison,
+  normalizeNameForComparison,
   normalizeHeaders,
   organizeErrors,
   parseCSV,
@@ -77,6 +78,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
   private applicantName = 'デモ申請者';
   private approvalSubscription?: Subscription;
   private activeApprovalRequestId?: string;
+
+  private readonly MAX_CSV_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
   approvalFlows: ApprovalFlow[] = [];
   selectedFlow?: ApprovalFlow;
@@ -229,6 +232,14 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     }
 
     const file = input.files[0];
+    
+    // ファイルサイズのチェック
+    if (file.size > this.MAX_CSV_FILE_SIZE) {
+      this.handleParseFailure('CSVファイルのサイズは10MB以内にしてください。');
+      input.value = ''; // 入力値をリセット
+      return;
+    }
+    
     this.fileName = file.name;
     this.isLoading = true;
 
@@ -2361,7 +2372,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       return;
     }
 
-    if (hasDependent === false || filteredDependents.length > 0) {
+    // 「扶養の有無」がfalseの場合は既存の扶養情報をすべて削除
+    if (hasDependent === false) {
       const existingDependents = await firstValueFrom(
         this.employeesService.getDependents(employeeId).pipe(take(1)),
       );
@@ -2370,17 +2382,45 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           await this.employeesService.deleteDependent(employeeId, existing.id);
         }
       }
-    }
-
-    if (hasDependent === false) {
       return;
     }
 
+    // CSVに扶養情報がある場合、既存の扶養情報を取得して比較
+    const existingDependents = await firstValueFrom(
+      this.employeesService.getDependents(employeeId).pipe(take(1)),
+    );
+
+    // CSVの扶養情報を処理（既存のものは更新、新しいものは追加）
     for (const dependentData of filteredDependents) {
-      await this.employeesService.addOrUpdateDependent(
-        employeeId,
-        dependentData,
-      );
+      // 氏名(漢字)で既存の扶養情報を検索
+      const csvNameKanji = dependentData.nameKanji?.trim() || '';
+      let matchedExisting: DependentData | undefined;
+
+      if (csvNameKanji) {
+        const normalizedCsvName = normalizeNameForComparison(csvNameKanji);
+        matchedExisting = existingDependents.find((existing) => {
+          if (!existing.nameKanji) return false;
+          const normalizedExistingName = normalizeNameForComparison(
+            existing.nameKanji,
+          );
+          return normalizedExistingName === normalizedCsvName;
+        });
+      }
+
+      if (matchedExisting && matchedExisting.id) {
+        // 既存の扶養情報を更新
+        await this.employeesService.addOrUpdateDependent(
+          employeeId,
+          dependentData,
+          matchedExisting.id,
+        );
+      } else {
+        // 新しい扶養情報を追加
+        await this.employeesService.addOrUpdateDependent(
+          employeeId,
+          dependentData,
+        );
+      }
     }
   }
   ngOnDestroy(): void {

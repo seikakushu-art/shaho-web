@@ -65,10 +65,11 @@ type ColumnKey =
   | 'welfareEmployeeBonus'
   | 'welfareEmployerBonus'
   | 'welfareTotalBonus'
-  | 'totalContribution';
+  | 'totalContribution'
+  | 'exemption';
 
 type ColumnCategory = 'monthly' | 'bonus' | 'shared';
-type ColumnFormat = 'text' | 'money' | 'date' | 'month';
+type ColumnFormat = 'text' | 'money' | 'date' | 'month' | 'checkbox';
 
 interface ColumnSetting {
   key: ColumnKey;
@@ -399,6 +400,14 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       category: 'shared',
       format: 'money',
     },
+    {
+      key: 'exemption',
+      label: '健康保険・厚生年金一時免除フラグ',
+      visible: true,
+      sortable: true,
+      category: 'shared',
+      format: 'checkbox',
+    },
   ];
 
   rows: CalculationRow[] = [];
@@ -464,6 +473,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
               welfareEmployerBonus: row.welfareEmployerBonus,
               standardHealthBonus: row.standardHealthBonus,
               standardWelfareBonus: row.standardWelfareBonus,
+              exemption: row.exemption,
               error: row.error,
             }));
             
@@ -760,19 +770,28 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           row.welfareEmployerBonus;
         return monthly + bonus;
       }
+      case 'exemption':
+        return row.exemption ?? false;
       default:
-        return (row as unknown as Record<string, string | number>)[key];
+        return (row as unknown as Record<string, string | number | boolean>)[key];
     }
   }
 
   getDisplayValue(row: CalculationRow, column: ColumnSetting) {
     const value = this.getRawValue(row, column.key);
-    if (value === undefined || value === null) return '-';
+    if (value === undefined || value === null) {
+      if (column.format === 'checkbox') return 'OFF';
+      return '-';
+    }
     if (typeof value === 'number' && column.format === 'money') {
       return value.toLocaleString('ja-JP');
     }
     if (column.format === 'date' && typeof value === 'string') {
       return this.formatDate(value);
+    }
+    if (column.format === 'checkbox') {
+      const isChecked = value === true || value === 'true' || value === 1 || value === '1';
+      return isChecked ? 'ON' : 'OFF';
     }
     // 定時計算の場合、「対象年月」列の表示値を年のみに変更
     if (column.key === 'month' && this.calculationType === 'standard' && typeof value === 'string') {
@@ -1508,6 +1527,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         welfareEmployerBonus: row.welfareEmployerBonus,
         standardHealthBonus: row.standardHealthBonus,
         standardWelfareBonus: row.standardWelfareBonus,
+        exemption: row.exemption,
         error: row.error,
       }));
 

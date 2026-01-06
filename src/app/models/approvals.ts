@@ -143,6 +143,7 @@ export interface ApprovalRequest {
     welfareEmployerBonus: number;
     standardHealthBonus: number;
     standardWelfareBonus: number;
+    exemption?: boolean;
     error?: string;
   }>;
   employeeData?: {

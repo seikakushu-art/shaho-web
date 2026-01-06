@@ -314,6 +314,247 @@ function buildExternalDiff(
 }
 
 /**
+ * 扶養情報の差分を計算して変更履歴に追加
+ */
+function buildDependentDiff(
+  existingDependents: DependentData[],
+  newDependents: ExternalDependentRecord[],
+  normalized: ShahoEmployee,
+  employeeId: string,
+): {
+  employeeNo: string;
+  name: string;
+  status: "ok" | "warning" | "error";
+  changes: Array<{
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
+  }>;
+  isNew: boolean;
+  existingEmployeeId: string;
+} | undefined {
+  const changes: Array<{
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
+  }> = [];
+  
+  // ブール値変換ヘルパー関数
+  const toBoolean = (
+    value: boolean | string | number | undefined,
+  ): boolean | undefined => {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value === "boolean") return value;
+    const normalized = String(value).toLowerCase().trim();
+    if (
+      normalized === "1" ||
+      normalized === "true" ||
+      normalized === "on" ||
+      normalized === "yes" ||
+      normalized === "有"
+    ) {
+      return true;
+    }
+    if (
+      normalized === "0" ||
+      normalized === "false" ||
+      normalized === "off" ||
+      normalized === "no" ||
+      normalized === "無"
+    ) {
+      return false;
+    }
+    return undefined;
+  };
+
+  const formatDependentValue = (value: unknown): string | null => {
+    if (value === undefined || value === null || value === "") {
+      return null;
+    }
+    if (typeof value === "boolean") {
+      return value ? "有" : "無";
+    }
+    return `${value}`;
+  };
+
+  // 最大長を取得
+  const maxLength = Math.max(existingDependents.length, newDependents.length);
+  
+  for (let i = 0; i < maxLength; i++) {
+    const prefix = maxLength > 1 ? `扶養${i + 1} ` : "扶養 ";
+    const oldDep = existingDependents[i];
+    const newDep = newDependents[i];
+
+    if (!oldDep && newDep) {
+      // 新規追加：有効なデータがある場合のみ差分を追加
+      const hasNewData = Object.values(newDep).some(
+        (value) =>
+          value !== "" &&
+          value !== null &&
+          value !== false &&
+          value !== undefined,
+      );
+      if (hasNewData) {
+        if (newDep.relationship) {
+          changes.push({
+            field: `${prefix}続柄`,
+            oldValue: null,
+            newValue: newDep.relationship.trim(),
+          });
+        }
+        if (newDep.nameKanji) {
+          changes.push({
+            field: `${prefix}氏名(漢字)`,
+            oldValue: null,
+            newValue: newDep.nameKanji.trim(),
+          });
+        }
+        if (newDep.nameKana) {
+          changes.push({
+            field: `${prefix}氏名(カナ)`,
+            oldValue: null,
+            newValue: newDep.nameKana.trim(),
+          });
+        }
+        if (newDep.birthDate) {
+          changes.push({
+            field: `${prefix}生年月日`,
+            oldValue: null,
+            newValue: newDep.birthDate.trim(),
+          });
+        }
+        if (newDep.gender) {
+          changes.push({
+            field: `${prefix}性別`,
+            oldValue: null,
+            newValue: newDep.gender.trim(),
+          });
+        }
+        if (newDep.personalNumber) {
+          changes.push({
+            field: `${prefix}個人番号`,
+            oldValue: null,
+            newValue: newDep.personalNumber.trim(),
+          });
+        }
+        if (newDep.basicPensionNumber) {
+          changes.push({
+            field: `${prefix}基礎年金番号`,
+            oldValue: null,
+            newValue: newDep.basicPensionNumber.trim(),
+          });
+        }
+        if (newDep.cohabitationType) {
+          changes.push({
+            field: `${prefix}同居区分`,
+            oldValue: null,
+            newValue: newDep.cohabitationType.trim(),
+          });
+        }
+        if (newDep.address) {
+          changes.push({
+            field: `${prefix}住所`,
+            oldValue: null,
+            newValue: newDep.address.trim(),
+          });
+        }
+        if (newDep.occupation) {
+          changes.push({
+            field: `${prefix}職業`,
+            oldValue: null,
+            newValue: newDep.occupation.trim(),
+          });
+        }
+        if (newDep.annualIncome !== undefined && newDep.annualIncome !== null) {
+          changes.push({
+            field: `${prefix}年収`,
+            oldValue: null,
+            newValue: formatDependentValue(newDep.annualIncome),
+          });
+        }
+        if (newDep.dependentStartDate) {
+          changes.push({
+            field: `${prefix}被扶養者になった日`,
+            oldValue: null,
+            newValue: newDep.dependentStartDate.trim(),
+          });
+        }
+        if (newDep.thirdCategoryFlag !== undefined && newDep.thirdCategoryFlag !== null) {
+          changes.push({
+            field: `${prefix}国民年金第3号被保険者該当フラグ`,
+            oldValue: null,
+            newValue: formatDependentValue(toBoolean(newDep.thirdCategoryFlag)),
+          });
+        }
+      }
+    } else if (oldDep && !newDep) {
+      // 削除
+      if (oldDep.nameKanji) {
+        changes.push({
+          field: `${prefix}氏名(漢字)`,
+          oldValue: oldDep.nameKanji,
+          newValue: null,
+        });
+      }
+    } else if (oldDep && newDep) {
+      // 更新：各フィールドを比較
+      const fields: Array<{
+        key: keyof DependentData;
+        label: string;
+        newValue?: string | number | boolean;
+      }> = [
+        { key: "relationship", label: "続柄", newValue: newDep.relationship?.trim() },
+        { key: "nameKanji", label: "氏名(漢字)", newValue: newDep.nameKanji?.trim() },
+        { key: "nameKana", label: "氏名(カナ)", newValue: newDep.nameKana?.trim() },
+        { key: "birthDate", label: "生年月日", newValue: newDep.birthDate?.trim() },
+        { key: "gender", label: "性別", newValue: newDep.gender?.trim() },
+        { key: "personalNumber", label: "個人番号", newValue: newDep.personalNumber?.trim() },
+        { key: "basicPensionNumber", label: "基礎年金番号", newValue: newDep.basicPensionNumber?.trim() },
+        { key: "cohabitationType", label: "同居区分", newValue: newDep.cohabitationType?.trim() },
+        { key: "address", label: "住所", newValue: newDep.address?.trim() },
+        { key: "occupation", label: "職業", newValue: newDep.occupation?.trim() },
+        { key: "annualIncome", label: "年収", newValue: newDep.annualIncome !== undefined && newDep.annualIncome !== null ? Number(newDep.annualIncome) : undefined },
+        { key: "dependentStartDate", label: "被扶養者になった日", newValue: newDep.dependentStartDate?.trim() },
+      ];
+
+      fields.forEach(({ key, label, newValue }) => {
+        const oldValue = formatDependentValue(oldDep[key]);
+        const formattedNewValue = formatDependentValue(newValue);
+        if (oldValue !== formattedNewValue) {
+          changes.push({
+            field: `${prefix}${label}`,
+            oldValue,
+            newValue: formattedNewValue,
+          });
+        }
+      });
+
+      // 国民年金第3号被保険者該当フラグ
+      const oldThirdCategoryFlag = formatDependentValue(oldDep.thirdCategoryFlag);
+      const newThirdCategoryFlag = formatDependentValue(toBoolean(newDep.thirdCategoryFlag));
+      if (oldThirdCategoryFlag !== newThirdCategoryFlag) {
+        changes.push({
+          field: `${prefix}国民年金第3号被保険者該当フラグ`,
+          oldValue: oldThirdCategoryFlag,
+          newValue: newThirdCategoryFlag,
+        });
+      }
+    }
+  }
+
+  if (changes.length === 0) return undefined;
+
+  return {
+    employeeNo: normalized.employeeNo,
+    name: normalized.name,
+    status: "ok",
+    changes,
+    isNew: false,
+    existingEmployeeId: employeeId,
+  };
+}
+
+/**
  * APIキーを検証する関数
  */
 function validateApiKey(request: functions.https.Request): boolean {
@@ -868,6 +1109,7 @@ export const receiveEmployees = functions.https.onRequest(
         employeeId: string;
         dependentRecords: ExternalDependentRecord[];
         hasDependent: boolean;
+        normalized: ShahoEmployee;
       }> = [];
       // 変更履歴記録用の差分情報を収集
       const employeeDiffsForHistory: Array<{
@@ -1227,6 +1469,7 @@ export const receiveEmployees = functions.https.onRequest(
               employeeId: existing.id,
               dependentRecords: record.dependents,
               hasDependent,
+              normalized,
             });
           } else if (hasDependent === false) {
             // 扶養の有無が明示的にfalseの場合は、既存の扶養情報を削除するために追加
@@ -1235,6 +1478,7 @@ export const receiveEmployees = functions.https.onRequest(
               employeeId: existing.id,
               dependentRecords: [],
               hasDependent: false,
+              normalized,
             });
           }
         } else {
@@ -1366,6 +1610,7 @@ export const receiveEmployees = functions.https.onRequest(
               employeeId: targetRef.id,
               dependentRecords: record.dependents,
               hasDependent,
+              normalized,
             });
           } else if (hasDependent === false) {
             // 扶養の有無が明示的にfalseの場合は、既存の扶養情報を削除するために追加
@@ -1374,6 +1619,7 @@ export const receiveEmployees = functions.https.onRequest(
               employeeId: targetRef.id,
               dependentRecords: [],
               hasDependent: false,
+              normalized,
             });
           }
         }
@@ -1621,7 +1867,7 @@ export const receiveEmployees = functions.https.onRequest(
 
       // 扶養情報を保存
       const dependentPromises: Promise<any>[] = [];
-      dependentDataToProcess.forEach(({ employeeId, dependentRecords, hasDependent }) => {
+      dependentDataToProcess.forEach(({ employeeId, dependentRecords, hasDependent, normalized }) => {
         dependentPromises.push(
           (async () => {
             const db = admin.firestore();
@@ -1630,8 +1876,39 @@ export const receiveEmployees = functions.https.onRequest(
               .doc(employeeId)
               .collection("dependents");
 
-            // 既存の扶養家族情報を削除
+            // 既存の扶養家族情報を取得
             const existingDependentsSnap = await dependentsRef.get();
+            const existingDependents: DependentData[] = existingDependentsSnap.docs.map(
+              (doc) => ({
+                ...(doc.data() as DependentData),
+                id: doc.id,
+              })
+            );
+            
+            // 扶養情報の差分を計算して変更履歴に追加
+            const dependentDiff = buildDependentDiff(
+              existingDependents,
+              dependentRecords,
+              normalized,
+              employeeId,
+            );
+            if (dependentDiff) {
+              // 既存のdiffを検索してマージ、なければ追加
+              const existingDiffIndex = employeeDiffsForHistory.findIndex(
+                (diff) => diff.existingEmployeeId === employeeId,
+              );
+              if (existingDiffIndex >= 0) {
+                // 既存のdiffに変更をマージ
+                employeeDiffsForHistory[existingDiffIndex].changes.push(
+                  ...dependentDiff.changes,
+                );
+              } else {
+                // 新しいdiffを追加
+                employeeDiffsForHistory.push(dependentDiff);
+              }
+            }
+            
+            // 既存の扶養家族情報を削除
             const deletePromises = existingDependentsSnap.docs.map((doc) => doc.ref.delete());
             await Promise.all(deletePromises);
 

@@ -64,6 +64,7 @@ export interface CalculationRow {
   welfareEmployerBonus: number;
   standardHealthBonus: number;
   standardWelfareBonus: number;
+  exemption?: boolean;
   error?: string;
 }
 
@@ -278,6 +279,7 @@ export class CalculationDataService {
                       row.nursingEmployerBonus = totalNursingBonus.employer;
                       row.welfareEmployeeBonus = totalWelfareBonus.employee;
                       row.welfareEmployerBonus = totalWelfareBonus.employer;
+                      // 一時免除フラグはbuildRowで設定済み
                       
                       rows.push(row);
                     });
@@ -587,6 +589,7 @@ export class CalculationDataService {
         nursingEmployerBonus: 0,
         welfareEmployeeBonus: 0,
         welfareEmployerBonus: 0,
+        exemption: false,
         error: errors.join(' '),
       };
     }
@@ -713,6 +716,7 @@ export class CalculationDataService {
       nursingEmployerBonus: nursingBonus.employer,
       welfareEmployeeBonus: welfareBonus.employee,
       welfareEmployerBonus: welfareBonus.employer,
+      exemption: isExempted,
     };
   }
 
