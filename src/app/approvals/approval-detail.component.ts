@@ -1439,6 +1439,7 @@ export class ApprovalDetailComponent implements OnDestroy {
               welfareEmployerBonus: row.welfareEmployerBonus,
               standardHealthBonus: row.standardHealthBonus,
               standardWelfareBonus: row.standardWelfareBonus,
+              exemption: row.exemption,
               error: row.error,
             }));
           await this.persistCalculationResults(validRows, validQuery);
@@ -1675,6 +1676,10 @@ export class ApprovalDetailComponent implements OnDestroy {
                   ? row.welfareEmployeeMonthly
                   : undefined,
             };
+
+            if (row.exemption !== undefined) {
+              payrollMonthData.exemption = row.exemption;
+            }
 
             // undefinedのフィールドを除外
             Object.keys(payrollMonthData).forEach((key) => {
