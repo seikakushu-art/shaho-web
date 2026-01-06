@@ -436,7 +436,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           relationship: dependent.relationship ?? '',
           nameKanji: dependent.nameKanji ?? '',
           nameKana: dependent.nameKana ?? '',
-          birthDate: this.formatDateForInput(dependent.birthDate) || '',
+          birthDate: this.formatDateForInput(dependent.birthDate ?? undefined) || '',
           gender: dependent.gender ?? '',
           personalNumber: dependent.personalNumber ?? '',
           basicPensionNumber: dependent.basicPensionNumber ?? '',
@@ -445,7 +445,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           occupation: dependent.occupation ?? '',
           annualIncome: dependent.annualIncome ?? null,
           dependentStartDate:
-            this.formatDateForInput(dependent.dependentStartDate) || '',
+            this.formatDateForInput(dependent.dependentStartDate ?? undefined) || '',
           thirdCategoryFlag: dependent.thirdCategoryFlag ?? false,
         }));
         // 元の扶養情報を保存（配列のコピー）
@@ -1994,7 +1994,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
               newValue: newDep.nameKana || null,
             });
           }
-          const oldBirthDate = this.formatDateForInput(oldDep.birthDate);
+          const oldBirthDate = this.formatDateForInput(oldDep.birthDate ?? undefined);
           if (oldBirthDate !== newDep.birthDate) {
             changes.push({
               field: `${prefix}生年月日`,
@@ -2058,7 +2058,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
             });
           }
           const oldStartDate = this.formatDateForInput(
-            oldDep.dependentStartDate,
+            oldDep.dependentStartDate ?? undefined,
           );
           if (oldStartDate !== newDep.dependentStartDate) {
             changes.push({

@@ -1265,7 +1265,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           relationship: dependent.relationship ?? '',
           nameKanji: dependent.nameKanji ?? '',
           nameKana: dependent.nameKana ?? '',
-          birthDate: this.formatDateForInput(dependent.birthDate),
+          birthDate: this.formatDateForInput(dependent.birthDate ?? undefined),
           gender: dependent.gender ?? '',
           personalNumber: dependent.personalNumber ?? '',
           basicPensionNumber: dependent.basicPensionNumber ?? '',
@@ -1273,7 +1273,7 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           address: dependent.address ?? '',
           occupation: dependent.occupation ?? '',
           annualIncome: dependent.annualIncome ?? null,
-          dependentStartDate: this.formatDateForInput(dependent.dependentStartDate),
+          dependentStartDate: this.formatDateForInput(dependent.dependentStartDate ?? undefined),
           thirdCategoryFlag: dependent.thirdCategoryFlag ?? false,
         }));
       });

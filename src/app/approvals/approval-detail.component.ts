@@ -444,7 +444,7 @@ export class ApprovalDetailComponent implements OnDestroy {
           relationship: dep.relationship || undefined,
           nameKanji: dep.nameKanji || undefined,
           nameKana: dep.nameKana || undefined,
-          birthDate: dep.birthDate || undefined,
+          birthDate: dep.birthDate,
           gender: dep.gender || undefined,
           personalNumber: dep.personalNumber || undefined,
           basicPensionNumber: dep.basicPensionNumber || undefined,
@@ -452,12 +452,15 @@ export class ApprovalDetailComponent implements OnDestroy {
           address: dep.address || undefined,
           occupation: dep.occupation || undefined,
           annualIncome: dep.annualIncome ?? undefined,
-          dependentStartDate: dep.dependentStartDate || undefined,
+          dependentStartDate: dep.dependentStartDate,
           thirdCategoryFlag: dep.thirdCategoryFlag || false,
         };
 
-        const cleanedDependent = this.removeUndefinedFields(
+        const normalizedDependent = this.normalizeDependentDates(
           dependentData,
+        ) as DependentData;
+        const cleanedDependent = this.removeUndefinedFields(
+          normalizedDependent,
         ) as DependentData;
         await this.employeesService.addOrUpdateDependent(
           employeeId,
@@ -532,25 +535,77 @@ export class ApprovalDetailComponent implements OnDestroy {
       ? undefined
       : basicInfo.currentAddress || undefined;
 
+    // 削除されたフィールドを識別するため、employeeDiffsのchangesを確認
+    const deletedFields = new Set<string>();
+    if (employeeDiff?.changes) {
+      employeeDiff.changes.forEach((change) => {
+        // oldValueがあってnewValueが空文字列やnullの場合は削除されたフィールド
+        if (
+          change.oldValue &&
+          change.oldValue !== '' &&
+          change.oldValue !== null &&
+          (!change.newValue || change.newValue === '' || change.newValue === null)
+        ) {
+          // フィールド名をマッピング
+          const fieldMapping: Record<string, string> = {
+            '性別': 'gender',
+            'マイナンバー': 'personalNumber',
+            '基礎年金番号': 'basicPensionNumber',
+            '郵便番号': 'postalCode',
+            '住民票住所': 'address',
+            '現住所': 'currentAddress',
+            '健保標準報酬月額': 'healthStandardMonthly',
+            '厚年標準報酬月額': 'welfareStandardMonthly',
+            '健康保険被保険者番号': 'healthInsuredNumber',
+            '厚生年金被保険者番号': 'pensionInsuredNumber',
+          };
+          const fieldKey = fieldMapping[change.field];
+          if (fieldKey) {
+            deletedFields.add(fieldKey);
+          }
+        }
+      });
+    }
+
     const employeePayload: Partial<ShahoEmployee> = {
       employeeNo: basicInfo.employeeNo,
       name: basicInfo.name,
       kana: basicInfo.kana || undefined,
-      gender: basicInfo.gender || undefined,
+      gender: deletedFields.has('gender')
+        ? (null as any)
+        : basicInfo.gender || undefined,
       birthDate: basicInfo.birthDate || undefined,
-      postalCode: basicInfo.postalCode || undefined,
-      address: basicInfo.address || undefined,
-      currentAddress: currentAddress,
+      postalCode: deletedFields.has('postalCode')
+        ? (null as any)
+        : basicInfo.postalCode || undefined,
+      address: deletedFields.has('address')
+        ? (null as any)
+        : basicInfo.address || undefined,
+      currentAddress: deletedFields.has('currentAddress')
+        ? (null as any)
+        : currentAddress,
       department: basicInfo.department || undefined,
       workPrefecture: basicInfo.workPrefecture || undefined,
-      personalNumber: basicInfo.myNumber || undefined,
-      basicPensionNumber: basicInfo.basicPensionNumber || undefined,
+      personalNumber: deletedFields.has('personalNumber')
+        ? (null as any)
+        : basicInfo.myNumber || undefined,
+      basicPensionNumber: deletedFields.has('basicPensionNumber')
+        ? (null as any)
+        : basicInfo.basicPensionNumber || undefined,
       hasDependent: basicInfo.hasDependent ?? undefined,
-      healthStandardMonthly: healthStandardMonthly || undefined,
-      welfareStandardMonthly: welfareStandardMonthly || undefined,
+      healthStandardMonthly: deletedFields.has('healthStandardMonthly')
+        ? (null as any)
+        : healthStandardMonthly || undefined,
+      welfareStandardMonthly: deletedFields.has('welfareStandardMonthly')
+        ? (null as any)
+        : welfareStandardMonthly || undefined,
       standardBonusAnnualTotal: socialInsurance?.healthCumulative || undefined,
-      healthInsuredNumber: socialInsurance?.healthInsuredNumber || undefined,
-      pensionInsuredNumber: socialInsurance?.pensionInsuredNumber || undefined,
+      healthInsuredNumber: deletedFields.has('healthInsuredNumber')
+        ? (null as any)
+        : socialInsurance?.healthInsuredNumber || undefined,
+      pensionInsuredNumber: deletedFields.has('pensionInsuredNumber')
+        ? (null as any)
+        : socialInsurance?.pensionInsuredNumber || undefined,
       careSecondInsured: socialInsurance?.careSecondInsured || false,
       healthAcquisition: socialInsurance?.healthAcquisition || undefined,
       pensionAcquisition: socialInsurance?.pensionAcquisition || undefined,
@@ -594,7 +649,7 @@ export class ApprovalDetailComponent implements OnDestroy {
         relationship: dep.relationship || undefined,
         nameKanji: dep.nameKanji || undefined,
         nameKana: dep.nameKana || undefined,
-        birthDate: dep.birthDate || undefined,
+        birthDate: dep.birthDate,
         gender: dep.gender || undefined,
         personalNumber: dep.personalNumber || undefined,
         basicPensionNumber: dep.basicPensionNumber || undefined,
@@ -602,12 +657,15 @@ export class ApprovalDetailComponent implements OnDestroy {
         address: dep.address || undefined,
         occupation: dep.occupation || undefined,
         annualIncome: dep.annualIncome ?? undefined,
-        dependentStartDate: dep.dependentStartDate || undefined,
+        dependentStartDate: dep.dependentStartDate,
         thirdCategoryFlag: dep.thirdCategoryFlag || false,
       };
 
-      const cleanedDependent = this.removeUndefinedFields(
+      const normalizedDependent = this.normalizeDependentDates(
         dependentData,
+      ) as DependentData;
+      const cleanedDependent = this.removeUndefinedFields(
+        normalizedDependent,
       ) as DependentData;
       dependentDataList.push(cleanedDependent);
     }
@@ -1079,6 +1137,25 @@ export class ApprovalDetailComponent implements OnDestroy {
       console.error(`エラー: ${message}`, error);
       throw error;
     }
+  }
+
+   /**
+   * 扶養の生年月日・被扶養開始日について、空文字やnullが申請で渡された場合でも
+   * 明示的にnullとして扱い、既存日付を削除できるようにする。
+   */
+   private normalizeDependentDates(
+    dep: Partial<DependentData>,
+  ): Partial<DependentData> {
+    const normalize = (value: string | null | undefined): string | null | undefined =>
+      value === '' || value === null ? null : value;
+
+    const result = {
+      ...dep,
+      birthDate: normalize(dep.birthDate),
+      dependentStartDate: normalize(dep.dependentStartDate),
+    } as Partial<DependentData>;
+    
+    return result;
   }
 
   private removeUndefinedFields<T extends object>(obj: T): T {
