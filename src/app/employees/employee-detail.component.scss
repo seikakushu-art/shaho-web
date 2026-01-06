@@ -371,6 +371,13 @@
     overflow: hidden;
     box-sizing: border-box;
   }
+
+  .modal-content.delete-approval-modal {
+    width: min(1200px, 95vw);
+    max-width: 95vw;
+    max-height: 95vh;
+    min-height: 600px;
+  }
   
   .modal-content header {
     display: flex;
@@ -423,10 +430,14 @@
   .modal-content .approval-grid {
     display: grid;
     grid-template-columns: minmax(200px, 280px) 1fr;
+    grid-template-rows: minmax(400px, 1fr);
     gap: 1.5rem;
     margin: 1rem 0;
-    overflow: hidden;
+    overflow: visible;
     min-width: 0;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
   }
 
   @media (max-width: 768px) {
@@ -440,6 +451,11 @@
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 400px;
+    align-self: stretch;
   }
 
   .approval-summary .label {
@@ -461,12 +477,42 @@
     gap: 1rem;
     min-width: 0;
     overflow: hidden;
+    height: 100%;
+    min-height: 400px;
+    align-self: stretch;
+  }
+
+  .modal-content .approval-form app-flow-selector {
+    max-width: calc(33.33% - 0.33rem);
+  }
+
+  @media (max-width: 768px) {
+    .modal-content .approval-form app-flow-selector {
+      max-width: 100%;
+    }
+  }
+
+  .comment-attachment-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    align-items: stretch;
+    flex: 1;
+    min-height: 300px;
+    overflow: hidden;
+  }
+
+  @media (max-width: 768px) {
+    .comment-attachment-row {
+      grid-template-columns: 1fr;
+    }
   }
 
   .approval-form .field {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    height: 100%;
   }
 
   .approval-form .field .field-header {
@@ -495,6 +541,8 @@
     font-size: 0.9rem;
     box-sizing: border-box;
     resize: vertical;
+    flex: 1;
+    min-height: 150px;
   }
 
   .modal-content .attachment-box {
@@ -504,6 +552,12 @@
     background: #f8fafc;
     box-sizing: border-box;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 300px;
+    max-height: 100%;
+    align-self: stretch;
   }
 
   .attachment-header {
@@ -521,6 +575,8 @@
     cursor: pointer;
     font-size: 0.9rem;
     font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .upload-button input {
@@ -534,6 +590,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
   }
 
   .selected-files li {
@@ -574,7 +633,7 @@
     flex-shrink: 0;
   }
 
-  .modal-content > *:not(.panel-header):not(.navigation) {
+  .modal-content > *:not(.panel-header):not(.navigation):not(.approval-grid) {
     overflow-y: auto;
     flex: 1;
     min-height: 0;

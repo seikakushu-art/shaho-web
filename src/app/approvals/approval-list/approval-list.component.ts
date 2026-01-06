@@ -214,9 +214,11 @@ export class ApprovalListComponent {
           });
         }
       });
-      return Array.from(applicantMap.values()).sort((a, b) => 
-        a.displayName.localeCompare(b.displayName, 'ja')
-      );
+      return Array.from(applicantMap.values())
+        .filter(applicant => applicant.displayName !== '外部データ連携')
+        .sort((a, b) => 
+          a.displayName.localeCompare(b.displayName, 'ja')
+        );
     }),
   );
 

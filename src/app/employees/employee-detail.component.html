@@ -446,7 +446,7 @@
 
 <!-- 削除承認依頼モーダル -->
 <section *ngIf="showDeletePanel" class="modal-overlay" (click)="cancelDelete()">
-    <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-content delete-approval-modal" (click)="$event.stopPropagation()">
         <div class="panel-header">
             <div>
                 <h2>社員削除の承認依頼</h2>
@@ -463,39 +463,41 @@
             <div class="approval-form">
                 <app-flow-selector [label]="'承認ルート'" [selectedFlowId]="selectedDeleteFlowId"
                     (flowSelected)="onDeleteFlowSelected($event)" (flowsUpdated)="onDeleteFlowsUpdated($event)" />
-                <label class="field">
-                    <div class="field-header">
-                        <span>申請コメント</span>
-                        <span class="hint" [class.warning]="deleteComment.length >= 450">
-                            {{ deleteComment.length }}/500 文字
-                        </span>
-                    </div>
-                    <textarea rows="4" [(ngModel)]="deleteComment" placeholder="例：退職に伴う削除です。"
-                        maxlength="500"></textarea>
-                </label>
-                <div class="attachment-box">
-                    <div class="attachment-header">
-                        <div>
-                            <p class="label">申請時の添付</p>
-                            <p class="hint">1件10MB以内・最大5件・合計30MB</p>
+                <div class="comment-attachment-row">
+                    <label class="field">
+                        <div class="field-header">
+                            <span>申請コメント</span>
+                            <span class="hint" [class.warning]="deleteComment.length >= 450">
+                                {{ deleteComment.length }}/500 文字
+                            </span>
                         </div>
-                        <label class="upload-button">
-                            <input type="file" multiple (change)="onFileSelected($event)"
-                                [accept]="attachmentService.acceptExtensions" />
-                            ファイルを選択
-                        </label>
-                    </div>
-                    <p class="hint">合計サイズ: {{ formatFileSize(totalSelectedSize()) }}</p>
-                    <p class="hint warning" *ngIf="validationErrors.length">{{ validationErrors[0] }}</p>
-                    <ul class="selected-files" *ngIf="selectedFiles.length">
-                        <li *ngFor="let file of selectedFiles; let i = index">
+                        <textarea rows="4" [(ngModel)]="deleteComment" placeholder="例：退職に伴う削除です。"
+                            maxlength="500"></textarea>
+                    </label>
+                    <div class="attachment-box">
+                        <div class="attachment-header">
                             <div>
-                                <p class="file-name">{{ file.name }}</p>
-                                <p class="hint">{{ formatFileSize(file.size) }}</p>
+                                <p class="label">申請時の添付</p>
+                                <p class="hint">1件10MB以内・最大5件・合計30MB</p>
                             </div>
-                            <button type="button" class="ghost" (click)="removeFile(i)">削除</button>
-                        </li>
-                    </ul>
+                            <label class="upload-button">
+                                <input type="file" multiple (change)="onFileSelected($event)"
+                                    [accept]="attachmentService.acceptExtensions" />
+                                ファイルを選択
+                            </label>
+                        </div>
+                        <p class="hint">合計サイズ: {{ formatFileSize(totalSelectedSize()) }}</p>
+                        <p class="hint warning" *ngIf="validationErrors.length">{{ validationErrors[0] }}</p>
+                        <ul class="selected-files" *ngIf="selectedFiles.length">
+                            <li *ngFor="let file of selectedFiles; let i = index">
+                                <div>
+                                    <p class="file-name">{{ file.name }}</p>
+                                    <p class="hint">{{ formatFileSize(file.size) }}</p>
+                                </div>
+                                <button type="button" class="ghost" (click)="removeFile(i)">削除</button>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
