@@ -278,22 +278,12 @@ export class CsvExportComponent implements OnInit {
     try {
       const allEmployees = await firstValueFrom(this.employeesService.getEmployees());
       
-      // 計算コンテキストがある場合は、そのコンテキストに含まれる従業員のみから選択肢を生成
-      let targetEmployees = allEmployees;
-      if (this.calculationContext?.rows?.length) {
-        const calculationEmployeeNos = new Set(
-          this.calculationContext.rows.map((row) => row.employeeNo),
-        );
-        targetEmployees = allEmployees.filter((employee) =>
-          calculationEmployeeNos.has(employee.employeeNo),
-        );
-      }
-      
+      // 部署・勤務地の選択肢は常にすべての従業員から生成（計算コンテキストに関係なく）
       this.departmentOptions = this.buildUniqueList(
-        targetEmployees.map((employee) => employee.department),
+        allEmployees.map((employee) => employee.department),
       );
       this.workPrefectureOptions = this.buildUniqueList(
-        targetEmployees.map((employee) => employee.workPrefecture),
+        allEmployees.map((employee) => employee.workPrefecture),
       );
       
       this.departmentOptions = this.withAllOption(this.departmentOptions);
