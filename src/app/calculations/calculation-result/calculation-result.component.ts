@@ -1679,7 +1679,28 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           return;
         }
 
-        
+        // 標準報酬月額計算の場合は、標準報酬月額のみを社員マスタに保存
+        // 給与月次データ（payrollMonth）は保存しない
+        if (query.type === 'standard') {
+          const standardMonthlyUpdate: Record<string, number> = {};
+          if (row.healthStandardMonthly !== undefined && row.healthStandardMonthly !== null) {
+            standardMonthlyUpdate['healthStandardMonthly'] =
+              row.healthStandardMonthly;
+          }
+          if (row.welfareStandardMonthly !== undefined && row.welfareStandardMonthly !== null) {
+            standardMonthlyUpdate['welfareStandardMonthly'] =
+              row.welfareStandardMonthly;
+          }
+          if (Object.keys(standardMonthlyUpdate).length > 0) {
+            await this.employeesService.updateEmployee(
+              employeeId,
+              standardMonthlyUpdate,
+            );
+          }
+          return;
+        }
+
+        // 標準報酬月額計算以外（標準賞与額計算、社会保険料計算）の場合のみ給与月次データを保存
         const healthMonthlyTotal =
           (row.healthEmployeeMonthly || 0) + (row.healthEmployerMonthly || 0);
         const careMonthlyTotal =
@@ -1703,6 +1724,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         }
 
         // 月次データを準備
+        // amountには実際の給与額を保存（平均値は保存しない）
         const payrollMonthData: any = {
           amount: row.monthlySalary || undefined,
           healthInsuranceMonthly:
@@ -1753,21 +1775,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
           payrollMonthData,
           bonusPaymentData,
         );
-        const standardMonthlyUpdate: Record<string, number> = {};
-        if (row.healthStandardMonthly && row.healthStandardMonthly > 0) {
-          standardMonthlyUpdate['healthStandardMonthly'] =
-            row.healthStandardMonthly;
-        }
-        if (row.welfareStandardMonthly && row.welfareStandardMonthly > 0) {
-          standardMonthlyUpdate['welfareStandardMonthly'] =
-            row.welfareStandardMonthly;
-        }
-        if (Object.keys(standardMonthlyUpdate).length > 0) {
-          await this.employeesService.updateEmployee(
-            employeeId,
-            standardMonthlyUpdate,
-          );
-        }
       });
 
       await Promise.all(savePromises);

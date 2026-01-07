@@ -527,17 +527,10 @@ export class CalculationDataService {
       }
     }
 
-    // 標準報酬月額計算の場合は、計算対象の月の給与データの平均を計算
+    // 給与月次データには実際の給与額を保存する（平均値は保存しない）
+    // 標準報酬月額計算の場合でも、対象月の実際の給与データを使用
     const monthlySalaryResult =
-      context.calculationType === 'standard'
-        ? this.calculateAverageMonthlySalary(
-            payrolls,
-            context.standardCalculationMethod,
-            context.targetMonth,
-            employee,
-          )
-        : (payrolls.find((p) => p.yearMonth === context.targetMonth)?.amount ??
-          0);
+      payrolls.find((p) => p.yearMonth === context.targetMonth)?.amount ?? 0;
 
     const monthlySalary = monthlySalaryResult ?? 0;
     const bonusRecord = specifiedBonusRecord ?? (

@@ -1860,6 +1860,39 @@ export class ApprovalDetailComponent implements OnDestroy {
               };
             }
 
+            // 標準報酬月額計算の場合は、標準報酬月額のみを社員マスタに保存
+            // 給与月次データ（payrollMonth）は保存しない
+            if (query.type === 'standard') {
+              const updatePayload: Partial<ShahoEmployee> = {};
+              if (
+                row.healthStandardMonthly !== undefined &&
+                row.healthStandardMonthly !== null
+              ) {
+                updatePayload.healthStandardMonthly = row.healthStandardMonthly;
+              }
+              if (
+                row.welfareStandardMonthly !== undefined &&
+                row.welfareStandardMonthly !== null
+              ) {
+                updatePayload.welfareStandardMonthly = row.welfareStandardMonthly;
+              }
+              if (Object.keys(updatePayload).length > 0) {
+                console.log(
+                  `標準報酬月額を更新します: 社員番号=${row.employeeNo}`,
+                  updatePayload,
+                );
+                await this.employeesService.updateEmployee(
+                  employeeId,
+                  updatePayload,
+                );
+              }
+              return {
+                success: true,
+                employeeNo: row.employeeNo,
+              };
+            }
+
+            // 標準報酬月額計算以外（標準賞与額計算、社会保険料計算）の場合のみ給与月次データを保存
             console.log(`保険料計算: 社員番号=${row.employeeNo}`, {
               健康保険料月額: {
                 従業員負担: row.healthEmployeeMonthly,
@@ -1903,6 +1936,7 @@ export class ApprovalDetailComponent implements OnDestroy {
             }
 
             // 月次データを準備（従業員負担分のみ保存）
+            // amountには実際の給与額を保存（平均値は保存しない）
             const payrollMonthData: any = {
               amount: row.monthlySalary || undefined,
               // 健康保険料、介護保険料、厚生年金保険料（月額）を従業員負担分のみで保存
