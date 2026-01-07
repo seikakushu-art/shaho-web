@@ -2110,7 +2110,6 @@ describe('CalculationDataService insurance premiums', () => {
         department: '開発',
         workPrefecture: '東京',
         careSecondInsured: true,
-        exemption: true,
         healthStandardMonthly: 280000,
         welfareStandardMonthly: 280000,
         payrolls: [
@@ -2120,6 +2119,7 @@ describe('CalculationDataService insurance premiums', () => {
             workedDays: 20,
             bonusPaidOn: '2024-07-10',
             bonusTotal: 400000,
+            exemption: true,
           },
         ],
       } as unknown as ShahoEmployee,

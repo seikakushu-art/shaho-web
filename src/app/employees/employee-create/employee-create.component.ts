@@ -437,7 +437,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           nameKanji: dependent.nameKanji ?? '',
           nameKana: dependent.nameKana ?? '',
           birthDate: this.formatDateForInput(dependent.birthDate ?? undefined) || '',
-          gender: dependent.gender ?? '',
+          gender: normalizeGenderForForm(dependent.gender),
           personalNumber: dependent.personalNumber ?? '',
           basicPensionNumber: dependent.basicPensionNumber ?? '',
           cohabitationType: dependent.cohabitationType ?? '',

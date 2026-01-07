@@ -46,7 +46,7 @@
                     </div>
                     <div>
                         <label>性別</label>
-                        <p class="value">{{ basicInfo.gender || '—' }}</p>
+                        <p class="value">{{ normalizeGenderForDisplay(basicInfo.gender) }}</p>
                     </div>
                     <div>
                         <label>所属部署</label>
@@ -264,7 +264,7 @@
                     </div>
                     <div>
                         <label>性別</label>
-                        <p class="value">{{ dependentInfo.gender || '—' }}</p>
+                        <p class="value">{{ normalizeGenderForDisplay(dependentInfo.gender) }}</p>
                     </div>
                     <div>
                         <label>個人番号</label>

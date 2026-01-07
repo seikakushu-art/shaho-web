@@ -94,7 +94,21 @@ export class CalculationTargetComponent implements OnInit {
       this.bonusOnly = false;
     }
 
-    this.restoreInsuranceSelections(params.get('insurances'));
+    // 標準報酬月額計算または標準賞与額計算の場合は保険種別の選択をクリア
+    if (this.calculationType === 'standard' || this.calculationType === 'bonus') {
+      this.insuranceSelections = {
+        health: false,
+        welfare: false,
+        nursing: false,
+      };
+    } else {
+      // 社会保険料計算の場合は、URLパラメータから復元、なければデフォルトで全チェック
+      const queryInsurances = params.get('insurances');
+      if (queryInsurances) {
+        this.restoreInsuranceSelections(queryInsurances);
+      }
+      // URLパラメータがない場合は、初期値（すべてtrue）が維持される
+    }
     this.loadEmployeeMetadata();
   }
 
@@ -197,13 +211,20 @@ export class CalculationTargetComponent implements OnInit {
         welfare: false,
         nursing: false,
       };
+    } else if (this.calculationType === 'insurance') {
+      // 社会保険料計算の場合は、すべての保険種別をデフォルトでチェック
+      this.insuranceSelections = {
+        health: true,
+        welfare: true,
+        nursing: true,
+      };
     }
   }
 
-  private restoreInsuranceSelections(queryInsurances: string | null) {
-    if (!queryInsurances) return;
+  private restoreInsuranceSelections(queryInsurances: string) {
+    if (!queryInsurances || queryInsurances.trim() === '') return;
 
-    const activeLabels = new Set(queryInsurances.split(','));
+    const activeLabels = new Set(queryInsurances.split(',').map(s => s.trim()).filter(s => s.length > 0));
     (Object.keys(this.insuranceSelections) as InsuranceKey[]).forEach((key) => {
       this.insuranceSelections[key] = activeLabels.has(this.insuranceLabels[key]);
     });

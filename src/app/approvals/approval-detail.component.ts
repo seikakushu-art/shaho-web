@@ -617,6 +617,10 @@ export class ApprovalDetailComponent implements OnDestroy {
       healthInsuredNumber: deletedFields.has('healthInsuredNumber')
         ? (null as any)
         : socialInsurance?.healthInsuredNumber || undefined,
+      // healthInsuredNumberを削除する際は、旧フィールドinsuredNumberも一緒に削除
+      insuredNumber: deletedFields.has('healthInsuredNumber')
+        ? (null as any)
+        : undefined,
       pensionInsuredNumber: deletedFields.has('pensionInsuredNumber')
         ? (null as any)
         : socialInsurance?.pensionInsuredNumber || undefined,
@@ -1197,10 +1201,61 @@ export class ApprovalDetailComponent implements OnDestroy {
               success: true,
               employeeNo: employeeNo,
               action: firstItem.isNew ? '新規登録' : '更新',
+              employeeId: employeeId, // 新規社員作成後のIDを返す
             };
           },
         ),
       );
+
+      // 新規社員作成後に、承認リクエストのemployeeDiffsにexistingEmployeeIdを設定
+      if (this.approval?.id && this.approval?.employeeDiffs) {
+        const updatedDiffs = this.approval.employeeDiffs.map((diff) => {
+          // 新規社員で、まだexistingEmployeeIdが設定されていない場合
+          if (diff.isNew && !diff.existingEmployeeId) {
+            // 対応する結果からemployeeIdを取得
+            const result = results.find((r) => {
+              if (r.status === 'fulfilled') {
+                const fulfilled = r as PromiseFulfilledResult<{
+                  success: boolean;
+                  employeeNo: string;
+                  action: string;
+                  employeeId?: string;
+                }>;
+                return (
+                  fulfilled.value.employeeNo === diff.employeeNo &&
+                  fulfilled.value.action === '新規登録'
+                );
+              }
+              return false;
+            });
+            if (result && result.status === 'fulfilled') {
+              const employeeId = result.value.employeeId;
+              if (employeeId) {
+                return {
+                  ...diff,
+                  existingEmployeeId: employeeId,
+                };
+              }
+            }
+          }
+          return diff;
+        });
+
+        // 変更があった場合のみ更新
+        const hasChanges = updatedDiffs.some(
+          (diff, index) =>
+            diff.existingEmployeeId !==
+            this.approval!.employeeDiffs![index]?.existingEmployeeId,
+        );
+
+        if (hasChanges) {
+          const updatedRequest: ApprovalRequest = {
+            ...this.approval,
+            employeeDiffs: updatedDiffs,
+          };
+          await this.workflowService.saveRequest(updatedRequest);
+        }
+      }
 
       const successCount = results.filter(
         (r) => r.status === 'fulfilled',

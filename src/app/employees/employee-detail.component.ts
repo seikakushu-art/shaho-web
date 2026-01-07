@@ -16,6 +16,7 @@ import { FlowSelectorComponent } from '../approvals/flow-selector/flow-selector.
 import { InsuranceRatesService, InsuranceRateRecord } from '../app/services/insurance-rates.service';
 import { CorporateInfoService } from '../app/services/corporate-info.service';
 import { calculateStandardBonus, extractBonusCap } from '../calculations/calculation-utils';
+import { normalizeEmployeeNoForComparison } from './employee-import/csv-import.utils';
 
 interface AuditInfo {
   registeredAt: string;
@@ -373,6 +374,33 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
   displayAmount(value: number | null | undefined): string {
     if (value === null || value === undefined) return '—';
     return `${value.toLocaleString()} 円`;
+  }
+
+  /**
+   * 性別を「男性」または「女性」に正規化して表示
+   * それ以外の値の場合は「—」を返す
+   */
+  normalizeGenderForDisplay(gender: string | null | undefined): string {
+    if (!gender) return '—';
+    const normalized = gender.trim();
+    if (
+      normalized === '男' ||
+      normalized === '男性' ||
+      normalized.toLowerCase() === 'male' ||
+      normalized === '1'
+    ) {
+      return '男性';
+    }
+    if (
+      normalized === '女' ||
+      normalized === '女性' ||
+      normalized.toLowerCase() === 'female' ||
+      normalized === '2'
+    ) {
+      return '女性';
+    }
+    // 「男性」「女性」以外の値の場合は「—」を返す
+    return '—';
   }
 
   /**
@@ -1298,7 +1326,8 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
       healthStandardMonthly: employee.healthStandardMonthly ?? null,
       welfareStandardMonthly: employee.welfareStandardMonthly ?? null,
       standardBonusAnnualTotal: employee.standardBonusAnnualTotal ?? null,
-      healthInsuredNumber: employee.healthInsuredNumber ?? employee.insuredNumber ?? '',
+      // healthInsuredNumberがnullの場合は、insuredNumberをフォールバックしない（削除されたことを明確にするため）
+      healthInsuredNumber: employee.healthInsuredNumber ?? '',
       pensionInsuredNumber: employee.pensionInsuredNumber ?? '',
       healthAcquisition: this.formatDateForInput(employee.healthAcquisition),
       pensionAcquisition: this.formatDateForInput(employee.pensionAcquisition),
@@ -1449,7 +1478,54 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
     }
     const diffs = request.employeeDiffs || [];
     return diffs.some((diff) => {
-      return diff.existingEmployeeId === employee.id;
+      // 既存社員の場合はexistingEmployeeIdでマッチ
+      if (diff.existingEmployeeId === employee.id) {
+        return true;
+      }
+      // 新規社員の場合はemployeeNoでマッチ（承認後にexistingEmployeeIdが設定されていない場合のフォールバック）
+      // ただし、削除された社員の履歴を除外するため、承認日時が現在の社員の作成日時以降であることを確認
+      if (diff.isNew && diff.employeeNo && employee.employeeNo) {
+        const employeeNoMatches =
+          normalizeEmployeeNoForComparison(diff.employeeNo) ===
+          normalizeEmployeeNoForComparison(employee.employeeNo);
+        
+        if (!employeeNoMatches) {
+          return false;
+        }
+
+        // 承認リクエストが承認済みで、承認日時が現在の社員の作成日時以降であることを確認
+        if (request.status !== 'approved') {
+          return false;
+        }
+
+        // 承認日時を取得
+        const approvalHistory = request.histories?.find(
+          (h) => h.action === 'approve',
+        );
+        if (!approvalHistory) {
+          return false;
+        }
+
+        const approvalDate =
+          typeof approvalHistory.createdAt?.toDate === 'function'
+            ? approvalHistory.createdAt.toDate()
+            : new Date(approvalHistory.createdAt as unknown as string);
+
+        // 現在の社員の作成日時を取得
+        if (!employee.createdAt) {
+          // 作成日時がない場合は、employeeNoマッチのみで判定（既存データの互換性のため）
+          return true;
+        }
+
+        const employeeCreatedDate =
+          typeof employee.createdAt === 'string'
+            ? new Date(employee.createdAt)
+            : employee.createdAt;
+
+        // 承認日時が社員の作成日時以降であることを確認（削除された社員の履歴を除外）
+        return approvalDate >= employeeCreatedDate;
+      }
+      return false;
     });
   }
 
@@ -1516,9 +1592,56 @@ export class EmployeeDetailComponent implements OnInit, OnDestroy {
           : '';
 
         const targetDiffs =
-          req.employeeDiffs?.filter((diff) =>
-            diff.existingEmployeeId === this.employee!.id,
-          ) ?? [];
+          req.employeeDiffs?.filter((diff) => {
+            // 既存社員の場合はexistingEmployeeIdでマッチ
+            if (diff.existingEmployeeId === this.employee!.id) {
+              return true;
+            }
+            // 新規社員の場合はemployeeNoでマッチ（承認後にexistingEmployeeIdが設定されていない場合のフォールバック）
+            // ただし、削除された社員の履歴を除外するため、承認日時が現在の社員の作成日時以降であることを確認
+            if (diff.isNew && diff.employeeNo && this.employee!.employeeNo) {
+              const employeeNoMatches =
+                normalizeEmployeeNoForComparison(diff.employeeNo) ===
+                normalizeEmployeeNoForComparison(this.employee!.employeeNo);
+              
+              if (!employeeNoMatches) {
+                return false;
+              }
+
+              // 承認リクエストが承認済みで、承認日時が現在の社員の作成日時以降であることを確認
+              if (req.status !== 'approved') {
+                return false;
+              }
+
+              // 承認日時を取得
+              const approvalHistory = req.histories?.find(
+                (h) => h.action === 'approve',
+              );
+              if (!approvalHistory) {
+                return false;
+              }
+
+              const approvalDate =
+                typeof approvalHistory.createdAt?.toDate === 'function'
+                  ? approvalHistory.createdAt.toDate()
+                  : new Date(approvalHistory.createdAt as unknown as string);
+
+              // 現在の社員の作成日時を取得
+              if (!this.employee!.createdAt) {
+                // 作成日時がない場合は、employeeNoマッチのみで判定（既存データの互換性のため）
+                return true;
+              }
+
+              const employeeCreatedDate =
+                typeof this.employee!.createdAt === 'string'
+                  ? new Date(this.employee!.createdAt)
+                  : this.employee!.createdAt;
+
+              // 承認日時が社員の作成日時以降であることを確認（削除された社員の履歴を除外）
+              return approvalDate >= employeeCreatedDate;
+            }
+            return false;
+          }) ?? [];
 
         targetDiffs.forEach((diff) => {
           diff.changes
