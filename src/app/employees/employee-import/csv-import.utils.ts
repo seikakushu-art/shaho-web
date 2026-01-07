@@ -461,6 +461,41 @@ export function validateDataFormat(
     }
   });
 
+  // 支払基礎日数の特別なバリデーション（正の整数のみ）
+  const workedDaysValue = row.data['支払基礎日数'];
+  if (workedDaysValue) {
+    const normalized = workedDaysValue.replace(/,/g, '');
+    const numValue = Number(normalized);
+    if (Number.isNaN(numValue)) {
+      errors.push(
+        buildError(
+          row.rowIndex,
+          '支払基礎日数',
+          '支払基礎日数は数値で入力してください',
+          templateType,
+        ),
+      );
+    } else if (!Number.isInteger(numValue)) {
+      errors.push(
+        buildError(
+          row.rowIndex,
+          '支払基礎日数',
+          '支払基礎日数は整数で入力してください',
+          templateType,
+        ),
+      );
+    } else if (numValue <= 0) {
+      errors.push(
+        buildError(
+          row.rowIndex,
+          '支払基礎日数',
+          '支払基礎日数は1以上の整数で入力してください',
+          templateType,
+        ),
+      );
+    }
+  }
+
   // 郵便番号の検証（7桁の数字、ハイフンは任意）
   POSTAL_CODE_FIELDS.forEach((field) => {
     const value = row.data[field];
@@ -692,6 +727,10 @@ export function validateDataRange(
     if (!value) return;
     // データは既に正規化済み
     const normalized = Number(value.replace(/,/g, ''));
+    // 支払基礎日数は別途チェックするためスキップ
+    if (field === '支払基礎日数') {
+      return;
+    }
     if (normalized < 0) {
       errors.push(
         buildError(
@@ -703,6 +742,24 @@ export function validateDataRange(
       );
     }
   });
+
+  // 支払基礎日数の範囲チェック（1以上の整数）
+  const workedDaysValue = row.data['支払基礎日数'];
+  if (workedDaysValue) {
+    const normalized = Number(workedDaysValue.replace(/,/g, ''));
+    if (!Number.isNaN(normalized) && Number.isInteger(normalized)) {
+      if (normalized <= 0) {
+        errors.push(
+          buildError(
+            row.rowIndex,
+            '支払基礎日数',
+            '支払基礎日数は1以上の整数で入力してください',
+            templateType,
+          ),
+        );
+      }
+    }
+  }
 
   const start = row.data['算定対象期間開始年月'];
   const end = row.data['算定対象期間終了年月'];

@@ -872,8 +872,19 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     };
 
     try {
-      const results = await Promise.allSettled(
-        selectedRows.map(async (row) => {
+      // バッチ処理のサイズ（同時に処理する件数）
+      const BATCH_SIZE = 10;
+      // リトライ回数
+      const MAX_RETRIES = 3;
+      // リトライ間隔（ミリ秒）
+      const RETRY_DELAY = 1000;
+
+      // リトライロジック付きの処理関数
+      const processRowWithRetry = async (
+        row: DifferenceRow,
+        retryCount = 0,
+      ): Promise<{ success: boolean; employeeNo: string; action: string }> => {
+        try {
           if (!row.parsedRow) {
             throw new Error(`行 ${row.id} のデータが見つかりません`);
           }
@@ -1229,8 +1240,49 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
             employeeNo: row.employeeNo,
             action: row.isNew ? '新規登録' : '更新',
           };
-        }),
-      );
+        } catch (error) {
+          // リトライ可能なエラーかどうかを判定
+          const isRetryableError =
+            error instanceof Error &&
+            (error.message.includes('unavailable') ||
+              error.message.includes('deadline-exceeded') ||
+              error.message.includes('resource-exhausted') ||
+              error.message.includes('network') ||
+              error.message.includes('timeout'));
+
+          if (isRetryableError && retryCount < MAX_RETRIES) {
+            // リトライ前に待機
+            await new Promise((resolve) =>
+              setTimeout(resolve, RETRY_DELAY * (retryCount + 1)),
+            );
+            // リトライ
+            return processRowWithRetry(row, retryCount + 1);
+          }
+
+          // リトライ不可能または最大リトライ回数に達した場合はエラーをスロー
+          throw error;
+        }
+      };
+
+      // バッチ処理で実行
+      const results: Array<PromiseSettledResult<{
+        success: boolean;
+        employeeNo: string;
+        action: string;
+      }>> = [];
+
+      for (let i = 0; i < selectedRows.length; i += BATCH_SIZE) {
+        const batch = selectedRows.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(
+          batch.map((row) => processRowWithRetry(row)),
+        );
+        results.push(...batchResults);
+
+        // バッチ間で少し待機（Firestoreの負荷を軽減）
+        if (i + BATCH_SIZE < selectedRows.length) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
 
       const successCount = results.filter(
         (r) => r.status === 'fulfilled',
@@ -1251,15 +1303,20 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         );
         await this.calculateDifferences(validatedRows);
       } else {
-        const errors = results
-          .filter((r) => r.status === 'rejected')
-          .map(
-            (r) =>
-              (r as PromiseRejectedResult).reason?.message || '不明なエラー',
-          )
-          .join('\n');
+        // エラーの詳細を収集（バッチ処理のため、インデックスを適切にマッピング）
+        const errorDetails: string[] = [];
+        let rowIndex = 0;
+        for (const result of results) {
+          if (result.status === 'rejected') {
+            const row = selectedRows[rowIndex];
+            const errorMessage =
+              (result as PromiseRejectedResult).reason?.message || '不明なエラー';
+            errorDetails.push(`社員番号 ${row.employeeNo}: ${errorMessage}`);
+          }
+          rowIndex++;
+        }
         alert(
-          `${successCount}件成功、${failureCount}件失敗しました。\n\nエラー:\n${errors}`,
+          `${successCount}件成功、${failureCount}件失敗しました。\n\nエラー詳細:\n${errorDetails.join('\n')}`,
         );
       }
     } catch (error) {
@@ -1377,9 +1434,32 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         groupedByEmployeeNo.get(employeeNo)!.push(item);
       });
 
-      const results = await Promise.allSettled(
-        Array.from(groupedByEmployeeNo.entries()).map(
-          async ([employeeNo, items]) => {
+      // バッチ処理のサイズ（同時に処理する件数）
+      const BATCH_SIZE = 10;
+      // リトライ回数
+      const MAX_RETRIES = 3;
+      // リトライ間隔（ミリ秒）
+      const RETRY_DELAY = 1000;
+
+      // リトライロジック付きの処理関数
+      const processGroupWithRetry = async (
+        [employeeNo, items]: [
+          string,
+          Array<{
+            employeeNo: string;
+            csvData: Record<string, string>;
+            isNew: boolean;
+            existingEmployeeId?: string;
+            templateType: string;
+          }>,
+        ],
+        retryCount = 0,
+      ): Promise<{
+        success: boolean;
+        employeeNo: string;
+        action: string;
+      }> => {
+        try {
             // 最初の行で従業員情報を登録/更新
             const firstItem = items[0];
             const csvData = firstItem.csvData;
@@ -1702,32 +1782,79 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
               employeeNo: employeeNo,
               action: firstItem.isNew ? '新規登録' : '更新',
             };
-          },
-        ),
-      );
+          } catch (error) {
+            // リトライ可能なエラーかどうかを判定
+            const isRetryableError =
+              error instanceof Error &&
+              (error.message.includes('unavailable') ||
+                error.message.includes('deadline-exceeded') ||
+                error.message.includes('resource-exhausted') ||
+                error.message.includes('network') ||
+                error.message.includes('timeout'));
 
-      const successCount = results.filter(
-        (r) => r.status === 'fulfilled',
-      ).length;
-      const failureCount = results.filter(
-        (r) => r.status === 'rejected',
-      ).length;
+            if (isRetryableError && retryCount < MAX_RETRIES) {
+              // リトライ前に待機
+              await new Promise((resolve) =>
+                setTimeout(resolve, RETRY_DELAY * (retryCount + 1)),
+              );
+              // リトライ
+              return processGroupWithRetry([employeeNo, items], retryCount + 1);
+            }
 
-      if (failureCount === 0) {
-        console.log(`${successCount}件の社員データを正常に保存しました。`);
-      } else {
-        const errors = results
-          .filter((r) => r.status === 'rejected')
-          .map(
-            (r) =>
-              (r as PromiseRejectedResult).reason?.message || '不明なエラー',
-          )
-          .join('\n');
-        console.error(
-          `${successCount}件成功、${failureCount}件失敗しました。\n\nエラー:\n${errors}`,
-        );
-        throw new Error(`一部のデータの保存に失敗しました: ${errors}`);
-      }
+            // リトライ不可能または最大リトライ回数に達した場合はエラーをスロー
+            throw error;
+          }
+        };
+
+        // バッチ処理で実行
+        const groupedEntries = Array.from(groupedByEmployeeNo.entries());
+        const results: Array<PromiseSettledResult<{
+          success: boolean;
+          employeeNo: string;
+          action: string;
+        }>> = [];
+
+        for (let i = 0; i < groupedEntries.length; i += BATCH_SIZE) {
+          const batch = groupedEntries.slice(i, i + BATCH_SIZE);
+          const batchResults = await Promise.allSettled(
+            batch.map((entry) => processGroupWithRetry(entry)),
+          );
+          results.push(...batchResults);
+
+          // バッチ間で少し待機（Firestoreの負荷を軽減）
+          if (i + BATCH_SIZE < groupedEntries.length) {
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+        }
+
+        const successCount = results.filter(
+          (r) => r.status === 'fulfilled',
+        ).length;
+        const failureCount = results.filter(
+          (r) => r.status === 'rejected',
+        ).length;
+
+        if (failureCount === 0) {
+          console.log(`${successCount}件の社員データを正常に保存しました。`);
+        } else {
+          // エラーの詳細を収集
+          const errorDetails: string[] = [];
+          let entryIndex = 0;
+          for (const result of results) {
+            if (result.status === 'rejected') {
+              const [employeeNo] = groupedEntries[entryIndex];
+              const errorMessage =
+                (result as PromiseRejectedResult).reason?.message || '不明なエラー';
+              errorDetails.push(`社員番号 ${employeeNo}: ${errorMessage}`);
+            }
+            entryIndex++;
+          }
+          const errorMessage = errorDetails.join('\n');
+          console.error(
+            `${successCount}件成功、${failureCount}件失敗しました。\n\nエラー詳細:\n${errorMessage}`,
+          );
+          throw new Error(`一部のデータの保存に失敗しました: ${errorMessage}`);
+        }
     } catch (error) {
       const message =
         error instanceof Error

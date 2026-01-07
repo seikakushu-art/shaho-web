@@ -49,6 +49,7 @@
         id="targetMonth"
         type="month"
         [(ngModel)]="targetMonth"
+        [disabled]="isAcquisitionDecision"
       />
       <select
         *ngIf="isRegularDecision"

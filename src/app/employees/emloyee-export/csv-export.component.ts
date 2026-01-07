@@ -374,6 +374,38 @@ export class CsvExportComponent implements OnInit {
       return [...alwaysIncluded, 'targetMonth', 'exemption', ...this.bonusFields];
     }
     
+    // 標準報酬月額計算の場合は、健康保険（月例 個人）から個人＋会社 保険料合計までの項目と賞与関連の項目、一時免除フラグ、標準賞与額を除外
+    if (this.calculationContext?.meta?.calculationType === 'standard') {
+      const excludedFields: CalculationResultField[] = [
+        'exemption',
+        'standardHealthBonus',
+        'standardWelfareBonus',
+        'healthEmployeeMonthly',
+        'healthEmployerMonthly',
+        'nursingEmployeeMonthly',
+        'nursingEmployerMonthly',
+        'welfareEmployeeMonthly',
+        'welfareEmployerMonthly',
+        'healthTotalMonthly',
+        'nursingTotalMonthly',
+        'welfareTotalMonthly',
+        'healthEmployeeBonus',
+        'healthEmployerBonus',
+        'nursingEmployeeBonus',
+        'nursingEmployerBonus',
+        'welfareEmployeeBonus',
+        'welfareEmployerBonus',
+        'healthTotalBonus',
+        'nursingTotalBonus',
+        'welfareTotalBonus',
+        'totalPremium',
+      ];
+      const otherFields = this.calculationFieldOptions
+        .map((option) => option.key)
+        .filter((key) => !alwaysIncluded.includes(key) && !excludedFields.includes(key));
+      return [...alwaysIncluded, ...otherFields];
+    }
+    
     // 社会保険料計算で保険種別が1つのみ選択されている場合
     if (
       this.calculationContext?.meta?.calculationType === 'insurance' &&

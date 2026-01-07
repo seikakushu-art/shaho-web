@@ -1830,9 +1830,23 @@ export class ApprovalDetailComponent implements OnDestroy {
         }
       });
 
-      const savePromises = validRows
-        .filter((row) => !row.error)
-        .map(async (row) => {
+      // バッチ処理で保存（一度に処理する件数を制限）
+      const BATCH_SIZE = 10; // 一度に処理する社員数
+      const rowsToProcess = validRows.filter((row) => !row.error);
+      const allResults: Array<{
+        success: boolean;
+        employeeNo: string;
+        error?: string;
+      }> = [];
+
+      // バッチごとに処理
+      for (let i = 0; i < rowsToProcess.length; i += BATCH_SIZE) {
+        const batch = rowsToProcess.slice(i, i + BATCH_SIZE);
+        console.log(
+          `バッチ処理中: ${i + 1}件目〜${Math.min(i + BATCH_SIZE, rowsToProcess.length)}件目 / 全${rowsToProcess.length}件`,
+        );
+
+        const savePromises = batch.map(async (row) => {
           try {
             const employeeId = employeeMap.get(row.employeeNo);
             if (!employeeId) {
@@ -2034,38 +2048,35 @@ export class ApprovalDetailComponent implements OnDestroy {
           }
         });
 
-      const results = await Promise.allSettled(savePromises);
-      const successCount = results.filter(
-        (r) => r.status === 'fulfilled' && r.value?.success,
-      ).length;
-      const failureCount = results.filter(
-        (r) =>
-          r.status === 'rejected' ||
-          (r.status === 'fulfilled' && !r.value?.success),
-      ).length;
+        const batchResults = await Promise.allSettled(savePromises);
+        batchResults.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            allResults.push(result.value);
+          } else {
+            allResults.push({
+              success: false,
+              employeeNo: '不明',
+              error: `不明なエラー: ${result.reason}`,
+            });
+          }
+        });
+
+        console.log(
+          `バッチ処理完了: ${i + 1}件目〜${Math.min(i + BATCH_SIZE, rowsToProcess.length)}件目`,
+        );
+      }
+
+      const successCount = allResults.filter((r) => r.success).length;
+      const failureCount = allResults.filter((r) => !r.success).length;
 
       console.log(
         `社員情報の保存結果: 成功=${successCount}件, 失敗=${failureCount}件`,
       );
 
       if (failureCount > 0) {
-        const failures = results
-          .filter(
-            (r) =>
-              r.status === 'rejected' ||
-              (r.status === 'fulfilled' && !r.value?.success),
-          )
-          .map((r) => {
-            if (r.status === 'rejected') {
-              return `不明なエラー: ${r.reason}`;
-            }
-            const value = r.value as {
-              success: boolean;
-              employeeNo: string;
-              error?: string;
-            };
-            return `社員番号 ${value.employeeNo}: ${value.error || '不明なエラー'}`;
-          });
+        const failures = allResults
+          .filter((r) => !r.success)
+          .map((r) => `社員番号 ${r.employeeNo}: ${r.error || '不明なエラー'}`);
         console.warn('保存に失敗した社員:', failures);
       }
 

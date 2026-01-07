@@ -832,6 +832,27 @@ function validateExternalRecord(
     }
   }
 
+  // 給与データのバリデーション
+  if (record.payrolls && Array.isArray(record.payrolls)) {
+    for (let i = 0; i < record.payrolls.length; i++) {
+      const payrollRecord = record.payrolls[i];
+      
+      // 支払基礎日数のバリデーション（正の整数のみ）
+      if (payrollRecord.workedDays !== undefined && payrollRecord.workedDays !== null) {
+        const workedDaysValue = Number(payrollRecord.workedDays);
+        if (isNaN(workedDaysValue)) {
+          return `給与データ${i + 1}の支払基礎日数は数値で入力してください`;
+        }
+        if (!Number.isInteger(workedDaysValue)) {
+          return `給与データ${i + 1}の支払基礎日数は整数で入力してください`;
+        }
+        if (workedDaysValue <= 0) {
+          return `給与データ${i + 1}の支払基礎日数は1以上の整数で入力してください`;
+        }
+      }
+    }
+  }
+
   return undefined;
 }
 
