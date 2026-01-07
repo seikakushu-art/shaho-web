@@ -34,7 +34,10 @@ import {
   ShahoEmployee,
   ShahoEmployeesService,
 } from '../app/services/shaho-employees.service';
-import { normalizeEmployeeNoForComparison, normalizeNameForComparison } from '../employees/employee-import/csv-import.utils';
+import {
+  normalizeEmployeeNoForComparison,
+  normalizeNameForComparison,
+} from '../employees/employee-import/csv-import.utils';
 import {
   CalculationDataService,
   CalculationRow,
@@ -404,7 +407,10 @@ export class ApprovalDetailComponent implements OnDestroy {
             : new Date(b.createdAt as unknown as string).getTime();
         return bTime - aTime;
       })[0];
-      approvedBy = latestApprovalHistory.actorName || latestApprovalHistory.actorId || undefined;
+      approvedBy =
+        latestApprovalHistory.actorName ||
+        latestApprovalHistory.actorId ||
+        undefined;
     }
 
     const employeeRef = await this.employeesService.addEmployee(
@@ -417,7 +423,11 @@ export class ApprovalDetailComponent implements OnDestroy {
     const employeeId = employeeRef.id;
 
     // 承認リクエストのemployeeDiffsにexistingEmployeeIdを設定
-    if (request.id && request.employeeDiffs && request.employeeDiffs.length > 0) {
+    if (
+      request.id &&
+      request.employeeDiffs &&
+      request.employeeDiffs.length > 0
+    ) {
       const updatedDiffs = request.employeeDiffs.map((diff) => ({
         ...diff,
         existingEmployeeId: employeeId,
@@ -473,7 +483,9 @@ export class ApprovalDetailComponent implements OnDestroy {
   /**
    * 承認済みの社員情報更新申請を社員コレクションへ反映
    */
-  private async persistUpdatedEmployee(request: ApprovalRequest): Promise<void> {
+  private async persistUpdatedEmployee(
+    request: ApprovalRequest,
+  ): Promise<void> {
     if (!request.employeeData) {
       throw new Error('employeeData が見つかりません');
     }
@@ -544,20 +556,22 @@ export class ApprovalDetailComponent implements OnDestroy {
           change.oldValue &&
           change.oldValue !== '' &&
           change.oldValue !== null &&
-          (!change.newValue || change.newValue === '' || change.newValue === null)
+          (!change.newValue ||
+            change.newValue === '' ||
+            change.newValue === null)
         ) {
           // フィールド名をマッピング
           const fieldMapping: Record<string, string> = {
-            '性別': 'gender',
-            'マイナンバー': 'personalNumber',
-            '基礎年金番号': 'basicPensionNumber',
-            '郵便番号': 'postalCode',
-            '住民票住所': 'address',
-            '現住所': 'currentAddress',
-            '健保標準報酬月額': 'healthStandardMonthly',
-            '厚年標準報酬月額': 'welfareStandardMonthly',
-            '健康保険被保険者番号': 'healthInsuredNumber',
-            '厚生年金被保険者番号': 'pensionInsuredNumber',
+            性別: 'gender',
+            マイナンバー: 'personalNumber',
+            基礎年金番号: 'basicPensionNumber',
+            郵便番号: 'postalCode',
+            住民票住所: 'address',
+            現住所: 'currentAddress',
+            健保標準報酬月額: 'healthStandardMonthly',
+            厚年標準報酬月額: 'welfareStandardMonthly',
+            健康保険被保険者番号: 'healthInsuredNumber',
+            厚生年金被保険者番号: 'pensionInsuredNumber',
           };
           const fieldKey = fieldMapping[change.field];
           if (fieldKey) {
@@ -634,6 +648,55 @@ export class ApprovalDetailComponent implements OnDestroy {
     // 社員情報を更新
     await this.employeesService.updateEmployee(employeeId, cleanedEmployee);
 
+    // 扶養情報の削除されたフィールドを識別
+    const deletedDependentFields = new Map<
+      number,
+      Set<keyof DependentData>
+    >();
+    if (employeeDiff?.changes) {
+      employeeDiff.changes.forEach((change) => {
+        // 扶養情報のフィールドかどうかをチェック
+        if (!change.field.startsWith('扶養')) return;
+
+        // oldValueがあってnewValueが空文字列やnullの場合は削除されたフィールド
+        if (
+          change.oldValue &&
+          change.oldValue !== '' &&
+          change.oldValue !== null &&
+          (!change.newValue ||
+            change.newValue === '' ||
+            change.newValue === null)
+        ) {
+          // フィールド名から扶養情報のインデックスを抽出（「扶養1 氏名(カナ)」→1、「扶養 氏名(カナ)」→0）
+          const match = change.field.match(/^扶養(\d+)?\s+(.+)$/);
+          if (match) {
+            const dependentIndex = match[1] ? parseInt(match[1], 10) - 1 : 0;
+            const fieldName = match[2];
+
+            // フィールド名をマッピング
+            const fieldMapping: Record<string, keyof DependentData> = {
+              '氏名(カナ)': 'nameKana',
+              性別: 'gender',
+              個人番号: 'personalNumber',
+              基礎年金番号: 'basicPensionNumber',
+              同居区分: 'cohabitationType',
+              住所: 'address',
+              職業: 'occupation',
+              年収: 'annualIncome',
+            };
+
+            const fieldKey = fieldMapping[fieldName];
+            if (fieldKey) {
+              if (!deletedDependentFields.has(dependentIndex)) {
+                deletedDependentFields.set(dependentIndex, new Set());
+              }
+              deletedDependentFields.get(dependentIndex)!.add(fieldKey);
+            }
+          }
+        }
+      });
+    }
+
     // 扶養情報を同期
     const dependentsSource =
       dependentInfos && dependentInfos.length > 0
@@ -643,20 +706,39 @@ export class ApprovalDetailComponent implements OnDestroy {
           : [];
 
     const dependentDataList: DependentData[] = [];
-    for (const dep of dependentsSource) {
+    for (let i = 0; i < dependentsSource.length; i++) {
+      const dep = dependentsSource[i];
       if (!this.hasDependentData(dep)) continue;
+
+      const deletedFields = deletedDependentFields.get(i) || new Set();
       const dependentData: DependentData = {
         relationship: dep.relationship || undefined,
         nameKanji: dep.nameKanji || undefined,
-        nameKana: dep.nameKana || undefined,
+        nameKana: deletedFields.has('nameKana')
+          ? (null as any)
+          : dep.nameKana || undefined,
         birthDate: dep.birthDate,
-        gender: dep.gender || undefined,
-        personalNumber: dep.personalNumber || undefined,
-        basicPensionNumber: dep.basicPensionNumber || undefined,
-        cohabitationType: dep.cohabitationType || undefined,
-        address: dep.address || undefined,
-        occupation: dep.occupation || undefined,
-        annualIncome: dep.annualIncome ?? undefined,
+        gender: deletedFields.has('gender')
+          ? (null as any)
+          : dep.gender || undefined,
+        personalNumber: deletedFields.has('personalNumber')
+          ? (null as any)
+          : dep.personalNumber || undefined,
+        basicPensionNumber: deletedFields.has('basicPensionNumber')
+          ? (null as any)
+          : dep.basicPensionNumber || undefined,
+        cohabitationType: deletedFields.has('cohabitationType')
+          ? (null as any)
+          : dep.cohabitationType || undefined,
+        address: deletedFields.has('address')
+          ? (null as any)
+          : dep.address || undefined,
+        occupation: deletedFields.has('occupation')
+          ? (null as any)
+          : dep.occupation || undefined,
+        annualIncome: deletedFields.has('annualIncome')
+          ? (null as any)
+          : dep.annualIncome ?? undefined,
         dependentStartDate: dep.dependentStartDate,
         thirdCategoryFlag: dep.thirdCategoryFlag || false,
       };
@@ -708,7 +790,10 @@ export class ApprovalDetailComponent implements OnDestroy {
               : new Date(b.createdAt as unknown as string).getTime();
           return bTime - aTime;
         })[0];
-        approvedBy = latestApprovalHistory.actorName || latestApprovalHistory.actorId || undefined;
+        approvedBy =
+          latestApprovalHistory.actorName ||
+          latestApprovalHistory.actorId ||
+          undefined;
       }
     }
 
@@ -882,14 +967,22 @@ export class ApprovalDetailComponent implements OnDestroy {
                 // 現在の休業状態が空文字列または「なし」の場合は、日付フィールドをクリア
                 currentLeaveStartDate: (() => {
                   const status = csvData['現在の休業状態'];
-                  if (!status || status.trim() === '' || status.trim() === 'なし') {
+                  if (
+                    !status ||
+                    status.trim() === '' ||
+                    status.trim() === 'なし'
+                  ) {
                     return undefined;
                   }
                   return csvData['現在の休業開始日'] || undefined;
                 })(),
                 currentLeaveEndDate: (() => {
                   const status = csvData['現在の休業状態'];
-                  if (!status || status.trim() === '' || status.trim() === 'なし') {
+                  if (
+                    !status ||
+                    status.trim() === '' ||
+                    status.trim() === 'なし'
+                  ) {
                     return undefined;
                   }
                   return csvData['現在の休業予定終了日'] || undefined;
@@ -1007,9 +1100,8 @@ export class ApprovalDetailComponent implements OnDestroy {
               const workedDays = csvData['支払基礎日数'];
               const bonusPaidOn = csvData['賞与支給日'];
               const bonusTotal = csvData['賞与総支給額'];
-              const exemptionFlag = toBoolean(
-                csvData['健康保険・厚生年金一時免除フラグ'],
-              ) ?? false;
+              const exemptionFlag =
+                toBoolean(csvData['健康保険・厚生年金一時免除フラグ']) ?? false;
 
               // 月給データの処理
               if (monthlyPayMonth) {
@@ -1032,7 +1124,10 @@ export class ApprovalDetailComponent implements OnDestroy {
 
                 // undefinedのフィールドを除外
                 Object.keys(payrollMonthData).forEach((key) => {
-                  if (key !== 'exemption' && payrollMonthData[key] === undefined) {
+                  if (
+                    key !== 'exemption' &&
+                    payrollMonthData[key] === undefined
+                  ) {
                     delete payrollMonthData[key];
                   }
                 });
@@ -1139,14 +1234,16 @@ export class ApprovalDetailComponent implements OnDestroy {
     }
   }
 
-   /**
+  /**
    * 扶養の生年月日・被扶養開始日について、空文字やnullが申請で渡された場合でも
    * 明示的にnullとして扱い、既存日付を削除できるようにする。
    */
-   private normalizeDependentDates(
+  private normalizeDependentDates(
     dep: Partial<DependentData>,
   ): Partial<DependentData> {
-    const normalize = (value: string | null | undefined): string | null | undefined =>
+    const normalize = (
+      value: string | null | undefined,
+    ): string | null | undefined =>
       value === '' || value === null ? null : value;
 
     const result = {
@@ -1154,7 +1251,7 @@ export class ApprovalDetailComponent implements OnDestroy {
       birthDate: normalize(dep.birthDate),
       dependentStartDate: normalize(dep.dependentStartDate),
     } as Partial<DependentData>;
-    
+
     return result;
   }
 
@@ -1767,7 +1864,11 @@ export class ApprovalDetailComponent implements OnDestroy {
 
             // 賞与明細データを準備（従業員負担分のみ保存）
             let bonusPaymentData: any | undefined;
-            if (row.bonusPaymentDate && row.bonusTotalPay !== undefined && row.bonusTotalPay > 0) {
+            if (
+              row.bonusPaymentDate &&
+              row.bonusTotalPay !== undefined &&
+              row.bonusTotalPay > 0
+            ) {
               bonusPaymentData = {
                 bonusPaidOn: row.bonusPaymentDate,
                 bonusTotal: row.bonusTotalPay,
@@ -1955,15 +2056,12 @@ export class ApprovalDetailComponent implements OnDestroy {
     const filteredDependents = dependents.filter((dep) =>
       this.hasDependentData(dep),
     );
-    const shouldSkip =
-      hasDependent === undefined && filteredDependents.length === 0;
+    const hasDependentEntries = dependents.length > 0;
+    const hasMeaningfulDependents = filteredDependents.length > 0;
+    const hasOnlyEmptyDependents =
+      hasDependentEntries && !hasMeaningfulDependents;
 
-    if (shouldSkip) {
-      return;
-    }
-
-    // 「扶養の有無」がfalseの場合は既存の扶養情報をすべて削除
-    if (hasDependent === false) {
+    const deleteExistingDependents = async (): Promise<void> => {
       const existingDependents = await firstValueFrom(
         this.employeesService.getDependents(employeeId).pipe(take(1)),
       );
@@ -1972,6 +2070,20 @@ export class ApprovalDetailComponent implements OnDestroy {
           await this.employeesService.deleteDependent(employeeId, existing.id);
         }
       }
+    };
+
+    // 「扶養の有無」がfalseの場合は既存の扶養情報をすべて削除
+    if (hasDependent === false) {
+      await deleteExistingDependents();
+      return;
+    }
+
+    // CSVに扶養欄はあるが、データが空の場合も削除対象とする
+    if (
+      hasDependent === undefined &&
+      (dependents.length === 0 || hasOnlyEmptyDependents)
+    ) {
+      await deleteExistingDependents();
       return;
     }
 
@@ -2039,5 +2151,3 @@ export class ApprovalDetailComponent implements OnDestroy {
     return value || '—';
   }
 }
-
-

@@ -2080,7 +2080,23 @@ export class ShahoEmployeesService {
     // undefinedのフィールドを除外（Firestoreはundefinedを許可しない）
     const cleanedData = this.removeUndefinedFields(data);
 
-    return setDoc(dependentRef, cleanedData, { merge: true });
+    // null値をFieldValue.delete()に変換（フィールド削除のため）
+    const updateData: Record<string, any> = {};
+    for (const [key, value] of Object.entries(cleanedData)) {
+      if (value === null) {
+        // nullの場合はフィールドを削除
+        updateData[key] = deleteField();
+      } else if (value !== undefined) {
+        updateData[key] = value;
+      }
+    }
+
+    // 既存のドキュメントの場合はupdateDocを使用、新規の場合はsetDocを使用
+    if (dependentId) {
+      return updateDoc(dependentRef, updateData);
+    } else {
+      return setDoc(dependentRef, updateData);
+    }
   }
 
   /**
