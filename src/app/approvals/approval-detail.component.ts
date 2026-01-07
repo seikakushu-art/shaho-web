@@ -235,14 +235,6 @@ export class ApprovalDetailComponent implements OnDestroy {
     }),
   );
 
-  readonly canResubmit$ = combineLatest([
-    this.approval$,
-    this.isApplicant$,
-  ]).pipe(
-    map(([approval, isApplicant]) => {
-      return isApplicant && approval?.status === 'remanded';
-    }),
-  );
 
   private expiryWatcher = interval(30_000)
     .pipe(
@@ -1750,70 +1742,6 @@ export class ApprovalDetailComponent implements OnDestroy {
     }
   }
 
-  async resubmitApproval() {
-    if (!this.approval?.id) return;
-
-    const user = await firstValueFrom(this.authService.user$);
-    const applicantId = user?.email ?? '';
-    const applicantName = user?.displayName ?? user?.email ?? '申請者';
-
-    if (!applicantId) {
-      this.addToast('ユーザー情報が取得できませんでした。', 'warning');
-      return;
-    }
-
-    const canResubmit = await firstValueFrom(this.canResubmit$);
-    if (!canResubmit) {
-      this.addToast(
-        '再申請できません。申請者本人で、差し戻し状態の申請のみ再申請できます。',
-        'warning',
-      );
-      return;
-    }
-
-    try {
-      const resubmitted = await this.workflowService.resubmit(
-        this.approval.id,
-        applicantId,
-        applicantName,
-        '差し戻しされた申請を再申請しました',
-      );
-
-      if (!resubmitted) {
-        this.addToast('再申請に失敗しました。', 'warning');
-        return;
-      }
-
-      this.addToast(
-        '申請を再申請しました。承認フローが最初から開始されます。',
-        'success',
-      );
-
-      // 承認者への通知
-      const firstStep = resubmitted.flowSnapshot?.steps[0];
-      if (firstStep?.candidates) {
-        const notifications: ApprovalNotification[] = firstStep.candidates.map(
-          (candidate) => ({
-            id: `ntf-${Date.now()}-${candidate.id}`,
-            requestId: resubmitted.id!,
-            recipientId: candidate.id,
-            message: `${resubmitted.title} が再申請されました。ステップ1を承認してください`,
-            unread: true,
-            createdAt: new Date(),
-            type: 'info',
-          }),
-        );
-        this.notificationService.pushBatch(notifications);
-      }
-    } catch (error) {
-      console.error('resubmit failed', error);
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : '再申請処理中にエラーが発生しました。';
-      this.addToast(errorMessage, 'warning');
-    }
-  }
 
   private async persistCalculationResults(
     validRows: CalculationRow[],

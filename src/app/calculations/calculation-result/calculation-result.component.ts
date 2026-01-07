@@ -1454,6 +1454,34 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (this.calculationType === 'standard') {
+      const pendingConflicts = new Map<string, { name: string; title: string }>();
+      validRows.forEach((row) => {
+        const pendingRequest =
+          this.approvalWorkflowService.getPendingRequestForStandardMonthlyEmployee(row.employeeNo);
+        if (pendingRequest) {
+          pendingConflicts.set(row.employeeNo, {
+            name: row.name,
+            title: pendingRequest.title || '承認待ちの申請',
+          });
+        }
+      });
+
+      if (pendingConflicts.size > 0) {
+        const employeeList = Array.from(pendingConflicts.entries())
+          .map(
+            ([employeeNo, info]) =>
+              `社員番号 ${employeeNo}（${info.name}）: ${info.title}`,
+          )
+          .join('\n');
+        this.approvalMessage =
+          '以下の社員には健保標準報酬月額/厚年標準報酬月額に関する承認待ちの申請が既に存在します。既存の申請が承認または差し戻しされるまで、新しい承認依頼を送信できません。\n\n' +
+          employeeList;
+        return;
+      }
+    }
+
+
     this.saving = true;
     this.approvalMessage = '';
     const query = this.buildQueryParams();
@@ -1463,21 +1491,45 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         status: 'waiting' as const,
       }));
 
+      // 社員情報を取得してemployeeMapと既存の標準報酬月額を取得
+      const employees = await firstValueFrom(
+        this.employeesService.getEmployeesWithPayrolls(),
+      );
+      const employeeMap = new Map<string, string>();
+      const employeeDataMap = new Map<string, { id: string; healthStandardMonthly: number | null | undefined; welfareStandardMonthly: number | null | undefined }>();
+      employees.forEach((emp) => {
+        if (emp.id && emp.employeeNo) {
+          employeeMap.set(emp.employeeNo, emp.id);
+          employeeDataMap.set(emp.employeeNo, {
+            id: emp.id,
+            healthStandardMonthly: emp.healthStandardMonthly,
+            welfareStandardMonthly: emp.welfareStandardMonthly,
+          });
+        }
+      });
+
       // 計算結果の差分データ（承認詳細の差分一覧に表示）
       const employeeDiffs: ApprovalEmployeeDiff[] = validRows.map((row) => {
         const changes: ApprovalEmployeeDiff['changes'] = [];
+        const employeeData = employeeDataMap.get(row.employeeNo);
 
-        const pushIfExists = (field: string, value: number | string | undefined | null) => {
-          if (value === undefined || value === null || value === '') return;
-          changes.push({
-            field,
-            oldValue: null,
-            newValue: value.toString(),
-          });
+        const pushIfExists = (field: string, newValue: number | string | undefined | null, oldValue: number | string | undefined | null = null) => {
+          if (newValue === undefined || newValue === null || newValue === '') return;
+          const oldValueStr = oldValue !== null && oldValue !== undefined ? oldValue.toString() : null;
+          const newValueStr = newValue.toString();
+          // oldValueとnewValueが異なる場合のみ追加
+          if (oldValueStr !== newValueStr) {
+            changes.push({
+              field,
+              oldValue: oldValueStr,
+              newValue: newValueStr,
+            });
+          }
         };
 
-        pushIfExists('健保標準報酬月額', row.healthStandardMonthly);
-        pushIfExists('厚年標準報酬月額', row.welfareStandardMonthly);
+        // 標準報酬月額の差分を設定（既存値と比較）
+        pushIfExists('健保標準報酬月額', row.healthStandardMonthly, employeeData?.healthStandardMonthly);
+        pushIfExists('厚年標準報酬月額', row.welfareStandardMonthly, employeeData?.welfareStandardMonthly);
 
         const healthTotalMonthly = (row.healthEmployeeMonthly || 0) + (row.healthEmployerMonthly || 0);
         pushIfExists('健康保険料（月額）', healthTotalMonthly > 0 ? healthTotalMonthly : null);
@@ -1498,13 +1550,14 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
 
         // 差分が無い場合でも行を表示するため、標準報酬月額または社員番号で1件追加
         if (changes.length === 0) {
-          pushIfExists('健保標準報酬月額', row.healthStandardMonthly ?? 0);
+          pushIfExists('健保標準報酬月額', row.healthStandardMonthly ?? 0, employeeData?.healthStandardMonthly);
         }
 
         return {
           employeeNo: row.employeeNo,
           name: row.name,
           status: 'ok',
+          existingEmployeeId: employeeData?.id,
           changes,
         };
       });

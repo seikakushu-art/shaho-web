@@ -122,6 +122,50 @@ export class ApprovalWorkflowService {
     return this.requests$.pipe(map((requests) => requests.find((item) => item.id === id)));
   }
 
+  private isStandardMonthlyField(field?: string | null): boolean {
+    if (!field) return false;
+    return [
+      '健保標準報酬月額',
+      '厚年標準報酬月額',
+      '標準報酬月額',
+    ].includes(field);
+  }
+
+  getPendingRequestForStandardMonthlyEmployee(employeeNo: string | null): ApprovalRequest | undefined {
+    if (!employeeNo) {
+      return undefined;
+    }
+
+    const requests = this.requestsSubject.value;
+    return requests.find((request) => {
+      if (request.status !== 'pending') {
+        return false;
+      }
+
+      const diffs = request.employeeDiffs ?? [];
+      const hasStandardMonthlyDiff = diffs.some((diff) => {
+        if (diff.employeeNo !== employeeNo) {
+          return false;
+        }
+        return diff.changes.some((change) => this.isStandardMonthlyField(change.field));
+      });
+
+      if (hasStandardMonthlyDiff) {
+        return true;
+      }
+
+      const imports = request.importEmployeeData ?? [];
+      return imports.some((importData) => {
+        if (importData.employeeNo !== employeeNo) {
+          return false;
+        }
+        return Object.keys(importData.csvData ?? {}).some((key) =>
+          this.isStandardMonthlyField(key),
+        );
+      });
+    });
+  }
+
   /**
    * 特定の社員に対する承認待ちリクエストが存在するかチェック
    * @param employeeId 社員ID（編集モードの場合）
