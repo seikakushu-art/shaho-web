@@ -173,9 +173,9 @@ export class CalculationDataService {
                   
                   // 標準賞与額計算で特定の日付が指定されている場合は、その日付の賞与のみ
                   if (type === 'bonus' && params.bonusPaidOn && !isBonusMonthOnly) {
-                    const normalizedTarget = params.bonusPaidOn.replace(/\//g, '-');
+                    const normalizedTarget = this.normalizeDate(params.bonusPaidOn);
                     const matchingBonus = sortedBonuses.find((bonus) => {
-                      const normalized = (bonus.bonusPaidOn ?? '').replace(/\//g, '-');
+                      const normalized = this.normalizeDate(bonus.bonusPaidOn ?? '');
                       return normalized === normalizedTarget;
                     });
                     if (matchingBonus) {
@@ -327,6 +327,20 @@ export class CalculationDataService {
   ) {
     const now = new Date().toISOString();
     const currentUser = this.getUserDisplayName();
+    // queryオブジェクトを明示的に構築して、bonusOnlyが確実に保存されるようにする
+    const queryToSave: CalculationQueryParams = {
+      type: query.type,
+      targetMonth: query.targetMonth,
+      method: query.method,
+      standardMethod: query.standardMethod,
+      insurances: query.insurances,
+      department: query.department,
+      location: query.location,
+      employeeNo: query.employeeNo,
+      includeBonusInMonth: query.includeBonusInMonth,
+      bonusOnly: query.bonusOnly,
+      bonusPaidOn: query.bonusPaidOn,
+    };
     const history: CalculationResultHistory = {
       id: options?.id ?? `calc-${Date.now()}`,
       title: options?.title ?? `${query.type.toUpperCase()}`,
@@ -334,7 +348,7 @@ export class CalculationDataService {
       updatedAt: now,
       createdBy: currentUser,
       updatedBy: currentUser,
-      query,
+      query: queryToSave,
       rows,
       meta: {
         rowCount: rows.length,
@@ -398,15 +412,34 @@ export class CalculationDataService {
     });
   }
 
+  /**
+   * 日付文字列をYYYY-MM-DD形式に正規化する
+   * 例: "2025/12/3" -> "2025-12-03", "2025/12/03" -> "2025-12-03"
+   */
+  private normalizeDate(dateStr: string): string {
+    if (!dateStr) return '';
+    // スラッシュをハイフンに変換
+    const normalized = dateStr.replace(/\//g, '-');
+    // YYYY-MM-DD形式にパースして正規化
+    const parts = normalized.split('-');
+    if (parts.length >= 3) {
+      const year = parts[0];
+      const month = parts[1].padStart(2, '0');
+      const day = parts[2].split('T')[0].padStart(2, '0'); // 時刻部分を除去
+      return `${year}-${month}-${day}`;
+    }
+    return normalized;
+  }
+
   private hasBonusOnDate(employee: ShahoEmployee, bonusPaidOn: string) {
     const payrolls = this.extractPayrolls(employee);
-    const normalizedTarget = bonusPaidOn.replace(/\//g, '-');
+    const normalizedTarget = this.normalizeDate(bonusPaidOn);
     const isExactDate = /^\d{4}-\d{2}-\d{2}$/.test(normalizedTarget);
 
     // 日付指定（YYYY-MM-DD）の場合は完全一致のみ許容
     if (isExactDate) {
       return payrolls.some(
-        (p) => (p.bonusPaidOn ?? '').replace(/\//g, '-') === normalizedTarget,
+        (p) => this.normalizeDate(p.bonusPaidOn ?? '') === normalizedTarget,
       );
     }
 
@@ -889,13 +922,13 @@ export class CalculationDataService {
   ): PayrollData | undefined {
     if (!bonusPaymentDate) return undefined;
 
-    const normalizedTarget = bonusPaymentDate.replace(/\//g, '-');
+    const normalizedTarget = this.normalizeDate(bonusPaymentDate);
 
     // まず完全一致で検索
     const exactMatch = payrolls.find(
       (payroll) =>
         payroll.bonusPaidOn &&
-        payroll.bonusPaidOn.replace(/\//g, '-') === normalizedTarget,
+        this.normalizeDate(payroll.bonusPaidOn) === normalizedTarget,
     );
     if (exactMatch) return exactMatch;
 
@@ -907,7 +940,7 @@ export class CalculationDataService {
     const bonusMonth = normalizeToYearMonth(normalizedTarget);
     if (bonusMonth) {
       const byMonth = payrolls.find((payroll) => {
-        const normalized = (payroll.bonusPaidOn ?? '').replace(/\//g, '-');
+        const normalized = this.normalizeDate(payroll.bonusPaidOn ?? '');
         return normalized.startsWith(bonusMonth);
       });
       if (byMonth) return byMonth;

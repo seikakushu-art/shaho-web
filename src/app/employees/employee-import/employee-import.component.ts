@@ -2182,6 +2182,27 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * 日付文字列をYYYY-MM-DD形式に正規化する
+   * 例: "2025/12/3" -> "2025-12-03", "2025/12/03" -> "2025-12-03"
+   */
+  private normalizeDate(dateStr: string | undefined): string {
+    if (!dateStr) return '';
+    // 時刻部分を除去
+    const dateOnly = dateStr.split('T')[0];
+    // スラッシュをハイフンに変換
+    const normalized = dateOnly.replace(/\//g, '-');
+    // YYYY-MM-DD形式にパースして正規化
+    const parts = normalized.split('-');
+    if (parts.length >= 3) {
+      const year = parts[0];
+      const month = parts[1].padStart(2, '0');
+      const day = parts[2].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    return normalized;
+  }
+
   private async calculatePayrollDifferences(
     parsedRow: ParsedRow,
     employeeId: string,
@@ -2226,11 +2247,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         paidOn: string | undefined,
       ): BonusPayment | undefined => {
         if (!paidOn) return undefined;
-        const normalizedTarget = paidOn.replace(/\//g, '-').split('T')[0];
+        const normalizedTarget = this.normalizeDate(paidOn);
         return existingBonusPayments.find((bonus) => {
-          const normalizedExisting = (bonus.bonusPaidOn ?? '')
-            .replace(/\//g, '-')
-            .split('T')[0];
+          const normalizedExisting = this.normalizeDate(bonus.bonusPaidOn);
           return normalizedExisting === normalizedTarget;
         });
       };
@@ -2353,11 +2372,9 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
           paidOn: string | undefined,
         ): BonusPayment | undefined => {
           if (!paidOn) return undefined;
-          const normalizedTarget = paidOn.replace(/\//g, '-').split('T')[0];
+          const normalizedTarget = this.normalizeDate(paidOn);
           return existingBonusPayments.find((bonus) => {
-            const normalizedExisting = (bonus.bonusPaidOn ?? '')
-              .replace(/\//g, '-')
-              .split('T')[0];
+            const normalizedExisting = this.normalizeDate(bonus.bonusPaidOn);
             return normalizedExisting === normalizedTarget;
           });
         };
@@ -2378,10 +2395,11 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         }
 
         // 賞与支給日の差分（月の情報を含める）
-        const normalizedBonusDate = bonusPaidOn.replace(/\//g, '-');
+        const normalizedBonusDate = this.normalizeDate(bonusPaidOn);
         // 支給日一致のBonusPaymentのみを参照（existingPayrollのフォールバックは使用しない）
         const existingBonusDate = findExistingBonusByDate(bonusPaidOn)?.bonusPaidOn;
-        if (existingBonusDate !== normalizedBonusDate) {
+        const normalizedExistingBonusDate = this.normalizeDate(existingBonusDate);
+        if (normalizedExistingBonusDate !== normalizedBonusDate) {
           changes.push({
             fieldName: `賞与支給日（${bonusYearMonthDisplay}）`,
             oldValue: existingBonusDate || null,

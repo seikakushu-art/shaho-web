@@ -263,6 +263,52 @@ export class ApprovalWorkflowService {
     });
   }
 
+  /**
+   * 計算結果保存に対する承認待ちリクエストが存在するかチェック（対象年月で）
+   * @param targetMonth 対象年月（YYYY-MM形式）
+   * @param calculationType 計算タイプ（'standard' | 'insurance' | 'bonus'）
+   * @returns 承認待ちリクエストが存在する場合、そのリクエストを返す。存在しない場合はundefined
+   */
+  getPendingRequestForCalculationTargetMonth(
+    targetMonth: string,
+    calculationType: string,
+  ): ApprovalRequest | undefined {
+    if (!targetMonth) {
+      return undefined;
+    }
+
+    const requests = this.requestsSubject.value;
+    return requests.find((request) => {
+      // 承認待ち状態でない場合はスキップ
+      if (request.status !== 'pending') {
+        return false;
+      }
+
+      // 計算結果保存のカテゴリのみチェック
+      if (request.category !== '計算結果保存') {
+        return false;
+      }
+
+      // 計算パラメータが存在し、対象年月と計算タイプが一致するかチェック
+      const calcParams = request.calculationQueryParams;
+      if (!calcParams) {
+        return false;
+      }
+
+      // 対象年月が一致するかチェック
+      if (calcParams.targetMonth !== targetMonth) {
+        return false;
+      }
+
+      // 計算タイプが一致するかチェック
+      if (calcParams.type !== calculationType) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
   getNotificationsFor(recipientId: string): Observable<ApprovalNotification[]> {
     return of([]);
   }

@@ -88,6 +88,8 @@ type CalculationCsvMeta = {
   calculationType?: CalculationType;
   activeInsurances?: string[];
   historyId?: string;
+  includeBonusInMonth?: boolean;
+  bonusOnly?: boolean;
 };
 
 export interface InsuranceSummary {

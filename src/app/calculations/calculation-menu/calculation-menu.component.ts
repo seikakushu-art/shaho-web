@@ -92,6 +92,7 @@ export class CalculationMenuComponent implements OnInit, OnDestroy {
         standardMethod: query.standardMethod,
         bonusPaidOn: query.bonusPaidOn,
         includeBonusInMonth: query.includeBonusInMonth,
+        bonusOnly: query.bonusOnly,
         department: query.department,
         location: query.location,
         employeeNo: query.employeeNo,

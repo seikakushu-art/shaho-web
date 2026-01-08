@@ -103,6 +103,19 @@ export class CsvExportComponent implements OnInit {
     'standardHealthBonus',
     'standardWelfareBonus',
   ];
+  private readonly bonusRelatedFields: CalculationResultField[] = [
+    'standardHealthBonus',
+    'standardWelfareBonus',
+    'healthEmployeeBonus',
+    'healthEmployerBonus',
+    'nursingEmployeeBonus',
+    'nursingEmployerBonus',
+    'welfareEmployeeBonus',
+    'welfareEmployerBonus',
+    'healthTotalBonus',
+    'nursingTotalBonus',
+    'welfareTotalBonus',
+  ];
   private readonly healthInsuranceFields: CalculationResultField[] = [
     'exemption',
     'healthStandardMonthly',
@@ -134,6 +147,19 @@ export class CsvExportComponent implements OnInit {
     'nursingEmployerBonus',
     'nursingTotalMonthly',
     'nursingTotalBonus',
+  ];
+  private readonly monthlyInsuranceFields: CalculationResultField[] = [
+    'healthStandardMonthly',
+    'welfareStandardMonthly',
+    'healthEmployeeMonthly',
+    'healthEmployerMonthly',
+    'nursingEmployeeMonthly',
+    'nursingEmployerMonthly',
+    'welfareEmployeeMonthly',
+    'welfareEmployerMonthly',
+    'healthTotalMonthly',
+    'nursingTotalMonthly',
+    'welfareTotalMonthly',
   ];
 
   ngOnInit(): void {
@@ -371,7 +397,7 @@ export class CsvExportComponent implements OnInit {
     
     // 標準賞与額計算の場合は計算ID、計算種別、対象年/年月、標準賞与額(健・介)、標準賞与額(厚生年金)のみ
     if (this.calculationContext?.meta?.calculationType === 'bonus') {
-      return [...alwaysIncluded, 'targetMonth', 'exemption', ...this.bonusFields];
+      return [...alwaysIncluded, 'targetMonth', ...this.bonusFields];
     }
     
     // 標準報酬月額計算の場合は、健康保険（月例 個人）から個人＋会社 保険料合計までの項目と賞与関連の項目、一時免除フラグ、標準賞与額を除外
@@ -406,23 +432,54 @@ export class CsvExportComponent implements OnInit {
       return [...alwaysIncluded, ...otherFields];
     }
     
-    // 社会保険料計算で保険種別が1つのみ選択されている場合
-    if (
-      this.calculationContext?.meta?.calculationType === 'insurance' &&
-      this.calculationContext?.meta?.activeInsurances?.length === 1
-    ) {
-      const activeInsurance = this.calculationContext.meta.activeInsurances[0];
+    // 社会保険料計算の場合
+    if (this.calculationContext?.meta?.calculationType === 'insurance') {
+      // 「対象月に賞与を含める」と「賞与のみ計算」が両方ともfalseまたはundefinedの場合、賞与関連フィールドを除外
+      const includeBonusInMonth = this.calculationContext.meta.includeBonusInMonth ?? false;
+      const bonusOnly = this.calculationContext.meta.bonusOnly ?? false;
+      const shouldExcludeBonusFields = !includeBonusInMonth && !bonusOnly;
       
-      if (activeInsurance === '健康保険') {
-        return [...alwaysIncluded, 'targetMonth', 'activeInsurances', ...this.healthInsuranceFields];
+      // 保険種別が1つのみ選択されている場合
+      if (this.calculationContext.meta.activeInsurances?.length === 1) {
+        const activeInsurance = this.calculationContext.meta.activeInsurances[0];
+        let fields: CalculationResultField[] = [];
+        
+        if (activeInsurance === '健康保険') {
+          fields = [...this.healthInsuranceFields];
+        } else if (activeInsurance === '厚生年金') {
+          fields = [...this.welfareInsuranceFields];
+        } else if (activeInsurance === '介護保険') {
+          fields = [...this.nursingInsuranceFields];
+        }
+        
+        // 賞与のみ計算の場合は月額の社会保険料項目を除外
+        if (bonusOnly) {
+          fields = fields.filter((field) => !this.monthlyInsuranceFields.includes(field));
+        }
+        
+        // 賞与関連フィールドを除外
+        if (shouldExcludeBonusFields) {
+          fields = fields.filter((field) => !this.bonusRelatedFields.includes(field));
+        }
+        
+        return [...alwaysIncluded, 'targetMonth', 'activeInsurances', ...fields];
       }
       
-      if (activeInsurance === '厚生年金') {
-        return [...alwaysIncluded, 'targetMonth', 'activeInsurances', ...this.welfareInsuranceFields];
+      // 保険種別が複数選択されている場合
+      // 賞与のみ計算の場合は月額の社会保険料項目を除外
+      if (bonusOnly) {
+        const otherFields = this.calculationFieldOptions
+          .map((option) => option.key)
+          .filter((key) => !alwaysIncluded.includes(key) && !this.monthlyInsuranceFields.includes(key));
+        return [...alwaysIncluded, ...otherFields];
       }
       
-      if (activeInsurance === '介護保険') {
-        return [...alwaysIncluded, 'targetMonth', 'activeInsurances', ...this.nursingInsuranceFields];
+      // 賞与関連フィールドを除外する必要がある場合は、それらを除外したフィールドリストを返す
+      if (shouldExcludeBonusFields) {
+        const otherFields = this.calculationFieldOptions
+          .map((option) => option.key)
+          .filter((key) => !alwaysIncluded.includes(key) && !this.bonusRelatedFields.includes(key));
+        return [...alwaysIncluded, ...otherFields];
       }
     }
     

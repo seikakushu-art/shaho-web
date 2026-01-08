@@ -680,7 +680,7 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       location: this.locationFilter || undefined,
       employeeNo: this.employeeNoFilter || undefined,
       includeBonusInMonth: this.includeBonusInMonth,
-      bonusOnly: this.bonusOnly || undefined,
+      bonusOnly: this.bonusOnly ? true : undefined,
       bonusPaidOn: this.bonusPaidOnFilter || undefined,
     };
   }
@@ -1298,6 +1298,8 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
             calculationType: query.type,
             activeInsurances: query.insurances,
             historyId: this.currentHistoryId,
+            includeBonusInMonth: query.includeBonusInMonth,
+            bonusOnly: query.bonusOnly,
           },
           insuranceSummaries: this.calculationType === 'insurance' ? this.insuranceSummaries : undefined,
         },
@@ -1482,6 +1484,21 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         this.approvalMessage =
           '以下の社員には健保標準報酬月額/厚年標準報酬月額に関する承認待ちの申請が既に存在します。既存の申請が承認または差し戻しされるまで、新しい承認依頼を送信できません。\n\n' +
           employeeList;
+        return;
+      }
+    }
+
+    // 社会保険料計算の場合、同じ対象年月の承認待ちリクエストをチェック
+    if (this.calculationType === 'insurance') {
+      const pendingRequest =
+        this.approvalWorkflowService.getPendingRequestForCalculationTargetMonth(
+          this.targetMonth,
+          this.calculationType,
+        );
+      if (pendingRequest) {
+        const requestTitle = pendingRequest.title || '承認待ちの申請';
+        this.approvalMessage =
+          `${this.targetMonth}の社会保険料計算に関する承認待ちの申請が既に存在します（${requestTitle}）。既存の申請が承認または差し戻しされるまで、新しい承認依頼を送信できません。`;
         return;
       }
     }
@@ -1787,16 +1804,26 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         }
 
         // 月次データを準備
-        // amountには実際の給与額を保存（平均値は保存しない）
+        // bonusOnlyがtrueの場合は、月次保険料は保存しない（賞与関連データのみ保存）
         const payrollMonthData: any = {
           amount: row.monthlySalary || undefined,
-          healthInsuranceMonthly:
-            healthMonthlyTotal > 0 ? healthMonthlyTotal : undefined,
-          careInsuranceMonthly:
-            careMonthlyTotal > 0 ? careMonthlyTotal : undefined,
-          pensionMonthly:
-            pensionMonthlyTotal > 0 ? pensionMonthlyTotal : undefined,
         };
+        
+        // bonusOnlyがfalseの場合のみ月次保険料を保存
+        if (!query.bonusOnly) {
+          payrollMonthData.healthInsuranceMonthly =
+            healthMonthlyTotal !== undefined && healthMonthlyTotal !== null
+              ? healthMonthlyTotal
+              : undefined;
+          payrollMonthData.careInsuranceMonthly =
+            careMonthlyTotal !== undefined && careMonthlyTotal !== null
+              ? careMonthlyTotal
+              : undefined;
+          payrollMonthData.pensionMonthly =
+            pensionMonthlyTotal !== undefined && pensionMonthlyTotal !== null
+              ? pensionMonthlyTotal
+              : undefined;
+        }
 
         // undefinedのフィールドを除外
         Object.keys(payrollMonthData).forEach((key) => {
@@ -1812,15 +1839,27 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
             bonusPaidOn: row.bonusPaymentDate,
             bonusTotal: row.bonusTotalPay,
             standardHealthBonus:
-              row.standardHealthBonus > 0 ? row.standardHealthBonus : undefined,
+              row.standardHealthBonus !== undefined && row.standardHealthBonus !== null
+                ? row.standardHealthBonus
+                : undefined,
             standardWelfareBonus:
-              row.standardWelfareBonus > 0 ? row.standardWelfareBonus : undefined,
+              row.standardWelfareBonus !== undefined && row.standardWelfareBonus !== null
+                ? row.standardWelfareBonus
+                : undefined,
             standardBonus:
               row.standardHealthBonus || row.standardWelfareBonus || undefined,
             healthInsuranceBonus:
-              healthBonusTotal > 0 ? healthBonusTotal : undefined,
-            careInsuranceBonus: careBonusTotal > 0 ? careBonusTotal : undefined,
-            pensionBonus: pensionBonusTotal > 0 ? pensionBonusTotal : undefined,
+              healthBonusTotal !== undefined && healthBonusTotal !== null
+                ? healthBonusTotal
+                : undefined,
+            careInsuranceBonus:
+              careBonusTotal !== undefined && careBonusTotal !== null
+                ? careBonusTotal
+                : undefined,
+            pensionBonus:
+              pensionBonusTotal !== undefined && pensionBonusTotal !== null
+                ? pensionBonusTotal
+                : undefined,
           };
 
           // undefinedのフィールドを除外

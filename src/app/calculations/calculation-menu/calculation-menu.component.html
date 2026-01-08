@@ -46,6 +46,12 @@
             <span *ngIf="history.query.type === 'standard'">
               標準報酬月額の算定方法: {{ history.query.standardMethod }}
             </span>
+            <span *ngIf="history.query.type === 'insurance' && history.query.includeBonusInMonth === true">
+              対象月に賞与を含める
+            </span>
+            <span *ngIf="history.query.type === 'insurance' && history.query.bonusOnly === true">
+              賞与のみ
+            </span>
             <span>
               保険:
               {{

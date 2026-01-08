@@ -1634,6 +1634,7 @@ export class ApprovalDetailComponent implements OnDestroy {
               '定時決定',
             insurances: queryParams.insurances || [],
             includeBonusInMonth: queryParams.includeBonusInMonth,
+            bonusOnly: queryParams.bonusOnly,
             department: queryParams.department,
             location: queryParams.location,
             employeeNo: queryParams.employeeNo,
@@ -1830,17 +1831,17 @@ export class ApprovalDetailComponent implements OnDestroy {
               健康保険料月額: {
                 従業員負担: row.healthEmployeeMonthly,
                 事業主負担: row.healthEmployerMonthly,
-                保存値: row.healthEmployeeMonthly, // 従業員負担分のみ保存
+                保存値: query.bonusOnly ? '保存しない（賞与のみ計算）' : row.healthEmployeeMonthly, // 従業員負担分のみ保存
               },
               介護保険料月額: {
                 従業員負担: row.nursingEmployeeMonthly,
                 事業主負担: row.nursingEmployerMonthly,
-                保存値: row.nursingEmployeeMonthly, // 従業員負担分のみ保存
+                保存値: query.bonusOnly ? '保存しない（賞与のみ計算）' : row.nursingEmployeeMonthly, // 従業員負担分のみ保存
               },
               厚生年金保険料月額: {
                 従業員負担: row.welfareEmployeeMonthly,
                 事業主負担: row.welfareEmployerMonthly,
-                保存値: row.welfareEmployeeMonthly, // 従業員負担分のみ保存
+                保存値: query.bonusOnly ? '保存しない（賞与のみ計算）' : row.welfareEmployeeMonthly, // 従業員負担分のみ保存
               },
               健康保険料賞与: {
                 従業員負担: row.healthEmployeeBonus,
@@ -1870,22 +1871,28 @@ export class ApprovalDetailComponent implements OnDestroy {
 
             // 月次データを準備（従業員負担分のみ保存）
             // amountには実際の給与額を保存（平均値は保存しない）
+            // bonusOnlyがtrueの場合は、月次保険料は保存しない（賞与関連データのみ保存）
             const payrollMonthData: any = {
               amount: row.monthlySalary || undefined,
-              // 健康保険料、介護保険料、厚生年金保険料（月額）を従業員負担分のみで保存
-              healthInsuranceMonthly:
-                (row.healthEmployeeMonthly || 0) > 0
-                  ? row.healthEmployeeMonthly
-                  : undefined,
-              careInsuranceMonthly:
-                (row.nursingEmployeeMonthly || 0) > 0
-                  ? row.nursingEmployeeMonthly
-                  : undefined,
-              pensionMonthly:
-                (row.welfareEmployeeMonthly || 0) > 0
-                  ? row.welfareEmployeeMonthly
-                  : undefined,
             };
+            
+            // bonusOnlyがfalseの場合のみ月次保険料を保存
+            if (!query.bonusOnly) {
+              // 健康保険料、介護保険料、厚生年金保険料（月額）を従業員負担分のみで保存
+              // 0の値も保存する（undefinedやnullの場合は保存しない）
+              payrollMonthData.healthInsuranceMonthly =
+                row.healthEmployeeMonthly !== undefined && row.healthEmployeeMonthly !== null
+                  ? row.healthEmployeeMonthly
+                  : undefined;
+              payrollMonthData.careInsuranceMonthly =
+                row.nursingEmployeeMonthly !== undefined && row.nursingEmployeeMonthly !== null
+                  ? row.nursingEmployeeMonthly
+                  : undefined;
+              payrollMonthData.pensionMonthly =
+                row.welfareEmployeeMonthly !== undefined && row.welfareEmployeeMonthly !== null
+                  ? row.welfareEmployeeMonthly
+                  : undefined;
+            }
 
             if (row.exemption !== undefined) {
               payrollMonthData.exemption = row.exemption;
@@ -1909,24 +1916,25 @@ export class ApprovalDetailComponent implements OnDestroy {
                 bonusPaidOn: row.bonusPaymentDate,
                 bonusTotal: row.bonusTotalPay,
                 standardHealthBonus:
-                  row.standardHealthBonus > 0
+                  row.standardHealthBonus !== undefined && row.standardHealthBonus !== null
                     ? row.standardHealthBonus
                     : undefined,
                 standardWelfareBonus:
-                  row.standardWelfareBonus > 0
+                  row.standardWelfareBonus !== undefined && row.standardWelfareBonus !== null
                     ? row.standardWelfareBonus
                     : undefined,
                 // 健康保険料、介護保険料、厚生年金保険料（賞与）を従業員負担分のみで保存
+                // 0の値も保存する（undefinedやnullの場合は保存しない）
                 healthInsuranceBonus:
-                  (row.healthEmployeeBonus || 0) > 0
+                  row.healthEmployeeBonus !== undefined && row.healthEmployeeBonus !== null
                     ? row.healthEmployeeBonus
                     : undefined,
                 careInsuranceBonus:
-                  (row.nursingEmployeeBonus || 0) > 0
+                  row.nursingEmployeeBonus !== undefined && row.nursingEmployeeBonus !== null
                     ? row.nursingEmployeeBonus
                     : undefined,
                 pensionBonus:
-                  (row.welfareEmployeeBonus || 0) > 0
+                  row.welfareEmployeeBonus !== undefined && row.welfareEmployeeBonus !== null
                     ? row.welfareEmployeeBonus
                     : undefined,
               };
