@@ -145,7 +145,7 @@
     </div>
   </div>
 
-  <div class="card approval-section" *ngIf="!isViewMode && !currentHistoryId">
+  <div class="card approval-section" *ngIf="!isViewMode && !currentHistoryId && calculationType !== 'bonus'">
     <div class="approval-grid">
       <div class="approval-summary">
         <p class="label">対象社員件数</p>

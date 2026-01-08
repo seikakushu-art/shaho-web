@@ -204,8 +204,11 @@
               type="number"
               name="healthStandardMonthly"
               [(ngModel)]="socialInsurance.healthStandardMonthly"
-              [readonly]="!editMode"
-            />
+              [readonly]="!editMode || isStandardMonthlyLocked"
+              />
+              <p class="hint" *ngIf="isStandardMonthlyLocked">
+                承認待ちのため編集できません。
+              </p>
           </div>
           <div>
             <label>厚年標準報酬月額</label>
@@ -213,8 +216,11 @@
               type="number"
               name="welfareStandardMonthly"
               [(ngModel)]="socialInsurance.welfareStandardMonthly"
-              [readonly]="!editMode"
-            />
+              [readonly]="!editMode || isStandardMonthlyLocked"
+              />
+              <p class="hint" *ngIf="isStandardMonthlyLocked">
+                承認待ちのため編集できません。
+              </p>
           </div>
           <div>
             <label style="display: flex; align-items: center; gap: 0.5rem;">

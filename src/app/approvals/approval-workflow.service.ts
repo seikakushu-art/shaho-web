@@ -142,6 +142,25 @@ export class ApprovalWorkflowService {
         return false;
       }
 
+      // 計算結果保存のカテゴリの場合、calculationResultRowsをチェック
+      if (request.category === '計算結果保存') {
+        const calculationRows = request.calculationResultRows ?? [];
+        const hasStandardMonthlyInCalculation = calculationRows.some((row) => {
+          if (row.employeeNo !== employeeNo) {
+            return false;
+          }
+          // 標準報酬月額が設定されている場合、ロック対象とする
+          return (
+            (row.healthStandardMonthly !== undefined && row.healthStandardMonthly !== null) ||
+            (row.welfareStandardMonthly !== undefined && row.welfareStandardMonthly !== null)
+          );
+        });
+        if (hasStandardMonthlyInCalculation) {
+          return true;
+        }
+      }
+
+      // employeeDiffsをチェック
       const diffs = request.employeeDiffs ?? [];
       const hasStandardMonthlyDiff = diffs.some((diff) => {
         if (diff.employeeNo !== employeeNo) {
@@ -154,6 +173,7 @@ export class ApprovalWorkflowService {
         return true;
       }
 
+      // importEmployeeDataをチェック
       const imports = request.importEmployeeData ?? [];
       return imports.some((importData) => {
         if (importData.employeeNo !== employeeNo) {

@@ -97,6 +97,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
   dependentValidationError: string | null = null;
   employeeNoDuplicateError: string | null = null;
   checkingDuplicate = false;
+  standardMonthlyLockRequestTitle: string | null = null;
 
   // 今日の日付をYYYY-MM-DD形式で取得（生年月日の最大値として使用）
   get todayDate(): string {
@@ -171,11 +172,21 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     thirdCategoryFlag: boolean;
   }> = [];
 
+  get isStandardMonthlyLocked(): boolean {
+    return !!this.standardMonthlyLockRequestTitle;
+  }
+
   ngOnInit(): void {
     // ユーザー情報を取得
     this.authService.user$.pipe(takeUntil(this.destroy$)).subscribe((user) => {
       this.applicantId = user?.email ?? 'requester';
       this.applicantName = user?.displayName ?? user?.email ?? '担当者';
+    });
+
+    this.approvalWorkflowService.requests$
+    .pipe(takeUntil(this.destroy$))
+    .subscribe(() => {
+      this.refreshStandardMonthlyLock();
     });
 
     // クエリパラメータとパラメータを組み合わせて処理
@@ -426,6 +437,8 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
         this.formatDateForInput(employee.currentLeaveEndDate) || '',
     };
 
+    this.refreshStandardMonthlyLock(employee.employeeNo ?? '');
+
     // 扶養情報をdependentsサブコレクションから読み込む
     if (employee.id) {
       try {
@@ -461,6 +474,24 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
       this.dependentInfos = [];
       this.originalDependentInfos = [];
     }
+  }
+
+  private refreshStandardMonthlyLock(employeeNo?: string | null): void {
+    const targetNo = employeeNo ?? this.basicInfo.employeeNo ?? null;
+    const pendingRequest =
+      this.approvalWorkflowService.getPendingRequestForStandardMonthlyEmployee(
+        targetNo,
+      );
+    this.standardMonthlyLockRequestTitle =
+      pendingRequest?.title ?? null;
+  }
+
+  private isStandardMonthlyField(field: string): boolean {
+    return (
+      field === '健保標準報酬月額' ||
+      field === '厚年標準報酬月額' ||
+      field === '標準報酬月額'
+    );
   }
 
   /**
@@ -918,6 +949,25 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
     // 編集モードの場合、同じ社員に対する承認待ちリクエストが既に存在するかチェック
     const isEdit = this.isEditMode && this.originalEmployee && this.employeeId;
     const employeeNo = this.basicInfo.employeeNo || null;
+    const employeeChanges = isEdit
+      ? this.createEmployeeChangesFromDiff()
+      : this.createEmployeeChanges();
+
+    const pendingStandardMonthlyRequest =
+      this.approvalWorkflowService.getPendingRequestForStandardMonthlyEmployee(
+        employeeNo,
+      );
+    const hasStandardMonthlyChange = employeeChanges.some((change) =>
+      this.isStandardMonthlyField(change.field),
+    );
+
+    if (pendingStandardMonthlyRequest && hasStandardMonthlyChange) {
+      const requestTitle =
+        pendingStandardMonthlyRequest.title || '承認待ちの申請';
+      this.approvalMessage =
+        `この社員には標準報酬月額の承認待ち申請が存在します（${requestTitle}）。承認完了まで健保標準報酬月額/厚年標準報酬月額の変更を含む申請は作成できません。`;
+      return;
+    }
     
     if (isEdit) {
       const existingPendingRequest = this.approvalWorkflowService.getPendingRequestForEmployee(
@@ -1028,9 +1078,7 @@ export class EmployeeCreateComponent implements OnInit, OnDestroy {
           isNew: !isEdit,
           existingEmployeeId:
             isEdit && this.employeeId ? this.employeeId : undefined,
-          changes: isEdit
-            ? this.createEmployeeChangesFromDiff()
-            : this.createEmployeeChanges(),
+            changes: employeeChanges,
         },
       ];
 

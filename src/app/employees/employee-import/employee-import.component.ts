@@ -283,6 +283,10 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         });
       }
 
+      // バリデーションと差分計算の前に、最新の既存社員データを再取得
+      // （他のプロセスでデータが更新されている可能性があるため）
+      await this.loadExistingEmployees();
+
       const validatedRows = validateAllRows(
         parsedRows,
         this.templateType,
@@ -600,6 +604,36 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const standardMonthlyLockedEmployees: Array<{ employeeNo: string; name: string }> = [];
+    for (const row of selectedRows) {
+      const employeeNo = row.employeeNo || null;
+      if (!employeeNo) continue;
+      const hasStandardMonthlyChange = row.changes.some((change) =>
+        this.isStandardMonthlyField(change.field),
+      );
+      if (!hasStandardMonthlyChange) continue;
+      const pendingRequest =
+        this.workflowService.getPendingRequestForStandardMonthlyEmployee(
+          employeeNo,
+        );
+      if (pendingRequest) {
+        standardMonthlyLockedEmployees.push({
+          employeeNo: row.employeeNo,
+          name: row.name,
+        });
+      }
+    }
+
+    if (standardMonthlyLockedEmployees.length > 0) {
+      const employeeList = standardMonthlyLockedEmployees
+        .map((e) => `${e.name}（${e.employeeNo}）`)
+        .join('、');
+      alert(
+        `以下の社員は標準報酬月額の承認待ちのため、健保標準報酬月額/厚年標準報酬月額を含む申請を作成できません。\n\n${employeeList}`,
+      );
+      return;
+    }
+
     const validation = this.attachmentService.validateFiles(this.selectedFiles);
     this.validationErrors = validation.errors;
 
@@ -826,10 +860,63 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
     return `ntf-${Math.random().toString(36).slice(2, 10)}`;
   }
 
+  private isStandardMonthlyField(field: string): boolean {
+    return (
+      field === '健保標準報酬月額' ||
+      field === '厚年標準報酬月額' ||
+      field === '標準報酬月額'
+    );
+  }
+
   async updateData(skipConfirmation = false): Promise<void> {
     const selectedRows = this.selectedDifferences;
     if (selectedRows.length === 0) {
       alert('更新対象を選択してください。');
+      return;
+    }
+
+    // 標準報酬月額フィールドを含む変更がある場合、承認待ちリクエストをチェック
+    const standardMonthlyLockedEmployees: Array<{ employeeNo: string; name: string; requestTitle: string }> = [];
+    for (const row of selectedRows) {
+      const employeeNo = row.employeeNo || null;
+      if (!employeeNo) continue;
+      
+      // 標準報酬月額フィールドを含む変更があるかチェック
+      const hasStandardMonthlyChange = row.changes.some((change) =>
+        this.isStandardMonthlyField(change.field),
+      );
+      
+      // CSVデータに標準報酬月額フィールドが含まれているかチェック
+      const csvData = row.parsedRow?.data;
+      const hasStandardMonthlyInCsv = csvData && (
+        csvData['健保標準報酬月額'] ||
+        csvData['厚年標準報酬月額'] ||
+        csvData['標準報酬月額']
+      );
+      
+      if (hasStandardMonthlyChange || hasStandardMonthlyInCsv) {
+        const pendingRequest =
+          this.workflowService.getPendingRequestForStandardMonthlyEmployee(
+            employeeNo,
+          );
+        if (pendingRequest) {
+          standardMonthlyLockedEmployees.push({
+            employeeNo: row.employeeNo,
+            name: row.name,
+            requestTitle: pendingRequest.title || '承認待ちの申請',
+          });
+        }
+      }
+    }
+
+    if (standardMonthlyLockedEmployees.length > 0) {
+      const employeeList = standardMonthlyLockedEmployees
+        .map((e) => `社員番号 ${e.employeeNo}（${e.name}）: ${e.requestTitle}`)
+        .join('\n');
+      alert(
+        `以下の社員には健保標準報酬月額/厚年標準報酬月額に関する承認待ちの申請が既に存在します。既存の申請が承認または差し戻しされるまで、新しい承認依頼を送信できません。\n\n${employeeList}`,
+      );
+      this.isLoading = false;
       return;
     }
 
@@ -1888,6 +1975,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         continue;
       }
 
+      const employeeNo = parsedRow.data['社員番号'] || '';
+
       // 差分計算を実行
       let diffResult = calculateDifferences(
         parsedRow,
@@ -1897,7 +1986,6 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
 
       // payrollテンプレートの場合は給与データの差分も計算
       if (this.templateType === 'payroll' && diffResult.existingEmployee) {
-        const employeeNo = parsedRow.data['社員番号'] || '';
         // 念のため、existingEmployeesのemployeeNoも正規化して比較する
         const normalizedEmployeeNo =
           normalizeEmployeeNoForComparison(employeeNo);
@@ -1918,6 +2006,28 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
         }
       }
 
+       // 差分計算でエラーが見つかった場合は、エラーリストに追加
+      const hasStandardMonthlyChange = diffResult.changes.some((change) =>
+        this.isStandardMonthlyField(change.fieldName),
+      );
+      if (hasStandardMonthlyChange && employeeNo) {
+        const pendingStandardMonthlyRequest =
+          this.workflowService.getPendingRequestForStandardMonthlyEmployee(
+            employeeNo,
+          );
+        if (pendingStandardMonthlyRequest) {
+          diffResult.errors.push({
+            rowIndex: parsedRow.rowIndex,
+            fieldName: '標準報酬月額',
+            message:
+              'この社員には標準報酬月額の承認待ち申請があるため、健保標準報酬月額/厚年標準報酬月額を含む更新は申請できません。',
+            severity: 'error',
+            templateType: this.templateType,
+          });
+        }
+      }
+
+
       // 差分計算でエラーが見つかった場合は、エラーリストに追加
       if (diffResult.errors.length > 0) {
         const errorWithContext = this.attachRowContext(diffResult.errors);
@@ -1926,7 +2036,6 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
       }
 
       // 差分行を作成
-      const employeeNo = parsedRow.data['社員番号'] || '';
       const name =
         parsedRow.data['氏名(漢字)'] || parsedRow.data['氏名漢字'] || '';
 

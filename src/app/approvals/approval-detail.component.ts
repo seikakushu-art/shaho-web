@@ -1612,6 +1612,11 @@ export class ApprovalDetailComponent implements OnDestroy {
       ) {
         try {
           const queryParams = result.request.calculationQueryParams;
+          // 標準賞与額計算の場合は保存処理をスキップ
+          if (queryParams.type === 'bonus') {
+            console.log('標準賞与額計算の保存処理は無効化されています。');
+            return;
+          }
           if (
             !queryParams.type ||
             (queryParams.type !== 'standard' &&

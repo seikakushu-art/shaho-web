@@ -133,6 +133,8 @@ const FLAG_VALUES = [
   '有',
   '無',
 ];
+// 扶養の有無フィールド専用の許可値
+const DEPENDENT_FLAG_VALUES = ['有', '無', '0', '1', 'true', 'false', 'on', 'off'];
 
 export function parseCSV(csvText: string): string[][] {
   let text = csvText;
@@ -388,6 +390,43 @@ export function validateRequiredFields(
     }
   });
 
+  // 扶養の有無が「有」の場合、扶養続柄と扶養氏名(漢字)を必須項目としてチェック
+  const hasDependentFlag = row.data['扶養の有無'];
+  if (hasDependentFlag) {
+    const normalizedFlag = hasDependentFlag.trim().toLowerCase();
+    const isDependent = ['1', 'true', 'yes', 'on', '有'].includes(
+      normalizedFlag,
+    );
+
+    if (isDependent) {
+      // 扶養続柄のチェック
+      const dependentRelationship = row.data['扶養 続柄'];
+      if (!dependentRelationship || dependentRelationship.trim().length === 0) {
+        errors.push(
+          buildError(
+            row.rowIndex,
+            '扶養 続柄',
+            '扶養の有無が「有」の場合、扶養 続柄は必須です',
+            templateType,
+          ),
+        );
+      }
+
+      // 扶養氏名(漢字)のチェック
+      const dependentNameKanji = row.data['扶養 氏名(漢字)'];
+      if (!dependentNameKanji || dependentNameKanji.trim().length === 0) {
+        errors.push(
+          buildError(
+            row.rowIndex,
+            '扶養 氏名(漢字)',
+            '扶養の有無が「有」の場合、扶養 氏名(漢字)は必須です',
+            templateType,
+          ),
+        );
+      }
+    }
+  }
+
   return errors;
 }
 
@@ -610,16 +649,34 @@ export function validateDataFormat(
   FLAG_FIELDS.forEach((field) => {
     const value = row.data[field];
     if (!value) return;
-    if (!FLAG_VALUES.includes(value.toLowerCase())) {
-      errors.push(
-        buildError(
-          row.rowIndex,
-          field,
-          `${field}は0/1/true/falseで入力してください`,
-          templateType,
-          'warning',
-        ),
-      );
+    
+    // 扶養の有無フィールドは特別なバリデーションを適用
+    if (field === '扶養の有無') {
+      const normalizedValue = value.toLowerCase().trim();
+      if (!DEPENDENT_FLAG_VALUES.includes(normalizedValue)) {
+        errors.push(
+          buildError(
+            row.rowIndex,
+            field,
+            `${field}は有/無/0/1/true/false/on/offで入力してください`,
+            templateType,
+            'error',
+          ),
+        );
+      }
+    } else {
+      // その他のフラグフィールドは従来のバリデーション
+      if (!FLAG_VALUES.includes(value.toLowerCase())) {
+        errors.push(
+          buildError(
+            row.rowIndex,
+            field,
+            `${field}は0/1/true/false/yes/no/on/off/有/無で入力してください`,
+            templateType,
+            'error',
+          ),
+        );
+      }
     }
   });
 
@@ -899,6 +956,22 @@ export function validateBusinessRules(
   const currentLeaveStatus = row.data['現在の休業状態'];
   const currentLeaveStartDate = row.data['現在の休業開始日'];
   const currentLeaveEndDate = row.data['現在の休業予定終了日'];
+
+  // 現在の休業状態が入力されている場合、許可された値かチェック
+  if (currentLeaveStatus && currentLeaveStatus.trim() !== '') {
+    const trimmedStatus = currentLeaveStatus.trim();
+    const allowedStatuses = ['なし', '産前産後', '育児'];
+    if (!allowedStatuses.includes(trimmedStatus)) {
+      errors.push(
+        buildError(
+          row.rowIndex,
+          '現在の休業状態',
+          '現在の休業状態は「なし」「産前産後」「育児」のいずれかを入力してください',
+          templateType,
+        ),
+      );
+    }
+  }
 
   // 現在の休業状態が空文字列または「なし」の場合、日付フィールドは入力不可
   const isLeaveStatusValid = currentLeaveStatus && currentLeaveStatus.trim() !== '' && currentLeaveStatus.trim() !== 'なし';

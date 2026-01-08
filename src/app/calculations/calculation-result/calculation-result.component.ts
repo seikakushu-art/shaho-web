@@ -1422,6 +1422,11 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
       this.approvalMessage = '閲覧モードのため保存できません。';
       return;
     }
+    // 標準賞与額計算の場合は承認依頼機能を無効化
+    if (this.calculationType === 'bonus') {
+      this.approvalMessage = '標準賞与額計算結果の承認依頼機能は利用できません。';
+      return;
+    }
     if (this.rows.length === 0) return;
 
     const validRows = this.rows.filter((row) => !row.error);
@@ -1713,6 +1718,11 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     validRows: CalculationRow[],
     query: CalculationQueryParams,
   ): Promise<void> {
+    // 標準賞与額計算の場合は保存処理をスキップ
+    if (query.type === 'bonus') {
+      console.log('標準賞与額計算の保存処理は無効化されています。');
+      return;
+    }
     this.saving = true;
     try {
       const employees = await firstValueFrom(
