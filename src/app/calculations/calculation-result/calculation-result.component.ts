@@ -826,6 +826,13 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
         return;
       }
 
+      // 社会保険料計算で賞与のみ計算の場合、健保標準報酬月額と厚年標準報酬月額はデフォルトで非表示
+      if (this.calculationType === 'insurance' && this.bonusOnly && 
+          (column.key === 'healthStandardMonthly' || column.key === 'welfareStandardMonthly')) {
+        column.visible = false;
+        return;
+      }
+
       if (autoHide && hasRows) {
         const hasValue = this.rows.some((row) => {
           if (row.error) return false; // エラーがある行はスキップ

@@ -987,14 +987,13 @@ export class CalculationDataService {
   }
 
   private getFiscalYearRange(baseDate: Date) {
-    const month = baseDate.getUTCMonth() + 1;
-    const baseYear = baseDate.getUTCFullYear();
+    const month = baseDate.getMonth() + 1;
+    const baseYear = baseDate.getFullYear();
     const fiscalYearStartYear = month >= 4 ? baseYear : baseYear - 1;
 
-    const start = new Date(Date.UTC(fiscalYearStartYear, 3, 1));
-    const end = new Date(
-      Date.UTC(fiscalYearStartYear + 1, 2, 31, 23, 59, 59, 999),
-    );
+    // ローカル時間で日付を作成（時刻部分は0時0分0秒と23時59分59秒に設定）
+    const start = new Date(fiscalYearStartYear, 3, 1, 0, 0, 0, 0); // 4月1日 00:00:00
+    const end = new Date(fiscalYearStartYear + 1, 2, 31, 23, 59, 59, 999); // 3月31日 23:59:59.999
     return { start, end };
   }
 
@@ -1010,14 +1009,14 @@ export class CalculationDataService {
 
   private getMonthlyBonuses(payrolls: PayrollData[], bonusDate?: Date) {
     if (!bonusDate) return [] as PayrollData[];
-    const targetMonth = bonusDate.getUTCMonth();
-    const targetYear = bonusDate.getUTCFullYear();
+    const targetMonth = bonusDate.getMonth();
+    const targetYear = bonusDate.getFullYear();
 
     return payrolls.filter((payroll) => {
       const paidOn = this.toBonusDate(payroll.bonusPaidOn);
       return paidOn
-        ? paidOn.getUTCFullYear() === targetYear &&
-            paidOn.getUTCMonth() === targetMonth
+        ? paidOn.getFullYear() === targetYear &&
+            paidOn.getMonth() === targetMonth
         : false;
     });
   }
@@ -1055,15 +1054,20 @@ export class CalculationDataService {
     currentBonus?: PayrollData,
     rateRecord?: InsuranceRateRecord,
   ) {
+    if (!bonusDate) return 0;
+
     const healthBonusCap = rateRecord
       ? extractBonusCap(rateRecord, '健康保険', 'yearly')
       : undefined;
+
     // 現在のボーナスのbonusPaidOnを正規化して比較用に取得
     const currentBonusPaidOn = currentBonus?.bonusPaidOn
       ? currentBonus.bonusPaidOn.replace(/\//g, '-')
       : undefined;
-      const resolvedBonusTime = bonusDate?.getTime();
-    return this.getFiscalYearBonuses(payrolls, bonusDate)
+    const resolvedBonusTime = bonusDate?.getTime();
+
+    // 年度内の賞与を取得
+    const fiscalYearBonuses = this.getFiscalYearBonuses(payrolls, bonusDate)
       .filter((record) => {
         // 計算対象日より後の賞与は累計に含めない
         if (resolvedBonusTime) {
@@ -1076,26 +1080,81 @@ export class CalculationDataService {
         const recordBonusPaidOn = record.bonusPaidOn
           ? record.bonusPaidOn.replace(/\//g, '-')
           : undefined;
-          if (recordBonusPaidOn === currentBonusPaidOn) return false;
-
-          return true;
+        if (recordBonusPaidOn === currentBonusPaidOn) return false;
+        return true;
       })
-      .reduce((sum, record) => {
-        // 過去の標準賞与額（健・介）が設定されている場合はそれを使用
-        if (
-          record.standardHealthBonus !== undefined &&
-          record.standardHealthBonus > 0
-        ) {
-          return sum + record.standardHealthBonus;
+      .filter((record) => {
+        // 賞与があるもののみ
+        return record.bonusPaidOn && record.bonusTotal && record.bonusTotal > 0;
+      });
+
+    if (fiscalYearBonuses.length === 0) {
+      return 0;
+    }
+
+    // 月ごとにグループ化
+    const bonusesByMonth = new Map<string, PayrollData[]>();
+
+    fiscalYearBonuses.forEach((payroll) => {
+      const paidOn = this.toBonusDate(payroll.bonusPaidOn);
+      if (!paidOn) return;
+
+      const monthKey = `${paidOn.getFullYear()}-${String(paidOn.getMonth() + 1).padStart(2, '0')}`;
+
+      if (!bonusesByMonth.has(monthKey)) {
+        bonusesByMonth.set(monthKey, []);
+      }
+      bonusesByMonth.get(monthKey)!.push(payroll);
+    });
+
+    // 各月の標準賞与額を計算して累計
+    let fiscalYearCumulative = 0;
+
+    // 月ごとに日付順にソート
+    const sortedMonths = Array.from(bonusesByMonth.keys()).sort();
+
+    sortedMonths.forEach((monthKey) => {
+      const monthBonuses = bonusesByMonth.get(monthKey)!;
+
+      // 同月内の賞与を日付順にソート
+      const sortedMonthBonuses = monthBonuses.sort((a, b) => {
+        const dateA = this.toBonusDate(a.bonusPaidOn);
+        const dateB = this.toBonusDate(b.bonusPaidOn);
+        if (!dateA) return 1;
+        if (!dateB) return -1;
+        return dateA.getTime() - dateB.getTime();
+      });
+
+      // 同月内の賞与総支給額を合算
+      const monthlyBonusTotal = sortedMonthBonuses.reduce(
+        (sum, bonus) => sum + (bonus.bonusTotal ?? 0),
+        0,
+      );
+
+      if (monthlyBonusTotal > 0) {
+        // 年度上限を考慮して標準賞与額を計算
+        // 残りの上限を計算
+        const remainingCap = healthBonusCap
+          ? Math.max(healthBonusCap - fiscalYearCumulative, 0)
+          : undefined;
+
+        if (remainingCap !== undefined && remainingCap <= 0) {
+          // 残りの上限が0以下の場合は、今回分は0
+          return;
         }
-        // 標準賞与額が未設定の場合は、賞与総支給額から標準賞与額を計算
-        if (record.bonusTotal !== undefined && record.bonusTotal > 0) {
-          return (
-            sum + calculateStandardBonus(record.bonusTotal, healthBonusCap)
-          );
-        }
-        return sum;
-      }, 0);
+
+        // 同月内の賞与総支給額と残りの上限の小さい方から標準賞与額を計算
+        const cappedBonus =
+          remainingCap !== undefined
+            ? Math.min(monthlyBonusTotal, remainingCap)
+            : monthlyBonusTotal;
+
+        const monthlyStandardBonus = calculateStandardBonus(cappedBonus);
+        fiscalYearCumulative += monthlyStandardBonus;
+      }
+    });
+
+    return fiscalYearCumulative;
   }
 
   private calculateWelfareBonusCumulative(
