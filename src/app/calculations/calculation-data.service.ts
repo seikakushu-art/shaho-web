@@ -775,7 +775,7 @@ export class CalculationDataService {
         const total = targetMonths.reduce((sum, p) => sum + (p.amount ?? 0), 0);
         return Math.floor(total / targetMonths.length);
       }
-      case '随時決定': {
+      case '随時改定': {
         const parsed = this.toYearMonthParts(targetMonth);
         if (!parsed) return 0;
 
@@ -804,7 +804,7 @@ export class CalculationDataService {
         );
         return Math.floor(total / targetOrAfter.length);
       }
-      case '年間平均': {
+      case '定時決定（年間平均）': {
         // 対象月が1～5月の場合はエラー
         const parsed = this.toYearMonthParts(targetMonth);
         if (!parsed) return undefined;
@@ -840,36 +840,7 @@ export class CalculationDataService {
         );
         return Math.floor(total / targetPayrolls.length);
       }
-      case '資格取得時': {
-        if (!employee) return 0;
-        // 健康保険と厚生年金の資格取得日のうち、古い方を取得
-        const healthAcq = employee.healthAcquisition;
-        const pensionAcq = employee.pensionAcquisition;
-
-        if (!healthAcq && !pensionAcq) return 0;
-
-        // 古い方の資格取得日を特定
-        const earliestAcquisition: string | undefined =
-          healthAcq && pensionAcq
-            ? healthAcq < pensionAcq
-              ? healthAcq
-              : pensionAcq
-            : healthAcq || pensionAcq;
-
-        if (!earliestAcquisition || earliestAcquisition.length < 7) return 0;
-
-        // 資格取得日の年月を取得（YYYY-MM形式に正規化）
-        const acquisitionYearMonth = normalizeToYearMonth(earliestAcquisition);
-        if (!acquisitionYearMonth) return 0;
-
-        // 該当月の給与データを取得
-        const acquisitionPayroll = eligiblePayrolls.find(
-          (p) => p.yearMonth === acquisitionYearMonth,
-        );
-
-        return acquisitionPayroll?.amount ?? 0;
-      }
-      case '育休復帰時': {
+      case '産休・育休復帰時': {
         const parsed = this.toYearMonthParts(targetMonth);
         if (!parsed) return 0;
 
@@ -955,8 +926,9 @@ export class CalculationDataService {
   ): PayrollData | undefined {
     if (!targetMonth) return undefined;
     return payrolls.find((payroll) => {
-      const normalized = (payroll.bonusPaidOn ?? '').replace(/\//g, '-');
-      return normalized.startsWith(targetMonth);
+      if (!payroll.bonusPaidOn) return false;
+      const normalized = normalizeToYearMonth(payroll.bonusPaidOn);
+      return normalized === targetMonth;
     });
   }
 
@@ -966,8 +938,9 @@ export class CalculationDataService {
   ): PayrollData[] {
     if (!targetMonth) return [];
     return payrolls.filter((payroll) => {
-      const normalized = (payroll.bonusPaidOn ?? '').replace(/\//g, '-');
-      return normalized.startsWith(targetMonth);
+      if (!payroll.bonusPaidOn) return false;
+      const normalized = normalizeToYearMonth(payroll.bonusPaidOn);
+      return normalized === targetMonth;
     });
   }
 

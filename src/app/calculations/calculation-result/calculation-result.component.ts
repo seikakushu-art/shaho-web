@@ -860,14 +860,6 @@ export class CalculationResultComponent implements OnInit, OnDestroy {
     if (column.category === 'bonus' && this.calculationType === 'standard') {
       return false;
     }
-    // 標準報酬月額計算で「資格取得時」の場合、一時免除フラグは非表示
-    if (
-      this.calculationType === 'standard' &&
-      this.standardMethod === '資格取得時' &&
-      column.key === 'exemption'
-    ) {
-      return false;
-    }
     // 標準報酬月額計算の場合、健保標準報酬月額と厚年標準報酬月額は常に表示
     if (
       this.calculationType === 'standard' &&

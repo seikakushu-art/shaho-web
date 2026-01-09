@@ -135,11 +135,11 @@
                         </p>
                     </div>
                     <div>
-                        <label>被保険者番号ー健康保険</label>
+                        <label>健康保険被保険者番号</label>
                         <p class="value">{{ socialInsurance.healthInsuredNumber || '—' }}</p>
                     </div>
                     <div>
-                        <label>被保険者番号ー厚生年金</label>
+                        <label>厚生年金被保険者番号</label>
                         <p class="value">{{ socialInsurance.pensionInsuredNumber || '—' }}</p>
                     </div>
                     <div>
@@ -171,7 +171,7 @@
                             date: 'yyyy/MM/dd') : '—' }}</p>
                     </div>
                     <div>
-                        <label>健康保険・厚生年金一時免除フラグ</label>
+                        <label>健康保険・厚生年金一時免除フラグ(今月)</label>
                         <p class="value">{{ socialInsurance.exemption ? 'ON' : 'OFF' }}</p>
                         <p class="hint">※給与データと一緒にインポートする値です</p>
                     </div>

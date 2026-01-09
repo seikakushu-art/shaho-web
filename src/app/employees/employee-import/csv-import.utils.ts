@@ -784,7 +784,7 @@ export function validateDataRange(
     if (!value) return;
     // データは既に正規化済み
     const normalized = Number(value.replace(/,/g, ''));
-    // 支払基礎日数は別途チェックするためスキップ
+    // 支払基礎日数はvalidateDataFormatで既にチェック済みのためスキップ
     if (field === '支払基礎日数') {
       return;
     }
@@ -799,24 +799,6 @@ export function validateDataRange(
       );
     }
   });
-
-  // 支払基礎日数の範囲チェック（1以上の整数）
-  const workedDaysValue = row.data['支払基礎日数'];
-  if (workedDaysValue) {
-    const normalized = Number(workedDaysValue.replace(/,/g, ''));
-    if (!Number.isNaN(normalized) && Number.isInteger(normalized)) {
-      if (normalized <= 0) {
-        errors.push(
-          buildError(
-            row.rowIndex,
-            '支払基礎日数',
-            '支払基礎日数は1以上の整数で入力してください',
-            templateType,
-          ),
-        );
-      }
-    }
-  }
 
   const start = row.data['算定対象期間開始年月'];
   const end = row.data['算定対象期間終了年月'];

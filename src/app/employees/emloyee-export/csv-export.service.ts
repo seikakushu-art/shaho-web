@@ -296,6 +296,7 @@ export class CsvExportService {
         { header: '社員番号', value: (employee) => employee.employeeNo },
         { header: '氏名(漢字)', value: (employee) => employee.name },
         { header: '氏名(カナ)', value: (employee) => employee.kana },
+        { header: '性別', value: (employee) => this.normalizeGender(employee.gender) },
         { header: '部署', value: (employee) => employee.department },
         {
           header: '勤務地都道府県',
@@ -342,7 +343,7 @@ export class CsvExportService {
         },
         {
           header: '扶養性別',
-          value: (employee, dependent) => dependent?.gender ?? '',
+          value: (employee, dependent) => this.normalizeGender(dependent?.gender),
         },
         {
           header: '扶養個人番号',
@@ -403,10 +404,6 @@ export class CsvExportService {
           header: '厚年標準報酬月額',
           value: (employee) =>
             employee.welfareStandardMonthly,
-        },
-        {
-          header: '標準賞与額年間合計',
-          value: (employee) => employee.standardBonusAnnualTotal,
         },
         {
           header: '介護第2号被保険者',
@@ -478,6 +475,23 @@ export class CsvExportService {
               (employee.payrolls ?? []).find(
                 (payroll) => payroll.yearMonth === month,
               )?.pensionMonthly ?? '',
+          },
+          {
+            header: `健康保険・厚生年金一時免除フラグ(${month})`,
+            value: (employee) => {
+              const payroll = (employee.payrolls ?? []).find(
+                (p) => p.yearMonth === month,
+              );
+              if (payroll?.exemption === undefined || payroll?.exemption === null) {
+                return '';
+              }
+              const exemption = typeof payroll.exemption === 'boolean'
+                ? payroll.exemption
+                : String(payroll.exemption).trim().toLowerCase() === 'true' ||
+                  String(payroll.exemption).trim() === '1' ||
+                  String(payroll.exemption).trim() === '有';
+              return exemption ? 'はい' : 'いいえ';
+            },
           },
         );
 
@@ -779,6 +793,29 @@ export class CsvExportService {
     return fieldOrder
       .filter((key) => fields.includes(key))
       .map((key) => byKey[key]);
+  }
+
+  private normalizeGender(gender: string | null | undefined): string {
+    if (!gender) return '';
+    const normalized = gender.trim();
+    if (
+      normalized === '男' ||
+      normalized === '男性' ||
+      normalized.toLowerCase() === 'male' ||
+      normalized === '1'
+    ) {
+      return '男性';
+    }
+    if (
+      normalized === '女' ||
+      normalized === '女性' ||
+      normalized.toLowerCase() === 'female' ||
+      normalized === '2'
+    ) {
+      return '女性';
+    }
+    // 正規化できない場合は元の値をそのまま返す
+    return normalized;
   }
 
   private formatDate(value: string | Date | null | undefined): string {

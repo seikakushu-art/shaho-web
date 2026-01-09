@@ -543,8 +543,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
             return false;
           }
 
-          // 新規社員登録のカテゴリのみチェック
-          if (request.category !== '新規社員登録') {
+          // 新規社員登録または社員情報一括更新のカテゴリをチェック
+          if (request.category !== '新規社員登録' && request.category !== '社員情報一括更新') {
             return false;
           }
 
@@ -2093,8 +2093,8 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
             return false;
           }
 
-          // 新規社員登録のカテゴリのみチェック
-          if (request.category !== '新規社員登録') {
+          // 新規社員登録または社員情報一括更新のカテゴリをチェック
+          if (request.category !== '新規社員登録' && request.category !== '社員情報一括更新') {
             return false;
           }
 
@@ -2405,6 +2405,23 @@ export class EmployeeImportComponent implements OnInit, OnDestroy {
             oldValue: existingBonusDate || null,
             newValue: normalizedBonusDate,
           });
+        }
+
+        // 健康保険・厚生年金一時免除フラグの差分（月の情報を含める）
+        const exemptionFlagRaw = csvData['健康保険・厚生年金一時免除フラグ'];
+        if (exemptionFlagRaw !== undefined && exemptionFlagRaw !== null && exemptionFlagRaw !== '') {
+          const csvExemptionFlag = (() => {
+            const normalized = String(exemptionFlagRaw).trim().toLowerCase();
+            return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on' || normalized === '有';
+          })();
+          const existingExemptionFlag = existingPayroll?.exemption ?? false;
+          if (existingExemptionFlag !== csvExemptionFlag) {
+            changes.push({
+              fieldName: `健康保険・厚生年金一時免除フラグ（${bonusYearMonthDisplay}）`,
+              oldValue: existingExemptionFlag ? '1' : '0',
+              newValue: csvExemptionFlag ? '1' : '0',
+            });
+          }
         }
       }
     }

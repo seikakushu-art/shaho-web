@@ -507,7 +507,7 @@ export function resolveStandardMonthly(
         return averagePayroll(targetMonths);
       })();
       break;
-    case '随時決定':
+    case '随時改定':
       base = (() => {
         const parsed = toYearMonthParts(targetMonth);
         if (!parsed) {
@@ -554,7 +554,7 @@ export function resolveStandardMonthly(
         return average;
       })();
       break;
-    case '年間平均':
+    case '定時決定（年間平均）':
       base = (() => {
         // 対象月が1～5月の場合はエラー
         const parsed = toYearMonthParts(targetMonth);
@@ -563,7 +563,7 @@ export function resolveStandardMonthly(
           return undefined;
         }
         if (parsed.month >= 1 && parsed.month <= 5) {
-          error = `年間平均の計算は6月以降の対象月のみ指定可能です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
+          error = `定時決定（年間平均）の計算は6月以降の対象月のみ指定可能です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
           return undefined;
         }
         // 前年7月～当年6月の12か月の平均を計算
@@ -578,51 +578,7 @@ export function resolveStandardMonthly(
         return annualAverage;
       })();
       break;
-    case '資格取得時':
-      base = (() => {
-        // 健康保険と厚生年金の資格取得日のうち、古い方を取得
-        const healthAcq = employee.healthAcquisition;
-        const pensionAcq = employee.pensionAcquisition;
-        
-        if (!healthAcq && !pensionAcq) {
-          error = `資格取得日が設定されていません。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
-          return undefined;
-        }
-        
-        // 古い方の資格取得日を特定
-        const earliestAcquisition: string | undefined = healthAcq && pensionAcq
-          ? (healthAcq < pensionAcq ? healthAcq : pensionAcq)
-          : (healthAcq || pensionAcq);
-        
-        if (!earliestAcquisition || earliestAcquisition.length < 7) {
-          error = `資格取得日が不正です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
-          return undefined;
-        }
-        
-        // 型ガード: この時点でearliestAcquisitionはstring型であることが保証されている
-        const acquisitionDate: string = earliestAcquisition;
-        
-        // 資格取得日の年月を取得（YYYY-MM形式に正規化）
-        const acquisitionYearMonth = normalizeToYearMonth(acquisitionDate);
-        if (!acquisitionYearMonth) {
-          error = `資格取得日が不正です。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
-          return undefined;
-        }
-        
-        // 該当月の給与データを取得
-        const acquisitionPayroll = eligiblePayrolls.find(
-          (p) => p.yearMonth === acquisitionYearMonth,
-        );
-        
-        if (!acquisitionPayroll || acquisitionPayroll.amount === undefined) {
-          error = `資格取得月（${acquisitionYearMonth}）の給与データが不足しています。（社員番号: ${employee.employeeNo}, 氏名: ${employee.name}）`;
-          return undefined;
-        }
-        
-        return acquisitionPayroll.amount;
-      })();
-      break;
-    case '育休復帰時':
+    case '産休・育休復帰時':
       base = (() => {
         const parsed = toYearMonthParts(targetMonth);
         if (!parsed) {

@@ -6,7 +6,7 @@ import { PayrollData, ShahoEmployeesService } from '../../app/services/shaho-emp
 import { normalizeToYearMonth } from '../calculation-utils';
 
 type CalculationType = 'standard' | 'bonus' | 'insurance';
-type StandardCalculationMethod = '定時決定' | '随時決定' | '年間平均' | '資格取得時' | '育休復帰時';
+type StandardCalculationMethod = '定時決定' | '随時改定' | '定時決定（年間平均）' | '産休・育休復帰時';
 type InsuranceKey = 'health' | 'welfare' | 'nursing';
 
 interface EmployeeCandidate {
@@ -54,10 +54,9 @@ export class CalculationTargetComponent implements OnInit {
   readonly calculationTypeOrder: CalculationType[] = ['standard', 'bonus', 'insurance'];
   readonly standardCalculationMethods: StandardCalculationMethod[] = [
     '定時決定',
-    '随時決定',
-    '年間平均',
-    '資格取得時',
-    '育休復帰時',
+    '定時決定（年間平均）',
+    '随時改定',
+    '産休・育休復帰時',
   ];
   readonly insuranceLabels: Record<InsuranceKey, string> = {
     health: '健康保険',
@@ -166,15 +165,11 @@ export class CalculationTargetComponent implements OnInit {
   }
 
   get isAdHocDecision() {
-    return this.isStandardCalculation && (this.standardCalculationMethod === '随時決定' || this.standardCalculationMethod === '育休復帰時');
+    return this.isStandardCalculation && (this.standardCalculationMethod === '随時改定' || this.standardCalculationMethod === '産休・育休復帰時');
   }
 
   get isAnnualAverage() {
-    return this.isStandardCalculation && this.standardCalculationMethod === '年間平均';
-  }
-
-  get isAcquisitionDecision() {
-    return this.isStandardCalculation && this.standardCalculationMethod === '資格取得時';
+    return this.isStandardCalculation && this.standardCalculationMethod === '定時決定（年間平均）';
   }
 
   get targetYear(): number {
